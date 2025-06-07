@@ -152,6 +152,18 @@ parseBtn.addEventListener('click', async () => {
       // Display the output container
       outputDiv.classList.remove('d-none');
       
+      // Show size reduction message if available
+      if (window.sizeReductionMessage) {
+        window.sizeReductionMessage.style.display = 'block';
+        // Remove the message after 8 seconds
+        setTimeout(() => {
+          if (window.sizeReductionMessage.parentNode) {
+            window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
+          }
+          window.sizeReductionMessage = null;
+        }, 8000);
+      }
+      
       // Show Bring widget with recipe URL
       showBringWidget(result.uuid);
     } else {
@@ -179,13 +191,79 @@ function resetParseButton() {
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
+    // Check if file is an image
+    if (!file.type.match('image.*')) {
+      return resolve(null);
+    }
+    
     const reader = new FileReader();
-    reader.onload = () => {
-      // Get the base64 string without the metadata prefix
-      const base64String = reader.result;
-      // The backend expects the full data URL
-      resolve(base64String);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        // Max dimensions for the image
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
+        
+        let width = img.width;
+        let height = img.height;
+        let resized = false;
+        let sizeReduction = '';
+        
+        // Calculate new dimensions if the image is larger than max dimensions
+        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+          if (width > height) {
+            // Landscape image
+            if (width > MAX_WIDTH) {
+              height = Math.round(height * (MAX_WIDTH / width));
+              width = MAX_WIDTH;
+              resized = true;
+            }
+          } else {
+            // Portrait image
+            if (height > MAX_HEIGHT) {
+              width = Math.round(width * (MAX_HEIGHT / height));
+              height = MAX_HEIGHT;
+              resized = true;
+            }
+          }
+          
+          // Calculate size reduction for display
+          const originalSize = Math.round(file.size / 1024);
+          sizeReduction = `Image resized from ${img.width}x${img.height} to ${width}x${height}`;
+        }
+        
+        // Create canvas and resize image
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Get resized image as base64 string
+        const base64String = canvas.toDataURL(file.type);
+        
+        // If the image was resized, show a notification
+        if (resized) {
+          // Create or update a notification element to show the user
+          if (!window.sizeReductionMessage) {
+            window.sizeReductionMessage = document.createElement('div');
+            window.sizeReductionMessage.className = 'alert alert-info mt-2';
+            window.sizeReductionMessage.style.display = 'none';
+            document.querySelector('#photo').parentNode.appendChild(window.sizeReductionMessage);
+          }
+          window.sizeReductionMessage.textContent = sizeReduction;
+        }
+        
+        resolve(base64String);
+      };
+      
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+      
+      img.src = event.target.result;
     };
+    
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
