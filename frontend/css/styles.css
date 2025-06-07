@@ -91,6 +91,37 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Camera and image preview styles */
+#image-preview-container {
+  margin-bottom: 1rem;
+  overflow: hidden;
+  transition: height 0.3s ease;
+}
+
+#image-preview-container img {
+  border: 1px solid #dee2e6;
+  object-fit: cover;
+  transition: all 0.3s ease;
+}
+
+#image-preview-container img:hover {
+  transform: scale(1.02);
+}
+
+#cameraBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#cameraBtn svg {
+  margin: 0;
+}
+
+.input-group .btn-outline-secondary {
+  border-color: #ced4da;
+}
+
 /* For devices with small screens */
 @media (max-width: 768px) {
   .container {

@@ -39,6 +39,7 @@ const userModal = new bootstrap.Modal(document.getElementById('userModal'), {
 const userBtn = document.getElementById('userBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const photoInput = document.getElementById('photo');
+const cameraBtn = document.getElementById('cameraBtn');
 const parseBtn = document.getElementById('parseBtn');
 const outputDiv = document.getElementById('output');
 const outputJson = document.getElementById('outputJson');
@@ -46,6 +47,24 @@ const recipeHtmlContainer = document.getElementById('recipe-html-container');
 const viewJsonBtn = document.getElementById('viewJsonBtn');
 const viewFullRecipeBtn = document.getElementById('viewFullRecipeBtn');
 const bringImportCard = document.getElementById('bringImportCard');
+
+// Check for camera support
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const isAndroid = /Android/.test(navigator.userAgent);
+
+// Update UI based on device capabilities
+document.addEventListener('DOMContentLoaded', () => {
+  if (isMobileDevice && hasMediaDevices) {
+    // Show camera hint for mobile devices with camera support
+    document.querySelector('.text-muted.mt-1').style.display = 'block';
+    cameraBtn.style.display = 'block';
+  } else {
+    // Hide camera hint for desktop devices
+    document.querySelector('.text-muted.mt-1').style.display = 'none';
+  }
+});
 
 // Event listeners
 userBtn.addEventListener('click', () => {
@@ -55,6 +74,78 @@ userBtn.addEventListener('click', () => {
 logoutBtn.addEventListener('click', () => {
   localStorage.removeItem('auth_token');
   window.location.href = 'login.html';
+});
+
+// Camera button functionality
+cameraBtn.addEventListener('click', () => {
+  // For devices with camera support, trigger the file input with capture
+  if (isMobileDevice && hasMediaDevices) {
+    // Create a temporary input with capture attribute for taking a photo
+    const tempInput = document.createElement('input');
+    tempInput.type = 'file';
+    tempInput.accept = 'image/*';
+    tempInput.capture = 'environment'; // Use the back camera
+    
+    // Handle the file selection
+    tempInput.addEventListener('change', (event) => {
+      if (event.target.files && event.target.files[0]) {
+        // Copy the selected file to the main file input
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(event.target.files[0]);
+        photoInput.files = dataTransfer.files;
+        
+        // Show a preview if desired
+        showImagePreview(event.target.files[0]);
+      }
+    });
+    
+    // Trigger the file selection dialog
+    tempInput.click();
+  } else {
+    // For desktop or unsupported devices, just click the regular file input
+    photoInput.click();
+  }
+});
+
+// Preview the selected image
+function showImagePreview(file) {
+  // Create or get the preview element
+  let previewContainer = document.getElementById('image-preview-container');
+  if (!previewContainer) {
+    previewContainer = document.createElement('div');
+    previewContainer.id = 'image-preview-container';
+    previewContainer.className = 'mt-3 text-center';
+    photoInput.parentNode.parentNode.appendChild(previewContainer);
+  }
+  
+  // Read the file and create the preview
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    previewContainer.innerHTML = `
+      <div class="position-relative d-inline-block">
+        <img src="${e.target.result}" alt="Recipe preview" style="max-height: 200px; max-width: 100%;" class="rounded shadow-sm">
+        <button type="button" class="btn btn-sm btn-light position-absolute top-0 end-0 m-1" id="remove-preview">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+          </svg>
+        </button>
+      </div>
+    `;
+    
+    // Add click handler to the remove button
+    document.getElementById('remove-preview').addEventListener('click', () => {
+      previewContainer.innerHTML = '';
+      photoInput.value = ''; // Clear the file input
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+// Handle file selection from the regular input
+photoInput.addEventListener('change', (event) => {
+  if (event.target.files && event.target.files[0]) {
+    showImagePreview(event.target.files[0]);
+  }
 });
 
 // Toggle JSON visibility
@@ -72,13 +163,19 @@ viewJsonBtn.addEventListener('click', () => {
 parseBtn.addEventListener('click', async () => {
   const file = photoInput.files[0];
   if (!file) {
-    alert('Please select an image file');
+    alert('Please select an image file or take a photo');
     return;
   }
   
   // Show loading state
   parseBtn.disabled = true;
   parseBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Parsing...';
+  
+  // Hide the preview while processing
+  const previewContainer = document.getElementById('image-preview-container');
+  if (previewContainer) {
+    previewContainer.style.opacity = '0.5';
+  }
   
   // Reset output container
   outputDiv.classList.add('d-none');
@@ -187,6 +284,12 @@ parseBtn.addEventListener('click', async () => {
 function resetParseButton() {
   parseBtn.disabled = false;
   parseBtn.innerHTML = 'Parse Recipe';
+  
+  // Restore preview opacity
+  const previewContainer = document.getElementById('image-preview-container');
+  if (previewContainer) {
+    previewContainer.style.opacity = '1';
+  }
 }
 
 function fileToBase64(file) {
