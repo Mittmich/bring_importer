@@ -185,18 +185,18 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         image_base64 = image_base64.split("base64,")[1]
     
     payload = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-4o",
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that extracts recipe information from images. The most important property that you are interested in is the recipeIngredient. You will return a valid HTML with proper schema.org/Recipe markup."
+                "content": "You are a helpful assistant that extracts recipe information from images. The most important ascect of the recipe is the ingredients, which must be included in the recipeIngredient itemprop. Return a valid HTML with proper schema.org/Recipe markup."
             },
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": """Extract the recipe information from this image. Return a valid HTML with proper schema.org/Recipe markup. Include itemscope, itemtype, and itemprop attributes to make it fully compliant with schema.org/Recipe. It is vital that all ingredients receive the recipeIngredient itemprop. Do not include JSON blocks in your response, only return valid HTML."""
+                        "text": """Extract the recipe information from this image. Return a valid HTML with proper schema.org/Recipe markup. Include itemscope, itemtype, and itemprop attributes to make it fully compliant with schema.org/Recipe. It is vital that all ingredients individually receive the recipeIngredient itemprop. Do not include JSON blocks in your response, only return valid HTML."""
                     },
                     {
                         "type": "image_url",
