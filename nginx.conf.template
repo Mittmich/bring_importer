@@ -24,12 +24,6 @@ http {
     #tcp_nopush     on;
     keepalive_timeout  65;
 
-    # Server-side rendering for environment variables
-    # This will replace placeholders in JS files
-    map $request_uri $processJs {
-        ~/env-config.js$ 1;
-        default 0;
-    }
 
     server {
         listen 80;
@@ -39,11 +33,11 @@ http {
     
         # Process env-config.js with environment variables
         location ~ env-config.js$ {
+            gzip off;
             sub_filter '{{API_URL}}' '${API_URL}';
             sub_filter '{{FRONTEND_URL}}' '${FRONTEND_URL}';
             sub_filter '{{APP_VERSION}}' '${APP_VERSION}';
             sub_filter_once off;
-            sub_filter_types application/javascript;
             add_header Cache-Control no-store;
         }
     
