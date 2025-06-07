@@ -9,6 +9,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <link rel="icon" href="images/icon-192.png">
+  <script async="async" src="https://platform.getbring.com/widgets/import.js"></script>
 </head>
 <body>
   <div class="sidebar">
@@ -33,8 +34,9 @@
           <h5>Parsed Recipe</h5>
           <pre id="outputJson" class="mb-0"></pre>
         </div>
-        
-        <div id="bringWidget" class="mt-4"></div>
+        <div id="bringImportCard" data-bring-import="http://localhost:8000/recipe-data.html" style="display:none;margin-top: 10px;">
+            <a href="https://www.getbring.com">Bring! Einkaufsliste App f&uuml;r iPhone und Android</a>
+        </div>
       </div>
     </div>
   </div>
