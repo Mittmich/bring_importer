@@ -198,6 +198,7 @@ function showBringWidget(recipeUuid) {
   // Set the recipe URL for the Bring widget
   const recipeUrl = `${config.frontendUrl}/api/recipes/${recipeUuid}.html`;
   bringImportCard.setAttribute('data-bring-import', recipeUrl);
+  window.bringwidgets.import.setUrl(recipeUrl)
   
   // Show the card
   bringImportCard.style.display = 'block';
