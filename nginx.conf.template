@@ -38,6 +38,7 @@ http {
             sub_filter '{{FRONTEND_URL}}' '${FRONTEND_URL}';
             sub_filter '{{APP_VERSION}}' '${APP_VERSION}';
             sub_filter_once off;
+            sub_filter_types application/javascript text/plain;
             add_header Cache-Control no-store;
         }
     
