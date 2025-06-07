@@ -196,7 +196,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                 "content": [
                     {
                         "type": "text",
-                        "text": """Extract the recipe information from this image. Return a valid HTML with proper schema.org/Recipe markup. Include itemscope, itemtype, and itemprop attributes to make it fully compliant with schema.org/Recipe. Do not include JSON blocks in your response, only return valid HTML."""
+                        "text": """Extract the recipe information from this image. Return a valid HTML with proper schema.org/Recipe markup. Include itemscope, itemtype, and itemprop attributes to make it fully compliant with schema.org/Recipe. It is vital that all ingredients receive the recipeIngredient itemprop. Do not include JSON blocks in your response, only return valid HTML."""
                     },
                     {
                         "type": "image_url",
