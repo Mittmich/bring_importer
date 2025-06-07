@@ -118,27 +118,54 @@ function showImagePreview(file) {
     photoInput.parentNode.parentNode.appendChild(previewContainer);
   }
   
-  // Read the file and create the preview
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    previewContainer.innerHTML = `
-      <div class="position-relative d-inline-block">
-        <img src="${e.target.result}" alt="Recipe preview" style="max-height: 200px; max-width: 100%;" class="rounded shadow-sm">
-        <button type="button" class="btn btn-sm btn-light position-absolute top-0 end-0 m-1" id="remove-preview">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-          </svg>
-        </button>
-      </div>
-    `;
-    
-    // Add click handler to the remove button
-    document.getElementById('remove-preview').addEventListener('click', () => {
-      previewContainer.innerHTML = '';
-      photoInput.value = ''; // Clear the file input
+  // Clear any previous preview
+  previewContainer.innerHTML = `
+    <div class="spinner-border text-primary" role="status">
+      <span class="visually-hidden">Loading...</span>
+    </div>
+    <div class="text-muted small mt-2">Processing image...</div>
+  `;
+  
+  // Process the image through our optimization function for preview
+  fileToBase64(file)
+    .then(optimizedImage => {
+      previewContainer.innerHTML = `
+        <div class="position-relative d-inline-block">
+          <img src="${optimizedImage}" alt="Recipe preview" style="max-height: 200px; max-width: 100%;" class="rounded shadow-sm">
+          <button type="button" class="btn btn-sm btn-light position-absolute top-0 end-0 m-1" id="remove-preview">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="text-muted small mt-1">Image optimized for processing</div>
+      `;
+      
+      // Add click handler to the remove button
+      document.getElementById('remove-preview').addEventListener('click', () => {
+        previewContainer.innerHTML = '';
+        photoInput.value = ''; // Clear the file input
+        
+        // Also remove any reduction message
+        if (window.sizeReductionMessage && window.sizeReductionMessage.parentNode) {
+          window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
+          window.sizeReductionMessage = null;
+        }
+      });
+    })
+    .catch(error => {
+      previewContainer.innerHTML = `
+        <div class="alert alert-danger">
+          <p>Error processing image preview: ${error.message}</p>
+          <button class="btn btn-sm btn-outline-danger" id="clear-error-preview">Try Again</button>
+        </div>
+      `;
+      
+      document.getElementById('clear-error-preview').addEventListener('click', () => {
+        previewContainer.innerHTML = '';
+        photoInput.value = '';
+      });
     });
-  };
-  reader.readAsDataURL(file);
 }
 
 // Handle file selection from the regular input
@@ -249,16 +276,27 @@ parseBtn.addEventListener('click', async () => {
       // Display the output container
       outputDiv.classList.remove('d-none');
       
-      // Show size reduction message if available
+      // Keep size reduction message visible for a while then fade it out
       if (window.sizeReductionMessage) {
         window.sizeReductionMessage.style.display = 'block';
-        // Remove the message after 8 seconds
+        
+        // Add a specific class for styling
+        window.sizeReductionMessage.classList.add('processing-complete');
+        
+        // Remove the message after 12 seconds with a fade effect
         setTimeout(() => {
-          if (window.sizeReductionMessage.parentNode) {
-            window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
+          if (window.sizeReductionMessage) {
+            window.sizeReductionMessage.style.opacity = '0';
+            window.sizeReductionMessage.style.transition = 'opacity 1s';
+            
+            setTimeout(() => {
+              if (window.sizeReductionMessage && window.sizeReductionMessage.parentNode) {
+                window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
+              }
+              window.sizeReductionMessage = null;
+            }, 1000);
           }
-          window.sizeReductionMessage = null;
-        }, 8000);
+        }, 12000);
       }
       
       // Show Bring widget with recipe URL
@@ -268,7 +306,36 @@ parseBtn.addEventListener('click', async () => {
     }
   } catch (error) {
     console.error('Error parsing recipe:', error);
-    alert('Error: ' + error.message);
+    
+    // Display a better error message for image processing issues
+    if (error.message.includes('image') || error.message.includes('file')) {
+      // Create a structured error message for image-related errors
+      const errorContainer = document.createElement('div');
+      errorContainer.className = 'alert alert-danger mt-3';
+      errorContainer.innerHTML = `
+        <h5>Image Processing Error</h5>
+        <p>${error.message}</p>
+        <p>Please try with a different image or take a clearer photo.</p>
+      `;
+      
+      // Replace any existing notification with the error
+      if (window.sizeReductionMessage && window.sizeReductionMessage.parentNode) {
+        window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
+      }
+      window.sizeReductionMessage = errorContainer;
+      document.querySelector('#photo').parentNode.parentNode.appendChild(errorContainer);
+      
+      // Remove error after 15 seconds
+      setTimeout(() => {
+        if (errorContainer.parentNode) {
+          errorContainer.parentNode.removeChild(errorContainer);
+        }
+        window.sizeReductionMessage = null;
+      }, 15000);
+    } else {
+      // For other errors, use a simpler alert
+      alert('Error: ' + error.message);
+    }
     
     // If unauthorized, redirect to login
     if (error.message.includes('authenticated') || error.message.includes('401')) {
@@ -306,13 +373,18 @@ function fileToBase64(file) {
         // Max dimensions for the image
         const MAX_WIDTH = 1200;
         const MAX_HEIGHT = 1200;
+        // Quality setting for JPEG compression (0.0 to 1.0)
+        const QUALITY = 0.85;
         
         let width = img.width;
         let height = img.height;
         let resized = false;
         let sizeReduction = '';
         
-        // Calculate new dimensions if the image is larger than max dimensions
+        // Calculate original image size in KB
+        const originalSize = Math.round(file.size / 1024);
+        
+        // Always resize images to reasonable dimensions if they're large
         if (width > MAX_WIDTH || height > MAX_HEIGHT) {
           if (width > height) {
             // Landscape image
@@ -329,10 +401,6 @@ function fileToBase64(file) {
               resized = true;
             }
           }
-          
-          // Calculate size reduction for display
-          const originalSize = Math.round(file.size / 1024);
-          sizeReduction = `Image resized from ${img.width}x${img.height} to ${width}x${height}`;
         }
         
         // Create canvas and resize image
@@ -340,22 +408,35 @@ function fileToBase64(file) {
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
+        ctx.fillStyle = "white"; // Use white background
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, width, height);
         
-        // Get resized image as base64 string
-        const base64String = canvas.toDataURL(file.type);
+        // Get resized image as base64 string with quality setting
+        const fileType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const base64String = canvas.toDataURL(fileType, QUALITY);
         
-        // If the image was resized, show a notification
-        if (resized) {
-          // Create or update a notification element to show the user
-          if (!window.sizeReductionMessage) {
-            window.sizeReductionMessage = document.createElement('div');
-            window.sizeReductionMessage.className = 'alert alert-info mt-2';
-            window.sizeReductionMessage.style.display = 'none';
-            document.querySelector('#photo').parentNode.appendChild(window.sizeReductionMessage);
-          }
-          window.sizeReductionMessage.textContent = sizeReduction;
+        // Estimate the new size in KB (very rough approximation)
+        const base64Data = base64String.split(',')[1];
+        const newSizeBytes = Math.round((base64Data.length * 3) / 4);
+        const newSize = Math.round(newSizeBytes / 1024);
+        
+        // Create notification about the processing
+        const processingInfo = resized ? 
+          `Image resized from ${img.width}×${img.height} to ${width}×${height}` :
+          `Image processed at ${width}×${height}`;
+          
+        const sizeInfo = `Size: ~${originalSize}KB → ~${newSize}KB`;
+        sizeReduction = `${processingInfo}<br>${sizeInfo}`;
+        
+        // Always show notification about the processing
+        if (!window.sizeReductionMessage) {
+          window.sizeReductionMessage = document.createElement('div');
+          window.sizeReductionMessage.className = 'alert alert-info mt-2';
+          window.sizeReductionMessage.style.display = 'block';
+          document.querySelector('#photo').parentNode.parentNode.appendChild(window.sizeReductionMessage);
         }
+        window.sizeReductionMessage.innerHTML = sizeReduction;
         
         resolve(base64String);
       };
