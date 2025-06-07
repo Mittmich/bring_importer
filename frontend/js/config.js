@@ -1,10 +1,10 @@
 // Config file for environment variables
 const config = {
-  // API backend URL with fallback to localhost
-  apiUrl: localStorage.getItem('API_URL') || 'http://localhost:8001',
+  // API backend URL with fallback to /api/ for Nginx reverse proxy
+  apiUrl: localStorage.getItem('API_URL') || '/api',
   
-  // Frontend URL with fallback to localhost
-  frontendUrl: localStorage.getItem('FRONTEND_URL') || 'http://localhost:8000'
+  // Frontend URL with fallback to current origin
+  frontendUrl: localStorage.getItem('FRONTEND_URL') || window.location.origin
 };
 
 // Freeze the config object to prevent modifications

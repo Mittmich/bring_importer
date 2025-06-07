@@ -1,3 +1,7 @@
 recipes.db
 users.json
 .env
+.DS_Store
+logs/*
+*.pyc
+*/__pycache__/*
