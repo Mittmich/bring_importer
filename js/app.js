@@ -11,110 +11,129 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Check authentication status
+document.addEventListener('DOMContentLoaded', () => {
+  const token = localStorage.getItem('auth_token');
+  if (!token) {
+    // Not logged in, redirect to login page
+    window.location.href = 'login.html';
+    return;
+  }
+  
+  // Try to get user info from the token (JWT)
+  try {
+    const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+    const userEmail = tokenPayload.sub;
+    document.querySelector('#userEmail span').textContent = userEmail;
+  } catch (e) {
+    console.error('Error parsing token:', e);
+  }
+});
+
 // Initialize Bootstrap modal
-const settingsModal = new bootstrap.Modal(document.getElementById('settingsModal'), {
+const userModal = new bootstrap.Modal(document.getElementById('userModal'), {
   keyboard: false
 });
 
 // Get DOM elements
-const settingsBtn = document.getElementById('settingsBtn');
-const apiKeyInput = document.getElementById('apiKey');
-const saveKeyBtn = document.getElementById('saveKey');
+const userBtn = document.getElementById('userBtn');
+const logoutBtn = document.getElementById('logoutBtn');
 const photoInput = document.getElementById('photo');
 const parseBtn = document.getElementById('parseBtn');
 const outputDiv = document.getElementById('output');
 const outputJson = document.getElementById('outputJson');
-const bringWidgetDiv = document.getElementById('bringWidget');
-
-// Load API key from localStorage
-const savedApiKey = localStorage.getItem('openai_api_key');
-if (savedApiKey) {
-  apiKeyInput.value = savedApiKey;
-  updateParseButtonState();
-}
+const bringImportCard = document.getElementById('bringImportCard');
 
 // Event listeners
-settingsBtn.addEventListener('click', () => {
-  settingsModal.show();
+userBtn.addEventListener('click', () => {
+  userModal.show();
 });
 
-saveKeyBtn.addEventListener('click', () => {
-  const apiKey = apiKeyInput.value.trim();
-  if (apiKey) {
-    localStorage.setItem('openai_api_key', apiKey);
-    updateParseButtonState();
-    settingsModal.hide();
-    showToast('API key saved successfully');
-  } else {
-    alert('Please enter a valid API key');
-  }
+logoutBtn.addEventListener('click', () => {
+  localStorage.removeItem('auth_token');
+  window.location.href = 'login.html';
 });
-
-photoInput.addEventListener('change', updateParseButtonState);
 
 parseBtn.addEventListener('click', async () => {
   const file = photoInput.files[0];
-  if (!file) return;
+  if (!file) {
+    alert('Please select an image file');
+    return;
+  }
   
   // Show loading state
   parseBtn.disabled = true;
   parseBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Parsing...';
   outputDiv.classList.add('d-none');
   
-  // Get API key from localStorage
-  const apiKey = localStorage.getItem('openai_api_key');
-  if (!apiKey) {
-    alert('Please set your OpenAI API key in the settings');
-    resetParseButton();
-    return;
-  }
-  
   try {
     // Convert image to base64
     const base64Image = await fileToBase64(file);
     
-    // Send to OpenAI API
-    const recipe = await parseRecipeFromImage(base64Image, apiKey);
+    // Get token for authentication
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+      throw new Error('Not authenticated. Please log in.');
+    }
     
-    if (recipe) {
+    // Send to backend API
+    const formData = new FormData();
+    formData.append('image', base64Image);
+    
+    const response = await fetch('http://localhost:8001/recipes/parse', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Failed to parse recipe');
+    }
+    
+    const result = await response.json();
+    
+    if (result && result.uuid) {
+      // Get full recipe data
+      const recipeResponse = await fetch(`http://localhost:8001/recipes/${result.uuid}.json`);
+      const recipeData = await recipeResponse.json();
+      
       // Display the parsed recipe
       outputDiv.classList.remove('d-none');
-      outputJson.textContent = JSON.stringify(recipe, null, 2);
+      outputJson.textContent = JSON.stringify(recipeData, null, 2);
       
-      // Store the recipe data in sessionStorage for the recipe-data.html page
-      localStorage.setItem('recipeData', JSON.stringify(recipe));
-      
-      // Show Bring widget
-      showBringWidget(recipe.items, recipe.title);
+      // Show Bring widget with recipe URL
+      showBringWidget(result.uuid);
     } else {
       alert('Failed to parse the recipe. Please try again with a clearer image.');
     }
   } catch (error) {
     console.error('Error parsing recipe:', error);
     alert('Error: ' + error.message);
+    
+    // If unauthorized, redirect to login
+    if (error.message.includes('authenticated') || error.message.includes('401')) {
+      localStorage.removeItem('auth_token');
+      window.location.href = 'login.html';
+    }
   } finally {
     resetParseButton();
   }
 });
 
 // Helper functions
-function updateParseButtonState() {
-  const hasApiKey = !!localStorage.getItem('openai_api_key');
-  const hasPhoto = photoInput.files.length > 0;
-  parseBtn.disabled = !(hasApiKey && hasPhoto);
-}
-
 function resetParseButton() {
   parseBtn.disabled = false;
   parseBtn.innerHTML = 'Parse Recipe';
-  updateParseButtonState();
 }
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const base64String = reader.result.split(',')[1];
+      const base64String = reader.result;
       resolve(base64String);
     };
     reader.onerror = reject;
@@ -122,74 +141,32 @@ function fileToBase64(file) {
   });
 }
 
-async function parseRecipeFromImage(base64Image, apiKey) {
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful assistant that extracts recipe information from images.'
-          },
-          {
-            role: 'user',
-            content: [
-              { 
-                type: 'text', 
-                text: 'Extract the recipe information from this image. Return a JSON with these fields: title (string), items (array of strings, each representing one ingredient with quantity). Format the items so they can be directly imported into a shopping list.' 
-              },
-              { 
-                type: 'image_url', 
-                image_url: { 
-                  url: `data:image/jpeg;base64,${base64Image}` 
-                } 
-              }
-            ]
-          }
-        ],
-        max_tokens: 1000
-      })
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || 'API request failed');
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error('No content in response');
-    }
-
-    // Extract JSON object from the response
-    const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*\}/);
-    const jsonContent = jsonMatch ? jsonMatch[1] || jsonMatch[0] : content;
-    
-    return JSON.parse(jsonContent);
-  } catch (error) {
-    console.error('OpenAI API error:', error);
-    throw error;
-  }
-}
-
-function showBringWidget(items, title = 'Parsed Recipe') {
-
+function showBringWidget(recipeUuid) {
   // Get the elements we need to update
   const bringImportCard = document.getElementById('bringImportCard');
   
-  // Show the card
-  bringImportCard.classList.remove('d-none');
+  // Set the recipe URL for the Bring widget
+  const recipeUrl = `http://localhost:8000/recipe-data.html?id=${recipeUuid}`;
+  bringImportCard.setAttribute('data-bring-import', recipeUrl);
   
-  // Update the official Bring widget to use our recipe data
-  //bringImportCard.setAttribute('data-bring-import', `data:text/plain,${items}`);
+  // Show the card
+  bringImportCard.style.display = 'block';
+  
+  // Force widget to reload with new data
+  if (window.bringUpdateWidgets) {
+    window.bringUpdateWidgets();
+  } else {
+    // Fallback: reload the Bring widget script
+    const oldScript = document.querySelector('script[src*="platform.getbring.com"]');
+    if (oldScript) {
+      oldScript.remove();
+    }
+    
+    const newScript = document.createElement('script');
+    newScript.async = true;
+    newScript.src = 'https://platform.getbring.com/widgets/import.js';
+    document.head.appendChild(newScript);
+  }
 }
 
 

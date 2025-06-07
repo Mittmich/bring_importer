@@ -13,8 +13,8 @@
 </head>
 <body>
   <div class="sidebar">
-    <button id="settingsBtn" class="btn btn-icon" aria-label="Settings">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-settings"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+    <button id="userBtn" class="btn btn-icon" aria-label="User">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-user"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
     </button>
   </div>
 
@@ -28,37 +28,33 @@
           <label for="photo" class="form-label">Upload Recipe Photo:</label>
           <input type="file" class="form-control" id="photo" accept="image/*">
         </div>
-        <button id="parseBtn" class="btn btn-primary" disabled>Parse Recipe</button>
+        <button id="parseBtn" class="btn btn-primary">Parse Recipe</button>
         
         <div id="output" class="mt-4 p-3 border rounded d-none">
           <h5>Parsed Recipe</h5>
           <pre id="outputJson" class="mb-0"></pre>
         </div>
-        <div id="bringImportCard" data-bring-import="http://localhost:8000/recipe-data.html" style="display:none;margin-top: 10px;">
+        <div id="bringImportCard" data-bring-import="" style="display:none;margin-top: 10px;">
             <a href="https://www.getbring.com">Bring! Einkaufsliste App f&uuml;r iPhone und Android</a>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Settings Modal -->
-  <div class="modal fade" id="settingsModal" tabindex="-1" aria-labelledby="settingsModalLabel" aria-hidden="true">
+  <!-- User Modal -->
+  <div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="settingsModalLabel">API Settings</h5>
+          <h5 class="modal-title" id="userModalLabel">Account</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div class="mb-3">
-            <label for="apiKey" class="form-label">OpenAI API Key:</label>
-            <input type="password" class="form-control" id="apiKey" placeholder="Enter your OpenAI API key">
-            <div class="form-text">Your API key is stored locally and never sent to our servers.</div>
-          </div>
+          <p id="userEmail">Logged in as: <span></span></p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="button" class="btn btn-primary" id="saveKey">Save Settings</button>
+          <button type="button" class="btn btn-danger" id="logoutBtn">Logout</button>
         </div>
       </div>
     </div>

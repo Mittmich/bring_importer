@@ -20,28 +20,81 @@ This is a Progressive Web App (PWA) that lets you upload recipe photos, extract 
 
 ## Setup & Installation
 
-### Requirements
+### Backend (FastAPI)
 
-- An OpenAI API key with access to the GPT-4 Vision API
-- A modern web browser (Chrome, Firefox, Safari, Edge)
+The backend server uses FastAPI and requires Python 3.8 or later.
 
-### Local Development
+#### Using uv (Recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and virtual environment manager.
+
+1. Install uv if you don't have it yet:
+   ```bash
+   pip install uv
+   ```
+
+2. Create a virtual environment and install dependencies:
+   ```bash
+   uv venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   uv pip install -r requirements.txt
+   # Or using pyproject.toml
+   uv pip install -e .
+   ```
+
+3. Create a `.env` file with your OpenAI API key and a secret key:
+   ```
+   OPENAI_API_KEY=your_openai_api_key
+   SECRET_KEY=a_random_secret_key_for_jwt_tokens
+   ```
+
+4. Start the server:
+   ```bash
+   python api.py
+   ```
+   The API will be available at http://localhost:8001
+
+#### Using pip
+
+If you prefer using pip:
+
+1. Create a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Follow steps 3-4 from the uv setup above.
+
+### Frontend
+
+After setting up the backend, you need to serve the frontend files.
 
 ```bash
 # Using any local server, e.g. with Python:
 python -m http.server 8000
 ```
 
-Or use any other static file server to serve the app locally.
+Then navigate to http://localhost:8000 in your browser.
+
+### Requirements
+
+- Python 3.8 or higher for the backend
+- An OpenAI API key with access to the GPT-4o model
+- A modern web browser (Chrome, Firefox, Safari, Edge)
 
 ## Tech Stack
 
-- HTML5, CSS3, JavaScript
-- Bootstrap 5 for UI components
-- OpenAI Vision API for image processing
-- Bring API for shopping list integration
-- Service Worker API for offline capabilities
+- **Frontend**: HTML5, CSS3, JavaScript, Bootstrap 5
+- **Backend**: FastAPI, SQLite, JWT authentication
+- **APIs**: OpenAI GPT-4o for image processing, Bring API for shopping list integration
+- **PWA Features**: Service Worker API for offline capabilities
 
 ## Privacy Notice
 
-This app does not collect or store any data on any server. Your OpenAI API key is stored locally in your browser's localStorage and is only sent to OpenAI when processing images.
+This app stores user credentials and parsed recipes in a SQLite database on the server. Your OpenAI API key is stored only on the server and used for processing images. User authentication is handled with secure JWT tokens.
