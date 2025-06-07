@@ -185,7 +185,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         image_base64 = image_base64.split("base64,")[1]
     
     payload = {
-        "model": "gpt-4o",
+        "model": "gpt-4o-mini",
         "messages": [
             {
                 "role": "system",
