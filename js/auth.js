@@ -8,24 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // DOM elements
   const loginForm = document.getElementById('login-form');
-  const registerForm = document.getElementById('register-form');
-  const loginLink = document.getElementById('login-link');
-  const registerLink = document.getElementById('register-link');
   const loginBtn = document.getElementById('loginBtn');
-  const registerBtn = document.getElementById('registerBtn');
-
-  // Toggle between login and register forms
-  registerLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'block';
-  });
-
-  loginLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    registerForm.style.display = 'none';
-    loginForm.style.display = 'block';
-  });
 
   // Handle login
   loginBtn.addEventListener('click', async () => {
@@ -68,58 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Handle registration
-  registerBtn.addEventListener('click', async () => {
-    const email = document.getElementById('reg-email').value.trim();
-    const password = document.getElementById('reg-password').value.trim();
-    const confirmPassword = document.getElementById('reg-confirm-password').value.trim();
-
-    if (!email || !password || !confirmPassword) {
-      showMessage('Please fill in all fields', 'danger');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      showMessage('Passwords do not match', 'danger');
-      return;
-    }
-
-    registerBtn.disabled = true;
-    registerBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Registering...';
-
-    try {
-      const response = await fetch('http://localhost:8001/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email,
-          password
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.detail || 'Registration failed');
-      }
-
-      showMessage('Registration successful! You can now login.', 'success');
-      
-      // Switch to login form
-      registerForm.style.display = 'none';
-      loginForm.style.display = 'block';
-      document.getElementById('email').value = email;
-      document.getElementById('password').value = '';
-      
-    } catch (error) {
-      showMessage(error.message, 'danger');
-    } finally {
-      registerBtn.disabled = false;
-      registerBtn.textContent = 'Register';
-    }
-  });
+  // Registration functionality has been removed
 
   // Helper function to show messages
   function showMessage(message, type = 'info') {

@@ -46,7 +46,10 @@ The backend server uses FastAPI and requires Python 3.8 or later.
    ```
    OPENAI_API_KEY=your_openai_api_key
    SECRET_KEY=a_random_secret_key_for_jwt_tokens
+   USERS_FILE=users.json
    ```
+   
+   The application will use the `users.json` file to initialize users on startup.
 
 4. Start the server:
    ```bash
@@ -97,4 +100,24 @@ Then navigate to http://localhost:8000 in your browser.
 
 ## Privacy Notice
 
-This app stores user credentials and parsed recipes in a SQLite database on the server. Your OpenAI API key is stored only on the server and used for processing images. User authentication is handled with secure JWT tokens.
+This app stores user credentials and parsed recipes in a SQLite database on the server. Users are initialized from the `users.json` file (no self-registration). Your OpenAI API key is stored only on the server and used for processing images. User authentication is handled with secure JWT tokens.
+
+### Managing Users
+
+Users can be managed directly in the database using the `manage_users.py` script:
+
+```bash
+# List all users
+./manage_users.py list
+
+# Add a new user (will prompt for password)
+./manage_users.py add user@example.com
+
+# Add a new user with password specified in command line
+./manage_users.py add user@example.com --password securepassword
+
+# Remove a user (will prompt for confirmation if user has recipes)
+./manage_users.py remove user@example.com
+```
+
+This is more convenient than editing the `users.json` file directly.

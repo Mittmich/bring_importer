@@ -77,6 +77,7 @@ parseBtn.addEventListener('click', async () => {
     }
     
     // Send to backend API
+    // The API expects the image as form data
     const formData = new FormData();
     formData.append('image', base64Image);
     
@@ -133,7 +134,9 @@ function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
+      // Get the base64 string without the metadata prefix
       const base64String = reader.result;
+      // The backend expects the full data URL
       resolve(base64String);
     };
     reader.onerror = reject;

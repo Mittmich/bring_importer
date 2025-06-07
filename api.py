@@ -22,6 +22,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY", "please_change_this_to_a_random_key_in_production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+USERS_FILE = os.getenv("USERS_FILE", "users.json")
 
 app = FastAPI(title="Recipe Parser API")
 
@@ -101,10 +102,11 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize database on startup
+# Initialize database and users on startup
 @app.on_event("startup")
 async def startup_event():
     init_db()
+    init_users_from_file()
 
 # Authentication functions
 def verify_password(plain_password, hashed_password):
@@ -241,30 +243,50 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse recipe: {str(e)}")
 
+def init_users_from_file():
+    """Initialize users from a JSON file."""
+    try:
+        # Check if users table is empty
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+        
+        if user_count > 0:
+            print(f"Database already contains {user_count} users. Skipping initialization.")
+            conn.close()
+            return
+            
+        # Load users from JSON file
+        if not os.path.exists(USERS_FILE):
+            print(f"Warning: Users file {USERS_FILE} not found. No users imported.")
+            conn.close()
+            return
+            
+        with open(USERS_FILE, 'r') as f:
+            users_data = json.load(f)
+            
+        if 'users' not in users_data or not isinstance(users_data['users'], list):
+            print("Warning: Invalid users.json format. Expected 'users' array.")
+            conn.close()
+            return
+            
+        # Insert users into database
+        for user in users_data['users']:
+            if 'email' in user and 'hashed_password' in user:
+                cursor.execute(
+                    "INSERT INTO users (email, hashed_password) VALUES (?, ?)",
+                    (user['email'], user['hashed_password'])
+                )
+                print(f"Added user: {user['email']}")
+                
+        conn.commit()
+        conn.close()
+        print(f"Users initialization complete. Imported {len(users_data['users'])} users.")
+    except Exception as e:
+        print(f"Error initializing users: {e}")
+
 # API Endpoints
-@app.post("/register", status_code=status.HTTP_201_CREATED)
-async def register(user: User):
-    # Check if user already exists
-    existing_user = get_user(user.email)
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
-        )
-    
-    # Create new user
-    hashed_password = get_password_hash(user.password)
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO users (email, hashed_password) VALUES (?, ?)",
-        (user.email, hashed_password)
-    )
-    conn.commit()
-    conn.close()
-    
-    return {"message": "User registered successfully"}
 
 @app.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
