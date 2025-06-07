@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Script to start the Recipe to Bring application
 # This starts the FastAPI backend and Nginx for serving the frontend

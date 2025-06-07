@@ -149,7 +149,7 @@ function showBringWidget(recipeUuid) {
   const bringImportCard = document.getElementById('bringImportCard');
   
   // Set the recipe URL for the Bring widget
-  const recipeUrl = `${config.frontendUrl}/recipe-data.html?id=${recipeUuid}`;
+  const recipeUrl = `${config.frontendUrl}/api/recipes/${recipeUuid}.json`;
   bringImportCard.setAttribute('data-bring-import', recipeUrl);
   
   // Show the card

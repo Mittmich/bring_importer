@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # Script to stop the Recipe to Bring application
 # This stops the FastAPI backend and Nginx
