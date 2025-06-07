@@ -66,6 +66,7 @@ class Recipe(BaseModel):
     recipeYield: str = "4 servings"
     datePublished: Optional[str] = None
     description: Optional[str] = None
+    html_content: Optional[str] = None
 
 # Database setup
 def get_db_connection():
@@ -92,7 +93,7 @@ def init_db():
         uuid TEXT PRIMARY KEY,
         user_id INTEGER,
         title TEXT,
-        recipe_json TEXT,
+        recipe_json TEXT,  -- This can store large text including HTML content
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
@@ -195,7 +196,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                 "content": [
                     {
                         "type": "text",
-                        "text": "Extract the recipe information from this image. Return a JSON with these fields: title (string), recipeIngredient (array of strings, each representing one ingredient with quantity), recipeYield (string), description (optional string). Format following the schema.org Recipe format."
+                        "text": """Extract the recipe information from this image. Return a valid HTML with proper schema.org/Recipe markup. Include itemscope, itemtype, and itemprop attributes to make it fully compliant with schema.org/Recipe. Do not include JSON blocks in your response, only return valid HTML."""
                     },
                     {
                         "type": "image_url",
@@ -206,7 +207,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                 ]
             }
         ],
-        "max_tokens": 1500
+        "max_tokens": 2000
     }
     
     response = requests.post(url, headers=headers, json=payload)
@@ -214,28 +215,65 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         raise HTTPException(status_code=500, detail=f"OpenAI API error: {response.text}")
     
     result = response.json()
-    content = result['choices'][0]['message']['content']
+    html_content = result['choices'][0]['message']['content']
     
-    # Extract JSON from the response
+    # Extract HTML recipe content
     try:
-        # Try to find JSON block in markdown format
-        json_match = None
-        if "```json" in content and "```" in content.split("```json")[1]:
-            json_match = content.split("```json")[1].split("```")[0].strip()
+        # Extract recipe data from HTML using basic parsing
+        from bs4 import BeautifulSoup
+        import re
         
-        # If not found, try to extract the entire content as JSON
-        if not json_match:
-            json_match = content
+        # Clean up the HTML content - remove markdown code blocks if present
+        if "```html" in html_content:
+            html_match = re.search(r"```html\s*(.*?)\s*```", html_content, re.DOTALL)
+            if html_match:
+                html_content = html_match.group(1)
+        elif "```" in html_content:
+            html_match = re.search(r"```\s*(.*?)\s*```", html_content, re.DOTALL)
+            if html_match:
+                html_content = html_match.group(1)
+        
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Find recipe element
+        recipe_element = soup.find(itemtype=re.compile(r'schema.org/Recipe'))
+        
+        if not recipe_element:
+            # Try alternate format
+            recipe_element = soup.find(attrs={"itemtype": re.compile(r'schema.org/Recipe')})
             
-        recipe_data = json.loads(json_match)
+        if not recipe_element:
+            # If still not found, use the entire soup
+            recipe_element = soup
         
-        # Ensure proper schema.org format
+        # Extract title
+        title_element = recipe_element.find(attrs={"itemprop": "name"})
+        title = title_element.text.strip() if title_element else "Untitled Recipe"
+        
+        # Extract ingredients
+        ingredient_elements = recipe_element.find_all(attrs={"itemprop": "recipeIngredient"})
+        ingredients = [ing.text.strip() for ing in ingredient_elements]
+        
+        # If no specific ingredients found, look for list items
+        if not ingredients and recipe_element.find('ul'):
+            ingredients = [li.text.strip() for li in recipe_element.find('ul').find_all('li')]
+        
+        # Extract yield
+        yield_element = recipe_element.find(attrs={"itemprop": "recipeYield"})
+        recipe_yield = yield_element.text.strip() if yield_element else "4 servings"
+        
+        # Extract description
+        description_element = recipe_element.find(attrs={"itemprop": "description"})
+        description = description_element.text.strip() if description_element else ""
+        
+        # Create recipe object
         recipe = Recipe(
-            title=recipe_data.get("title", "Untitled Recipe"),
-            recipeIngredient=recipe_data.get("recipeIngredient", recipe_data.get("items", [])),
-            recipeYield=recipe_data.get("recipeYield", "4 servings"),
-            description=recipe_data.get("description", ""),
-            datePublished=datetime.now().strftime("%Y-%m-%d")
+            title=title,
+            recipeIngredient=ingredients,
+            recipeYield=recipe_yield,
+            description=description,
+            datePublished=datetime.now().strftime("%Y-%m-%d"),
+            html_content=str(soup)
         )
         return recipe
     except Exception as e:
@@ -281,7 +319,8 @@ async def parse_recipe(
             "recipeIngredient": recipe.recipeIngredient,
             "recipeYield": recipe.recipeYield,
             "datePublished": recipe.datePublished,
-            "description": recipe.description
+            "description": recipe.description,
+            "html_content": recipe.html_content  # Add HTML content to the stored data
         }
         
         # Store in database
@@ -314,6 +353,28 @@ async def get_recipe(recipe_uuid: str):
         raise HTTPException(status_code=404, detail="Recipe not found")
     
     return JSONResponse(content=json.loads(recipe['recipe_json']))
+
+@app.get("/recipes/{recipe_uuid}.html")
+async def get_recipe_html(recipe_uuid: str):
+    # This endpoint returns the HTML content directly
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT recipe_json FROM recipes WHERE uuid = ?", (recipe_uuid,))
+    recipe = cursor.fetchone()
+    conn.close()
+    
+    if not recipe:
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    
+    recipe_data = json.loads(recipe['recipe_json'])
+    html_content = recipe_data.get('html_content')
+    
+    if not html_content:
+        raise HTTPException(status_code=404, detail="No HTML content available for this recipe")
+    
+    # Return the HTML content with the appropriate content type
+    from fastapi.responses import HTMLResponse
+    return HTMLResponse(content=html_content, status_code=200)
 
 @app.get("/health")
 async def health_check():

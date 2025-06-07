@@ -98,7 +98,7 @@ parseBtn.addEventListener('click', async () => {
     
     if (result && result.uuid) {
       // Get full recipe data
-      const recipeResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.json`);
+      const recipeResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.html`);
       const recipeData = await recipeResponse.json();
       
       // Display the parsed recipe
