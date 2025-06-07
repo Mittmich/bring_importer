@@ -81,8 +81,11 @@ parseBtn.addEventListener('click', async () => {
       outputDiv.classList.remove('d-none');
       outputJson.textContent = JSON.stringify(recipe, null, 2);
       
+      // Store the recipe data in sessionStorage for the recipe-data.html page
+      localStorage.setItem('recipeData', JSON.stringify(recipe));
+      
       // Show Bring widget
-      showBringWidget(recipe.items);
+      showBringWidget(recipe.items, recipe.title);
     } else {
       alert('Failed to parse the recipe. Please try again with a clearer image.');
     }
@@ -177,30 +180,19 @@ async function parseRecipeFromImage(base64Image, apiKey) {
   }
 }
 
-function showBringWidget(items) {
-  if (!items || !items.length) {
-    bringWidgetDiv.innerHTML = '<div class="alert alert-warning">No ingredients found to import</div>';
-    return;
-  }
+function showBringWidget(items, title = 'Parsed Recipe') {
 
-  // Format items for Bring API
-  const encodedItems = encodeURIComponent(items.join('\n'));
+  // Get the elements we need to update
+  const bringImportCard = document.getElementById('bringImportCard');
   
-  // Create Bring API button
-  bringWidgetDiv.innerHTML = `
-    <div class="card mt-3">
-      <div class="card-header bg-success text-white">
-        Import to Bring
-      </div>
-      <div class="card-body">
-        <p>${items.length} items ready to import</p>
-        <a href="https://web.getbring.com/import/items/${encodedItems}" 
-           target="_blank" 
-           class="btn btn-success">Import to Bring</a>
-      </div>
-    </div>
-  `;
+  // Show the card
+  bringImportCard.classList.remove('d-none');
+  
+  // Update the official Bring widget to use our recipe data
+  //bringImportCard.setAttribute('data-bring-import', `data:text/plain,${items}`);
 }
+
+
 
 function showToast(message) {
   const toastContainer = document.createElement('div');
@@ -225,3 +217,12 @@ function showToast(message) {
     document.body.removeChild(toastContainer);
   }, 3000);
 }
+
+// Make sure the Bring widget is initialized when the page loads
+window.addEventListener('DOMContentLoaded', () => {
+  // Hide the import card initially
+  const bringImportCard = document.getElementById('bringImportCard');
+  if (bringImportCard) {
+    bringImportCard.classList.add('d-none');
+  }
+});

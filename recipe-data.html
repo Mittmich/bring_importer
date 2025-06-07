@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recipe Data</title>
+</head>
+<body>
+  <!-- This page will be dynamically populated with recipe data -->
+  <div id="recipe-container" itemscope itemtype="http://schema.org/Recipe">
+    <h1 itemprop="name" id="recipe-name">Recipe</h1>
+    <div>
+      <span>Serves: </span><span itemprop="recipeYield" id="recipe-yield">4</span>
+    </div>
+    <div>
+      <h3>Ingredients:</h3>
+      <ul id="ingredients-list">
+        <!-- Ingredients will be added here dynamically -->
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    // This script will populate the recipe data from URL parameters
+    window.addEventListener('DOMContentLoaded', () => {
+      // Get recipe data from sessionStorage
+      const recipeData = JSON.parse(localStorage.getItem('recipeData') || '{"title":"Recipe", "items":[]}');
+      
+      // Populate the recipe
+      document.getElementById('recipe-name').textContent = recipeData.title || 'Recipe';
+      
+      const ingredientsList = document.getElementById('ingredients-list');
+      if (recipeData.items && recipeData.items.length) {
+        recipeData.items.forEach(item => {
+          const li = document.createElement('li');
+          li.setAttribute('itemprop', 'recipeIngredient');
+          li.textContent = item;
+          ingredientsList.appendChild(li);
+        });
+      }
+    });
+  </script>
+</body>
+</html>
