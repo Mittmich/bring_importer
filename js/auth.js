@@ -24,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
 
     try {
-      const response = await fetch('http://localhost:8001/token', {
+      const response = await fetch(`${config.apiUrl}/token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',

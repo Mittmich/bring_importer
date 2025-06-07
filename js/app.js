@@ -81,7 +81,7 @@ parseBtn.addEventListener('click', async () => {
     const formData = new FormData();
     formData.append('image', base64Image);
     
-    const response = await fetch('http://localhost:8001/recipes/parse', {
+    const response = await fetch(`${config.apiUrl}/recipes/parse`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`
@@ -98,7 +98,7 @@ parseBtn.addEventListener('click', async () => {
     
     if (result && result.uuid) {
       // Get full recipe data
-      const recipeResponse = await fetch(`http://localhost:8001/recipes/${result.uuid}.json`);
+      const recipeResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.json`);
       const recipeData = await recipeResponse.json();
       
       // Display the parsed recipe
@@ -149,11 +149,12 @@ function showBringWidget(recipeUuid) {
   const bringImportCard = document.getElementById('bringImportCard');
   
   // Set the recipe URL for the Bring widget
-  const recipeUrl = `http://localhost:8000/recipe-data.html?id=${recipeUuid}`;
+  const recipeUrl = `${config.frontendUrl}/recipe-data.html?id=${recipeUuid}`;
   bringImportCard.setAttribute('data-bring-import', recipeUrl);
   
   // Show the card
   bringImportCard.style.display = 'block';
+  bringImportCard.classList.remove('d-none');
   
   // Force widget to reload with new data
   if (window.bringUpdateWidgets) {

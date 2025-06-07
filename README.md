@@ -121,3 +121,15 @@ Users can be managed directly in the database using the `manage_users.py` script
 ```
 
 This is more convenient than editing the `users.json` file directly.
+
+### Environment Configuration
+
+The app can be configured to use different API and frontend URLs using environment variables:
+
+1. Open the `env-config.html` page in your browser
+2. Set the API URL (e.g., `http://localhost:8001` for local development or `https://api.example.com` for production)
+3. Set the Frontend URL (e.g., `http://localhost:8000` for local or `https://app.example.com` for production)
+4. Click "Save Settings"
+5. Refresh the app to apply the new settings
+
+These settings are stored in your browser's localStorage and persist until cleared.
