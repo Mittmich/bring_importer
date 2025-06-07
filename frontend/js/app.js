@@ -127,7 +127,7 @@ parseBtn.addEventListener('click', async () => {
       
       // Try to get the HTML content
       try {
-        const htmlResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}/html`);
+        const htmlResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.html`);
         
         if (htmlResponse.ok) {
           // Get the HTML content as text
