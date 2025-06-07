@@ -189,7 +189,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that extracts recipe information from images."
+                "content": "You are a helpful assistant that extracts recipe information from images. The most important property that you are interested in is the recipeIngredient. You will return a valid HTML with proper schema.org/Recipe markup."
             },
             {
                 "role": "user",
