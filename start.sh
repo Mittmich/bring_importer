@@ -5,10 +5,33 @@
 
 # Configuration
 BACKEND_DIR="$(pwd)/backend"
-NGINX_CONF="$(pwd)/nginx.conf"
-NGINX_PORT=80
-BACKEND_PORT=8001
 LOG_DIR="$(pwd)/logs"
+
+# Load environment variables from .env file
+if [ -f "$(pwd)/.env" ]; then
+  echo "Loading environment variables from .env file..."
+  export $(grep -v '^#' "$(pwd)/.env" | xargs)
+else
+  echo "No .env file found, using default values..."
+  export FRONTEND_ROOT="$(pwd)/frontend"
+  export NGINX_PORT=80
+  export BACKEND_PORT=8001
+  export API_URL="http://localhost:8001"
+  export FRONTEND_URL="http://localhost:$NGINX_PORT"
+  export BACKEND_URL="http://localhost:8001"
+  export APP_VERSION="1.0.0"
+fi
+
+# Generate nginx configuration from template
+NGINX_TEMPLATE="$(pwd)/nginx.conf.template"
+NGINX_CONF="$(pwd)/nginx.conf"
+echo "Generating nginx.conf from template..."
+if [ -f "$NGINX_TEMPLATE" ]; then
+  envsubst '${FRONTEND_ROOT} ${API_URL} ${FRONTEND_URL} ${BACKEND_URL} ${APP_VERSION}' < "$NGINX_TEMPLATE" > "$NGINX_CONF"
+else
+  echo "Error: nginx.conf.template not found!"
+  exit 1
+fi
 
 # Create logs directory if it doesn't exist
 mkdir -p "$LOG_DIR"

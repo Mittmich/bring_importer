@@ -34,14 +34,14 @@ http {
     server {
         listen 80;
         server_name localhost;
-        root /Users/mitterm/Documents/private/bring_importer/frontend;
+        root ${FRONTEND_ROOT};
         index index.html;
     
         # Process env-config.js with environment variables
         location ~ env-config.js$ {
-            sub_filter '{{API_URL}}' 'http://localhost:8001';
-            sub_filter '{{FRONTEND_URL}}' 'http://localhost:80';
-            sub_filter '{{APP_VERSION}}' '1.0.0';
+            sub_filter '{{API_URL}}' '${API_URL}';
+            sub_filter '{{FRONTEND_URL}}' '${FRONTEND_URL}';
+            sub_filter '{{APP_VERSION}}' '${APP_VERSION}';
             sub_filter_once off;
             sub_filter_types application/javascript;
             add_header Cache-Control no-store;
@@ -55,7 +55,7 @@ http {
         # Proxy API requests to the backend server
         location /api/ {
             # This correctly strips /api/ from the URL before passing it to the backend.
-            proxy_pass http://localhost:8001/; 
+            proxy_pass ${BACKEND_URL}/; 
             
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;

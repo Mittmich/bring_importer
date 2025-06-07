@@ -156,7 +156,45 @@ This is more convenient than editing the `users.json` file directly.
 
 ### Environment Configuration
 
-The app can be configured to use different API and frontend URLs using environment variables:
+The app now supports two ways to configure environment variables:
+
+#### 1. Server-Side Environment Configuration (Recommended)
+
+The application uses environment variables for configuration, with Nginx server-side rendering to inject these values:
+
+1. Copy `.env.example` to `.env` and modify the values:
+   ```bash
+   cp .env.example .env
+   ```
+   
+2. Edit the `.env` file to set your configuration:
+   ```
+   # Frontend root directory (absolute path)
+   FRONTEND_ROOT=/path/to/your/bring_importer/frontend
+   
+   # API configuration
+   API_URL=http://localhost:8001
+   FRONTEND_URL=http://localhost
+   
+   # Backend configuration 
+   BACKEND_URL=http://localhost:8001
+   ```
+
+3. Run the setup-env.sh script to install necessary dependencies:
+   ```bash
+   ./setup-env.sh
+   ```
+
+4. Start the application with the new configuration:
+   ```bash
+   ./start.sh
+   ```
+
+This server-side approach allows configuration without modifying code and injects environment variables directly into the frontend at runtime.
+
+#### 2. Browser Local Storage (Legacy)
+
+You can still use the browser's localStorage approach:
 
 1. Open the `env-config.html` page in your browser
 2. Set the API URL (e.g., `http://localhost:8001` for local development or `https://api.example.com` for production)
@@ -164,4 +202,4 @@ The app can be configured to use different API and frontend URLs using environme
 4. Click "Save Settings"
 5. Refresh the app to apply the new settings
 
-These settings are stored in your browser's localStorage and persist until cleared.
+These settings are stored in the browser's localStorage and persist until cleared.

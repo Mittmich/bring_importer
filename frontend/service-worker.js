@@ -1,14 +1,20 @@
-const CACHE_NAME = 'recipe-to-bring-cache-v1';
+const CACHE_NAME = 'recipe-to-bring-cache-v2';
 const urlsToCache = [
   '/',
   '/index.html',
   '/css/styles.css',
   '/js/app.js',
+  '/js/config.js',
   '/manifest.json',
   '/images/icon-192.png',
   '/images/icon-512.png',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css',
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js'
+];
+
+// Don't cache the environment configuration file
+const noCacheUrls = [
+  '/env-config.js'
 ];
 
 // Install event - cache assets
@@ -44,6 +50,14 @@ self.addEventListener('fetch', event => {
     !event.request.url.startsWith(self.location.origin) ||
     event.request.url.includes('api.openai.com')
   ) {
+    return;
+  }
+  
+  // Check if this is a request for env-config.js - always fetch from network
+  const url = new URL(event.request.url);
+  if (noCacheUrls.some(nocacheUrl => url.pathname.endsWith(nocacheUrl))) {
+    // Always fetch env-config.js from the network
+    event.respondWith(fetch(event.request));
     return;
   }
 
