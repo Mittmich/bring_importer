@@ -42,6 +42,9 @@ const photoInput = document.getElementById('photo');
 const parseBtn = document.getElementById('parseBtn');
 const outputDiv = document.getElementById('output');
 const outputJson = document.getElementById('outputJson');
+const recipeHtmlContainer = document.getElementById('recipe-html-container');
+const viewJsonBtn = document.getElementById('viewJsonBtn');
+const viewFullRecipeBtn = document.getElementById('viewFullRecipeBtn');
 const bringImportCard = document.getElementById('bringImportCard');
 
 // Event listeners
@@ -54,6 +57,18 @@ logoutBtn.addEventListener('click', () => {
   window.location.href = 'login.html';
 });
 
+// Toggle JSON visibility
+viewJsonBtn.addEventListener('click', () => {
+  const isHidden = outputJson.classList.contains('d-none');
+  if (isHidden) {
+    outputJson.classList.remove('d-none');
+    viewJsonBtn.textContent = 'Hide JSON';
+  } else {
+    outputJson.classList.add('d-none');
+    viewJsonBtn.textContent = 'Show JSON';
+  }
+});
+
 parseBtn.addEventListener('click', async () => {
   const file = photoInput.files[0];
   if (!file) {
@@ -64,7 +79,12 @@ parseBtn.addEventListener('click', async () => {
   // Show loading state
   parseBtn.disabled = true;
   parseBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Parsing...';
+  
+  // Reset output container
   outputDiv.classList.add('d-none');
+  recipeHtmlContainer.innerHTML = '';
+  outputJson.textContent = '';
+  viewJsonBtn.textContent = 'Show JSON';
   
   try {
     // Convert image to base64
@@ -97,13 +117,40 @@ parseBtn.addEventListener('click', async () => {
     const result = await response.json();
     
     if (result && result.uuid) {
-      // Get full recipe data
-      const recipeResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.html`);
+      // Get full recipe data as JSON
+      const recipeResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.json`);
       const recipeData = await recipeResponse.json();
       
-      // Display the parsed recipe
-      outputDiv.classList.remove('d-none');
+      // Store the recipe JSON data
       outputJson.textContent = JSON.stringify(recipeData, null, 2);
+      outputJson.classList.add('d-none'); // Make sure JSON is initially hidden
+      
+      // Try to get the HTML content
+      try {
+        const htmlResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}/html`);
+        
+        if (htmlResponse.ok) {
+          // Get the HTML content as text
+          const htmlContent = await htmlResponse.text();
+          
+          // Display the HTML content in the container
+          recipeHtmlContainer.innerHTML = htmlContent;
+          
+          // Set up the full recipe view button
+          viewFullRecipeBtn.href = `recipe-data.html?id=${result.uuid}`;
+        } else {
+          // If HTML content is not available, display a simplified version
+          recipeHtmlContainer.innerHTML = createSimpleRecipeHtml(recipeData);
+          viewFullRecipeBtn.href = `recipe-data.html?id=${result.uuid}`;
+        }
+      } catch (htmlError) {
+        console.error('Error fetching HTML content:', htmlError);
+        recipeHtmlContainer.innerHTML = createSimpleRecipeHtml(recipeData);
+        viewFullRecipeBtn.href = `recipe-data.html?id=${result.uuid}`;
+      }
+      
+      // Display the output container
+      outputDiv.classList.remove('d-none');
       
       // Show Bring widget with recipe URL
       showBringWidget(result.uuid);
@@ -197,6 +244,44 @@ function showToast(message) {
   setTimeout(() => {
     document.body.removeChild(toastContainer);
   }, 3000);
+}
+
+// Helper function to create a simple recipe HTML from JSON data
+function createSimpleRecipeHtml(recipeData) {
+  let html = `
+    <div itemscope itemtype="http://schema.org/Recipe" class="recipe-container">
+      <h2 itemprop="name">${recipeData.name || 'Recipe'}</h2>
+      
+      <div class="recipe-yield mb-3">
+        <strong>Serves:</strong> <span itemprop="recipeYield">${recipeData.recipeYield || '4 servings'}</span>
+      </div>`;
+      
+  if (recipeData.description) {
+    html += `
+      <div class="recipe-description mb-3">
+        <h4>Description</h4>
+        <p itemprop="description">${recipeData.description}</p>
+      </div>`;
+  }
+  
+  if (recipeData.recipeIngredient && recipeData.recipeIngredient.length) {
+    html += `
+      <div class="recipe-ingredients mb-3">
+        <h4>Ingredients</h4>
+        <ul>`;
+        
+    recipeData.recipeIngredient.forEach(ingredient => {
+      html += `<li itemprop="recipeIngredient">${ingredient}</li>`;
+    });
+    
+    html += `
+        </ul>
+      </div>`;
+  }
+  
+  html += `</div>`;
+  
+  return html;
 }
 
 // Make sure the Bring widget is initialized when the page loads

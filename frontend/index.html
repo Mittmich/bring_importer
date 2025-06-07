@@ -32,7 +32,12 @@
         
         <div id="output" class="mt-4 p-3 border rounded d-none">
           <h5>Parsed Recipe</h5>
-          <pre id="outputJson" class="mb-0"></pre>
+          <div id="recipe-html-container" class="mb-3"></div>
+          <div class="d-flex gap-2 mb-3">
+            <button id="viewJsonBtn" class="btn btn-sm btn-outline-secondary">Show JSON</button>
+            <a id="viewFullRecipeBtn" class="btn btn-sm btn-outline-primary" target="_blank">View Full Recipe</a>
+          </div>
+          <pre id="outputJson" class="mb-0 d-none"></pre>
         </div>
         <div id="bringImportCard" data-bring-import="" style="display:none;margin-top: 10px;">
             <a href="https://www.getbring.com">Bring! Einkaufsliste App f&uuml;r iPhone und Android</a>

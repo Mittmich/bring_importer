@@ -48,6 +48,49 @@ body {
   font-size: 0.9rem;
 }
 
+/* Recipe styling */
+#recipe-html-container {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+#recipe-html-container img {
+  max-width: 100%;
+  height: auto;
+}
+
+#recipe-html-container h1,
+#recipe-html-container h2,
+[itemprop="name"] {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+#recipe-html-container h3,
+#recipe-html-container h4 {
+  font-size: 1.25rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+#recipe-html-container ul,
+#recipe-html-container ol {
+  padding-left: 1.5rem;
+}
+
+#recipe-html-container li,
+[itemprop="recipeIngredient"] {
+  margin-bottom: 0.5rem;
+}
+
+.recipe-container {
+  padding: 1rem;
+  background-color: #fff;
+  border-radius: 0.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 /* For devices with small screens */
 @media (max-width: 768px) {
   .container {
