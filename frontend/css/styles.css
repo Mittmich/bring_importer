@@ -53,42 +53,58 @@ body {
   max-width: 100%;
   overflow-x: auto;
   margin-bottom: 1.5rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  padding: 2rem 1.5rem;
 }
 
 #recipe-html-container img {
   max-width: 100%;
   height: auto;
+  border-radius: 0.25rem;
+  margin-bottom: 1.2rem;
 }
 
 #recipe-html-container h1,
 #recipe-html-container h2,
 [itemprop="name"] {
-  font-size: 1.5rem;
+  font-size: 2rem;
+  font-weight: 700;
+  color: #2d3a4a;
   margin-bottom: 1rem;
 }
 
 #recipe-html-container h3,
 #recipe-html-container h4 {
-  font-size: 1.25rem;
-  margin-top: 1rem;
+  font-size: 1.15rem;
+  color: #3b4a5a;
+  margin-top: 1.2rem;
   margin-bottom: 0.5rem;
 }
 
 #recipe-html-container ul,
 #recipe-html-container ol {
-  padding-left: 1.5rem;
+  padding-left: 2rem;
 }
 
 #recipe-html-container li,
 [itemprop="recipeIngredient"] {
   margin-bottom: 0.5rem;
+  font-size: 1.08rem;
 }
 
-.recipe-container {
-  padding: 1rem;
-  background-color: #fff;
+#recipe-html-container .recipe-yield {
+  color: #6c757d;
+  margin-bottom: 1.2rem;
+}
+
+#recipe-html-container .recipe-description {
+  background: #f8fafc;
+  border-left: 4px solid #3498db;
+  padding: 1rem 1.2rem;
   border-radius: 0.25rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1.5rem;
 }
 
 /* Camera and image preview styles */

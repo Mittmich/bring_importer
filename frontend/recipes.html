@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>All Recipes - Recipe to Bring</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" href="images/icon-192.png">
+  <script src="env-config.js"></script>
+  <script src="js/config.js"></script>
+  <style>
+    .recipe-list-item {
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+    .recipe-list-item:hover {
+      background: #f0f4fa;
+    }
+    .recipe-title {
+      font-size: 1.2rem;
+      font-weight: 500;
+    }
+    .recipe-date {
+      font-size: 0.95rem;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="fs-3">All Recipes</h1>
+      <a href="index.html" class="btn btn-outline-secondary">Return to App</a>
+    </div>
+    <div id="recipes-list" class="list-group shadow-sm"></div>
+    <div id="recipes-empty" class="alert alert-info mt-4 d-none">No recipes found.</div>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const list = document.getElementById('recipes-list');
+      const empty = document.getElementById('recipes-empty');
+      let apiUrl = window.config && window.config.apiUrl ? window.config.apiUrl : (localStorage.getItem('API_URL') || 'http://localhost:8001');
+      try {
+        const response = await fetch(`${apiUrl}/recipes`);
+        if (!response.ok) throw new Error('Failed to fetch recipes');
+        const recipes = await response.json();
+        if (!recipes.length) {
+          empty.classList.remove('d-none');
+          return;
+        }
+        recipes.forEach(recipe => {
+          const item = document.createElement('a');
+          item.className = 'list-group-item list-group-item-action recipe-list-item d-flex justify-content-between align-items-center';
+          item.href = `recipe-data.html?id=${recipe.uuid}`;
+          item.innerHTML = `
+            <span class="recipe-title">${recipe.title || 'Untitled Recipe'}</span>
+            <span class="recipe-date">${recipe.datePublished ? recipe.datePublished : ''}</span>
+          `;
+          list.appendChild(item);
+        });
+      } catch (err) {
+        list.innerHTML = `<div class='alert alert-danger'>Failed to load recipes: ${err.message}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>
