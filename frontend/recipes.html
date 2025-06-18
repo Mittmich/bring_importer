@@ -40,9 +40,8 @@
     document.addEventListener('DOMContentLoaded', async () => {
       const list = document.getElementById('recipes-list');
       const empty = document.getElementById('recipes-empty');
-      let apiUrl = window.config && window.config.apiUrl ? window.config.apiUrl : (localStorage.getItem('API_URL') || 'http://localhost:8001');
       try {
-        const response = await fetch(`${apiUrl}/recipes`);
+        const response = await fetch(`${config.apiUrl}/recipes`);
         if (!response.ok) throw new Error('Failed to fetch recipes');
         const recipes = await response.json();
         if (!recipes.length) {
