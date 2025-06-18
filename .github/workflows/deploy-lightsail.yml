@@ -36,7 +36,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }}/backend && uv sync'
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }}/backend && source ~/.bashrc && uv sync || ~/.local/bin/uv sync || /usr/local/bin/uv sync'
 
       - name: Start app on Lightsail
         run: |
