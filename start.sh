@@ -20,6 +20,7 @@ else
   export FRONTEND_URL="http://localhost:$NGINX_PORT"
   export BACKEND_URL="http://localhost:8001"
   export APP_VERSION="1.0.0"
+  export NGINX_LOGDIR="$(pwd)/logs/"
 fi
 
 # Generate nginx configuration from template
@@ -27,7 +28,7 @@ NGINX_TEMPLATE="$(pwd)/nginx.conf.template"
 NGINX_CONF="$(pwd)/nginx.conf"
 echo "Generating nginx.conf from template..."
 if [ -f "$NGINX_TEMPLATE" ]; then
-  envsubst '${FRONTEND_ROOT} ${API_URL} ${FRONTEND_URL} ${BACKEND_URL} ${APP_VERSION}' < "$NGINX_TEMPLATE" > "$NGINX_CONF"
+  envsubst '${FRONTEND_ROOT} ${API_URL} ${FRONTEND_URL} ${BACKEND_URL} ${APP_VERSION} ${NGINX_LOGDIR}' < "$NGINX_TEMPLATE" > "$NGINX_CONF"
 else
   echo "Error: nginx.conf.template not found!"
   exit 1
@@ -37,11 +38,11 @@ fi
 mkdir -p "$LOG_DIR"
 
 # Check if running as root (needed for port 80)
-if [ "$NGINX_PORT" -lt 1024 ] && [ "$(id -u)" -ne 0 ]; then
-  echo "Warning: Nginx is configured to use port $NGINX_PORT, which requires root privileges."
-  echo "Either run this script with sudo or change the port in nginx.conf."
-  exit 1
-fi
+#if [ "$NGINX_PORT" -lt 1024 ] && [ "$(id -u)" -ne 0 ]; then
+#  echo "Warning: Nginx is configured to use port $NGINX_PORT, which requires root privileges."
+#  echo "Either run this script with sudo or change the port in nginx.conf."
+#  exit 1
+#fi
 
 # Function to check if a command exists
 command_exists() {
@@ -89,8 +90,8 @@ fi
 echo $BACKEND_PID > "$LOG_DIR/backend.pid"
 
 # Start Nginx with our configuration
-echo "Starting Nginx on port $NGINX_PORT..."
-nginx -c "$NGINX_CONF" > "$LOG_DIR/nginx.log" 2>&1
+echo "Starting Nginx on port $NGINX_PORT with user ${NGINX_USER} with group ${NGINX_USER_GROUP}..."
+nginx -c "$NGINX_CONF" -g "user ${NGINX_USER} ${NGINX_USER_GROUP};" > "$LOG_DIR/nginx.log" 2>&1
 
 if [ $? -ne 0 ]; then
   echo "Error: Failed to start Nginx. Check logs at $LOG_DIR/nginx.log"
