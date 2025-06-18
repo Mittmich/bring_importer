@@ -32,7 +32,11 @@ jobs:
 
       - name: Deploy new code to Lightsail
         run: |
-          rsync -az --delete --exclude='.git' --exclude='.github' ./ ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}:${{ secrets.LIGHTSAIL_APP_PATH }}/
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && git fetch origin && git reset --hard origin/main'
+
+      - name: Install Python dependencies
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }}/backend && uv sync'
 
       - name: Start app on Lightsail
         run: |
