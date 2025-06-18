@@ -189,7 +189,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that extracts recipe information from images. The most important ascect of the recipe is the ingredients, which must be included in the recipeIngredient itemprop. Return a valid HTML with proper schema.org/Recipe markup."
+                "content": "You are a helpful assistant that extracts recipe information from images. The most important ascept of the recipe is the ingredients, which must be included in the recipeIngredient itemprop. Return a valid HTML with proper schema.org/Recipe markup."
             },
             {
                 "role": "user",
@@ -379,6 +379,28 @@ async def get_recipe_html(recipe_uuid: str):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": time.time()}
+
+@app.get("/recipes", response_model=List[Dict[str, Any]])
+async def list_recipes():
+    """Return a list of all recipes (uuid, title, datePublished if available)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT uuid, title, recipe_json FROM recipes ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    recipes = []
+    for row in rows:
+        try:
+            recipe_json = json.loads(row['recipe_json'])
+            date_published = recipe_json.get('datePublished', None)
+        except Exception:
+            date_published = None
+        recipes.append({
+            'uuid': row['uuid'],
+            'title': row['title'],
+            'datePublished': date_published
+        })
+    return recipes
 
 if __name__ == "__main__":
     import uvicorn

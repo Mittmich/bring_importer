@@ -9,12 +9,60 @@
   <script type="application/ld+json" id="recipe-json"></script>
   <script src="env-config.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script async="async" src="https://platform.getbring.com/widgets/import.js"></script>
   <style>
     /* Additional styles for the recipe HTML content */
     #recipe-container {
       max-width: 800px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 32px 24px;
+      background: #fff;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.07);
+    }
+    
+    #recipe-container h1, #recipe-container h2, [itemprop="name"] {
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: #2d3a4a;
+      margin-bottom: 1rem;
+    }
+    
+    #recipe-container h3, #recipe-container h4 {
+      font-size: 1.25rem;
+      color: #3b4a5a;
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    #recipe-container ul, #recipe-container ol {
+      padding-left: 2rem;
+    }
+    
+    #recipe-container li, [itemprop="recipeIngredient"] {
+      margin-bottom: 0.5rem;
+      font-size: 1.08rem;
+    }
+    
+    #recipe-container .recipe-yield {
+      color: #6c757d;
+      margin-bottom: 1.2rem;
+    }
+    
+    #recipe-container .recipe-description {
+      background: #f8fafc;
+      border-left: 4px solid #3498db;
+      padding: 1rem 1.2rem;
+      border-radius: 0.25rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    #recipe-container img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 0.25rem;
+      margin-bottom: 1.2rem;
     }
     
     /* Ensure all images are responsive */
@@ -56,6 +104,13 @@
   <!-- This page will be dynamically populated with recipe data -->
   <div id="recipe-container">
     <!-- If HTML content is available, it will be inserted here -->
+  </div>
+  
+  <!-- Bring Import Card -->
+  <div class="container mt-4 mb-4">
+    <div id="bringImportCard" data-bring-import="" style="display:none;margin-top: 20px;">
+        <a href="https://www.getbring.com">Bring! Einkaufsliste App f&uuml;r iPhone und Android</a>
+    </div>
   </div>
   
   <!-- Fallback container if no HTML content is available -->
@@ -108,7 +163,7 @@
         }
         
         // Set up the direct HTML link
-        const directHtmlUrl = `${config.apiUrl}/recipes/${recipeUuid}/html`;
+        const directHtmlUrl = `${config.apiUrl}/recipes/${recipeUuid}.html`;
         document.getElementById('direct-html-link').href = directHtmlUrl;
         
         // Fetch recipe data from the API
@@ -168,6 +223,9 @@
             });
           }
         }
+        
+        // Initialize Bring import functionality using the showBringWidget function
+        showBringWidget(recipeUuid);
       } catch (error) {
         console.error('Error loading recipe:', error);
         document.getElementById('recipe-container').innerHTML = `
