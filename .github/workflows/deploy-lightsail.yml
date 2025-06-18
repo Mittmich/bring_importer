@@ -32,7 +32,7 @@ jobs:
 
       - name: Deploy new code to Lightsail
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && git fetch origin && git reset --hard origin/main'
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo git fetch origin && sudo git reset --hard origin/main'
 
       - name: Install Python dependencies
         run: |
