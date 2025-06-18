@@ -24,6 +24,8 @@ body {
   padding: 0.5rem;
   cursor: pointer;
   transition: color 0.3s;
+  margin-bottom: 0.5rem;
+  text-decoration: none;
 }
 
 .btn-icon:hover {

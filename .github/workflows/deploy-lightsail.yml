@@ -28,7 +28,7 @@ jobs:
 
       - name: Stop existing app on Lightsail
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && ./stop.sh || true'
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo ./stop.sh || true'
 
       - name: Deploy new code to Lightsail
         run: |
@@ -36,7 +36,7 @@ jobs:
 
       - name: Start app on Lightsail
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && ./start.sh'
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo ./start.sh'
 
       - name: Print deployment success
         run: echo "Deployment to AWS Lightsail completed."

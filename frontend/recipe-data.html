@@ -9,6 +9,8 @@
   <script type="application/ld+json" id="recipe-json"></script>
   <script src="env-config.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/utils.js"></script>
+  <script async="async" src="https://platform.getbring.com/widgets/import.js"></script>
   <style>
     /* Additional styles for the recipe HTML content */
     #recipe-container {
@@ -104,6 +106,13 @@
     <!-- If HTML content is available, it will be inserted here -->
   </div>
   
+  <!-- Bring Import Card -->
+  <div class="container mt-4 mb-4">
+    <div id="bringImportCard" data-bring-import="" style="display:none;margin-top: 20px;">
+        <a href="https://www.getbring.com">Bring! Einkaufsliste App f&uuml;r iPhone und Android</a>
+    </div>
+  </div>
+  
   <!-- Fallback container if no HTML content is available -->
   <div id="recipe-fallback" itemscope itemtype="http://schema.org/Recipe" style="display: none;">
     <h1 itemprop="name" id="recipe-name">Recipe</h1>
@@ -154,7 +163,7 @@
         }
         
         // Set up the direct HTML link
-        const directHtmlUrl = `${config.apiUrl}/recipes/${recipeUuid}/html`;
+        const directHtmlUrl = `${config.apiUrl}/recipes/${recipeUuid}.html`;
         document.getElementById('direct-html-link').href = directHtmlUrl;
         
         // Fetch recipe data from the API
@@ -214,6 +223,9 @@
             });
           }
         }
+        
+        // Initialize Bring import functionality using the showBringWidget function
+        showBringWidget(recipeUuid);
       } catch (error) {
         console.error('Error loading recipe:', error);
         document.getElementById('recipe-container').innerHTML = `
