@@ -47,6 +47,7 @@ const recipeHtmlContainer = document.getElementById('recipe-html-container');
 const viewJsonBtn = document.getElementById('viewJsonBtn');
 const viewFullRecipeBtn = document.getElementById('viewFullRecipeBtn');
 const bringImportCard = document.getElementById('bringImportCard');
+const installBtn = document.getElementById('installBtn');
 
 // Check for camera support
 const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -346,6 +347,31 @@ parseBtn.addEventListener('click', async () => {
     resetParseButton();
   }
 });
+
+// PWA Install Prompt
+let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (installBtn) installBtn.classList.remove('d-none');
+});
+
+if (installBtn) {
+  installBtn.addEventListener('click', async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+      deferredPrompt = null;
+      installBtn.classList.add('d-none');
+    }
+  });
+}
 
 // Helper functions
 function resetParseButton() {
