@@ -7,8 +7,8 @@ to work with the Nginx reverse proxy configuration.
 """
 
 import uvicorn
+
 from api import app
-from fastapi.middleware.wsgi import WSGIMiddleware
 
 if __name__ == "__main__":
     # Run the app with uvicorn

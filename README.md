@@ -203,3 +203,56 @@ You can still use the browser's localStorage approach:
 5. Refresh the app to apply the new settings
 
 These settings are stored in the browser's localStorage and persist until cleared.
+
+## Development
+
+The repo is split into `backend/` (FastAPI + SQLite) and `frontend/` (static SPA). All commands run from the repo root via the `Makefile`.
+
+### Run the tests
+
+```bash
+make test            # fast, no coverage
+make coverage        # with coverage; fails under 80%
+pytest -m integration  # only the end-to-end tests
+```
+
+### Run lint and type-check
+
+```bash
+make lint            # ruff + black --check + isort --check-only
+make typecheck       # mypy (allowed to be noisy until type hints land)
+```
+
+### Install pre-commit hooks
+
+The first time you clone, install the pre-commit hooks so they fire on every commit:
+
+```bash
+make install-dev
+```
+
+To run them manually against every file:
+
+```bash
+make hooks
+```
+
+### CI
+
+Every push and PR to `main` runs `.github/workflows/ci.yml` with three parallel jobs:
+
+- **Lint** — `ruff check` + `black --check` + `isort --check-only`
+- **Type-check** — `mypy backend/` (currently `continue-on-error: true` until type hints land)
+- **Test** — `pytest --cov-fail-under=80` with JUnit XML uploaded as an artifact
+
+All three must pass before a PR can be merged. The existing `deploy-lightsail.yml` is gated on the `CI` workflow succeeding on `main` via the `workflow_run` event.
+
+To run the same checks locally:
+
+```bash
+make ci
+```
+
+### Backend testing docs
+
+See `backend/TESTING.md` for the test layout, fixture documentation, and coverage-threshold rationale.

@@ -1,0 +1,58 @@
+# Pre-commit hooks for the Recipe Parser API backend.
+#
+# Install: `pre-commit install` (or `make install-dev`).
+# Run manually: `pre-commit run --all-files` (or `make hooks`).
+#
+# All hooks are scoped to `^backend/` so the frontend stays untouched.
+# If the project later wants frontend hooks, add them under a separate
+# `repo:` block with `files: ^frontend/`.
+
+# Optional follow-up hooks (deferred — uncomment to enable):
+#   - gitleaks/gitleaks: secret detection. Useful once the repo starts
+#     accumulating real history; the current tree has no secrets.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^backend/
+      - id: end-of-file-fixer
+        files: ^backend/
+      - id: check-yaml
+        files: ^backend/
+      - id: check-toml
+        files: ^backend/
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+        files: ^backend/
+      - id: check-merge-conflict
+        files: ^backend/
+      - id: debug-statements
+        files: ^backend/
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        files: ^backend/
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+        files: ^backend/
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ["--profile=black", "--known-third-party=fastapi,pydantic,pytest,responses"]
+        files: ^backend/
