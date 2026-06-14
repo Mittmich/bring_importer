@@ -56,3 +56,8 @@ repos:
       - id: isort
         args: ["--profile=black", "--known-third-party=fastapi,pydantic,pytest,responses"]
         files: ^backend/
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks

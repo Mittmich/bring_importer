@@ -1,22 +1,32 @@
 # Recipe to Bring Importer
 
-This is a Progressive Web App (PWA) that lets you upload recipe photos, extract ingredients using OpenAI's Vision API, and import them directly to your Bring shopping list.
+This is a Progressive Web App (PWA) and a small **recipe library**: log in, import recipes (from a photo or a webpage URL), and your personal library becomes the home surface. Each recipe can be edited, deleted, or sent to your Bring shopping list.
 
 ## Features
 
-- **Photo Upload**: Take a photo of a recipe or upload an existing one
-- **AI-Powered Recipe Parsing**: Uses OpenAI's Vision API to extract recipe information
-- **Bring Integration**: Import ingredients directly to the Bring shopping list app
-- **Works Offline**: Install as a PWA for offline access
-- **Secure**: Your OpenAI API key is stored locally and never sent to any server other than OpenAI
+- **Recipe library** — a personal list of your saved recipes, scoped to your account.
+- **Import from photo** — take a photo of a recipe (or upload one) and OpenAI's Vision API extracts the structured recipe.
+- **Import from URL** — paste a recipe-page URL; the server first tries the page's `schema.org/Recipe` JSON-LD block (no LLM cost), then falls back to OpenAI text extraction if the page has no JSON-LD.
+- **Edit & delete** — update a recipe's title, yield, description, ingredients, and your private note; delete with a confirmation.
+- **Add to Bring** — a per-recipe action on the detail page that hands the recipe to the Bring widget.
+- **Works Offline** — install as a PWA for offline access.
+- **Secure** — your OpenAI API key stays server-side; you authenticate to the backend with a JWT.
 
 ## How to Use
 
-1. Click the settings (⚙️) icon on the sidebar to add your OpenAI API key
-2. Upload a photo of a recipe
-3. Click "Parse Recipe" to extract the recipe information
-4. Review the extracted ingredients
-5. Click "Import to Bring" to add ingredients to your Bring shopping list
+1. Log in at `/login.html` (your account is provisioned by the app admin via `manage_users.py`).
+2. The home page (`index.html`) is your recipe library: shows recent recipes with a "See all" link, plus two import actions.
+3. **Import from photo**: choose / take a photo → preview the parsed recipe → "Save to library" or "Add to Bring".
+4. **Import from URL**: paste a recipe page URL (and an optional note) → preview → "Save to library" or "Add to Bring".
+5. Open a recipe to see its detail page with **Add to Bring**, **Edit**, **Delete**, **View HTML Source**, and **Open Raw HTML** actions.
+6. The "Add to Bring" widget on the detail page takes the recipe URL and hands it to Bring.
+
+### Privacy & external requests
+
+- Imported URLs are **fetched server-side** by the backend (10 s timeout, 5 MB cap, real browser User-Agent).
+- When the page exposes `schema.org/Recipe` JSON-LD, **no LLM call is made** for the URL import — only the structured data is used.
+- When JSON-LD is missing, the cleaned page body is sent to **OpenAI** (gpt-4o-mini) for text extraction. The OpenAI request includes the source URL; no extra metadata is shared.
+- Photo imports always call OpenAI's vision model; the image is resized to ≤1200×1200 JPEG at quality 0.85 before upload.
 
 ## Setup & Installation
 

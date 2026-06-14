@@ -22,10 +22,15 @@ install-dev:            ## Install backend dev/test deps and pre-commit hooks.
 test:                   ## Run the pytest suite (no coverage).
 	cd $(BACKEND) && uv run pytest
 
-lint:                   ## Run ruff + black --check + isort --check-only.
+lint:                   ## Run ruff + black --check + isort --check-only (and frontend eslint + prettier if node_modules exists).
 	cd $(BACKEND) && uv run ruff check .
 	cd $(BACKEND) && uv run black --check .
 	cd $(BACKEND) && uv run isort --check-only .
+	@if [ -d frontend/node_modules ]; then \
+	  cd frontend && npm run lint && npm run format:check; \
+	else \
+	  echo "(skipping frontend lint: run 'cd frontend && npm install' to enable)"; \
+	fi
 
 typecheck:              ## Run mypy (allowed to be noisy on first run; see plan notes).
 	cd $(BACKEND) && uv run mypy .

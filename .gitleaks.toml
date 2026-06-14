@@ -1,0 +1,35 @@
+# gitleaks configuration
+#
+# Whitelist known-safe test fixtures and examples that the regular
+# gitleaks ruleset would otherwise flag.
+#
+# `stopwords` is checked against both the secret value AND the
+# surrounding context. A common test secret + the word "test" in the
+# file path is enough to suppress most false positives here.
+
+title = "Recipe to Bring Importer gitleaks config"
+
+[extend]
+# Use gitleaks' default ruleset; we only override the allowlist.
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and documentation with deliberately fake secrets"
+paths = [
+  '''backend/tests/conftest\.py''',
+  '''backend/_spike_url_import\.py''',
+  '''\.pre-commit-config\.yaml''',
+  '''\.gitleaks\.toml''',
+  '''README\.md''',
+  '''\.pi/plans/.*\.md''',
+  '''frontend/.*''',
+]
+# Anything containing the literal test marker is OK.
+regexes = [
+  '''test-secret-key-for-jwt-signing-only''',
+  '''test-openai-key-not-real''',
+  '''test-password''',
+  '''otherpassword''',
+  '''bpassword''',
+  '''correctpassword''',
+]
