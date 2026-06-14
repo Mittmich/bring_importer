@@ -6,12 +6,12 @@
 window.ENV = {
   // API backend URL
   API_URL: '{{API_URL}}' || 'http://localhost:8001',
-  
+
   // Frontend URL
   FRONTEND_URL: '{{FRONTEND_URL}}' || window.location.origin,
 
   // Application version
-  APP_VERSION: '{{APP_VERSION}}' || '1.0.0'
+  APP_VERSION: '{{APP_VERSION}}' || '1.0.0',
 };
 
 // Migrate any existing localStorage config

@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     loginBtn.disabled = true;
-    loginBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
+    loginBtn.innerHTML =
+      '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
 
     try {
       const response = await fetch(`${config.apiUrl}/token`, {
@@ -30,9 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: new URLSearchParams({
-          'username': email, // FastAPI OAuth expects 'username' not 'email'
-          'password': password
-        })
+          username: email, // FastAPI OAuth expects 'username' not 'email'
+          password: password,
+        }),
       });
 
       const data = await response.json();
