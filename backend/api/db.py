@@ -68,9 +68,7 @@ def init_db():
         # api/routers/recipes.py), so this backfill only needs to cover
         # rows that pre-date the column.
         cursor.execute("ALTER TABLE recipes ADD COLUMN updated_at TIMESTAMP")
-        cursor.execute(
-            "UPDATE recipes SET updated_at = created_at WHERE updated_at IS NULL"
-        )
+        cursor.execute("UPDATE recipes SET updated_at = created_at WHERE updated_at IS NULL")
 
     conn.commit()
     conn.close()
