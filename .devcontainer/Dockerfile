@@ -59,5 +59,17 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list \
 # on the first terminal open.
 USER root
 RUN mkdir -p /workspace && chown vscode:vscode /workspace
+
+# Bake the post-create script into the image at a known path so the
+# dev container's `postCreateCommand` can always find it, even if the
+# workspace bind-mount does not surface the project's `.devcontainer/`
+# directory at runtime (which is what was happening in this user's
+# setup). The script is invoked by `devcontainer.json`'s
+# `postCreateCommand` with `REPO_ROOT=${containerWorkspaceFolder}`
+# passed in, so it still operates on the real project tree mounted
+# at `/workspace`.
+COPY --chown=root:root --chmod=0755 .devcontainer/post-create.sh \
+     /usr/local/bin/devcontainer-post-create.sh
+
 USER vscode
 WORKDIR /workspace

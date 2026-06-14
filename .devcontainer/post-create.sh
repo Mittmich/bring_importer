@@ -2,11 +2,24 @@
 # ----------------------------------------------------------------------------
 # Post-create setup for the Recipe to Bring Importer dev container.
 # Runs once after the container is first built. Idempotent: safe to re-run.
+#
+# This script is baked into the dev container image at
+# /usr/local/bin/devcontainer-post-create.sh by the Dockerfile's COPY
+# step, and is invoked by devcontainer.json's `postCreateCommand`.
+# It is therefore safe to assume the script is always reachable at
+# the canonical in-image path, regardless of how (or whether) the
+# host's `.devcontainer/` directory has been bind-mounted into the
+# container.
 # ----------------------------------------------------------------------------
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# When invoked from `devcontainer.json`'s postCreateCommand the caller
+# passes `REPO_ROOT=${containerWorkspaceFolder}` (i.e. the project tree
+# bind-mounted at /workspace). When invoked manually from a checkout of
+# this repository, fall back to deriving the repo root from the script's
+# own location.
+REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 BACKEND_DIR="${REPO_ROOT}/backend"
 
 echo "==> Setting up Python virtual environment with uv"
