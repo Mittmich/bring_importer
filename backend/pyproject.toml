@@ -101,3 +101,19 @@ addopts = "-ra --strict-markers --strict-config"
 markers = [
     "integration: end-to-end endpoint tests",
 ]
+
+[tool.coverage.run]
+# ``api/testing.py`` is the E2E mock installer activated by the
+# ``RECIPE_TEST_MOCKS=1`` env var. It's not production code and isn't
+# imported under the normal unit-test run, so it would otherwise drag
+# coverage down to ~79% on its own. Omit it.
+omit = [
+    "api/testing.py",
+    "backend/_spike_url_import.py",
+]
+
+[tool.coverage.report]
+# Same: don't count the omitted files against the total.
+exclude_also = [
+    "pragma: no cover",
+]
