@@ -37,7 +37,7 @@ jobs:
 
       - name: Install backend (dev extras)
         working-directory: backend
-        run: uv pip install --system -e ".[dev]"
+        run: uv pip install -e ".[dev]"
 
       - name: ruff check
         working-directory: backend
@@ -80,7 +80,7 @@ jobs:
 
       - name: Install backend (dev extras)
         working-directory: backend
-        run: uv pip install --system -e ".[dev]"
+        run: uv pip install -e ".[dev]"
 
       - name: mypy
         working-directory: backend
@@ -108,7 +108,7 @@ jobs:
 
       - name: Install backend (dev extras)
         working-directory: backend
-        run: uv pip install --system -e ".[dev]"
+        run: uv pip install -e ".[dev]"
 
       - name: pytest
         working-directory: backend
