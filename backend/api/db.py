@@ -62,8 +62,14 @@ def init_db():
     if "source" not in _existing_cols:
         cursor.execute("ALTER TABLE recipes ADD COLUMN source TEXT")
     if "updated_at" not in _existing_cols:
+        # SQLite forbids non-constant defaults on ADD COLUMN, so add it
+        # without a DEFAULT and backfill from created_at below. The app
+        # always sets updated_at explicitly on UPDATE (see
+        # api/routers/recipes.py), so this backfill only needs to cover
+        # rows that pre-date the column.
+        cursor.execute("ALTER TABLE recipes ADD COLUMN updated_at TIMESTAMP")
         cursor.execute(
-            "ALTER TABLE recipes ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+            "UPDATE recipes SET updated_at = created_at WHERE updated_at IS NULL"
         )
 
     conn.commit()
