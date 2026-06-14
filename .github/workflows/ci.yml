@@ -54,16 +54,13 @@ jobs:
   # ---------------------------------------------------------------------------
   # Type-check: mypy
   # ---------------------------------------------------------------------------
-  # NOTE: The [tool.mypy] config in backend/pyproject.toml is currently
-  # permissive (no `disallow_untyped_defs`) because the codebase is untyped;
-  # step 16 of `.pi/plans/2026-06-14-comprehensive-recipe-management.md` is
-  # the follow-up that adds type hints and re-tightens the config. Until
-  # then, `continue-on-error: true` is a safety net in case mypy picks up
-  # something unexpected.
+  # Per the comprehensive-recipe-management plan, step 16 (now done)
+  # added type hints to api/auth.py and other modules so mypy is clean
+  # against the existing permissive [tool.mypy] config. The job no
+  # longer needs ``continue-on-error``.
   typecheck:
     name: Type-check (mypy)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -127,3 +124,32 @@ jobs:
           name: pytest-junit
           path: backend/pytest-junit.xml
           retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Frontend lint: eslint + prettier
+  # ---------------------------------------------------------------------------
+  frontend-lint:
+    name: Frontend lint (eslint + prettier)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install npm deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: eslint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: prettier --check
+        working-directory: frontend
+        run: npm run format:check

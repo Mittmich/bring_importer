@@ -1,0 +1,31 @@
+{
+  "name": "recipe-to-bring-importer-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend (static HTML/JS) for the Recipe to Bring Importer app.",
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-no-unsanitized": "^4.0.0",
+    "http-server": "^14.1.1",
+    "jsdom": "^25.0.0",
+    "prettier": "^3.0.0",
+    "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "globals": "^17.6.0"
+  }
+}

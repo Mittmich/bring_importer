@@ -1,91 +1,332 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recipe to Bring</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#3498db">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css">
-  <link rel="icon" href="images/icon-192.png">
-  <script async="async" src="https://platform.getbring.com/widgets/import.js"></script>
-</head>
-<body>
-  <div class="sidebar">
-    <a href="recipes.html" class="btn btn-icon" aria-label="Recipes" title="View All Recipes">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-book-open"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
-    </a>
-    <button id="userBtn" class="btn btn-icon" aria-label="User">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-user"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-    </button>
-  </div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Recipes</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#3498db" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="icon" href="images/icon-192.png" />
+    <script async="async" src="https://platform.getbring.com/widgets/import.js"></script>
+  </head>
+  <body>
+    <div class="sidebar">
+      <a href="recipes.html" class="btn btn-icon" aria-label="Recipes" title="View All Recipes">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="feather feather-book-open"
+        >
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+        </svg>
+      </a>
+      <button id="userBtn" class="btn btn-icon" aria-label="User">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="feather feather-user"
+        >
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+          <circle cx="12" cy="7" r="4"></circle>
+        </svg>
+      </button>
+    </div>
 
-  <div class="container mt-4">
-    <div class="card main-card">
-      <div class="card-header bg-primary text-white">
-        <h1 class="fs-4 mb-0">Recipe to Bring Importer</h1>
-        <button id="installBtn" class="btn btn-success float-end d-none" style="margin-top: -8px;">Install App</button>
-      </div>
-      <div class="card-body">
-        <a href="recipes.html" class="btn btn-outline-primary mb-2">All Recipes</a>
-        <div class="mb-3">
-          <label for="photo" class="form-label">Upload Recipe Photo:</label>
-          <div class="input-group">
-            <input type="file" class="form-control" id="photo" accept="image/*" capture="environment">
-            <button class="btn btn-outline-secondary" type="button" id="cameraBtn" title="Take Photo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-camera" viewBox="0 0 16 16">
-                <path d="M15 12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h1.172a3 3 0 0 0 2.12-.879l.83-.828A1 1 0 0 1 6.827 3h2.344a1 1 0 0 1 .707.293l.828.828A3 3 0 0 0 12.828 5H14a1 1 0 0 1 1 1v6zM2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4H2z"/>
-                <path d="M8 11a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5zm0 1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 6.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z"/>
+    <div class="container mt-4">
+      <div class="card main-card">
+        <div
+          class="card-header bg-primary text-white d-flex justify-content-between align-items-center"
+        >
+          <h1 class="fs-4 mb-0">My Recipes</h1>
+          <button id="installBtn" class="btn btn-success btn-sm d-none">Install App</button>
+        </div>
+        <div class="card-body">
+          <div class="d-flex gap-2 mb-4 flex-wrap">
+            <button
+              id="importPhotoBtn"
+              class="btn btn-primary"
+              data-bs-toggle="modal"
+              data-bs-target="#importPhotoModal"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                fill="currentColor"
+                class="bi bi-camera me-1"
+                viewBox="0 0 16 16"
+              >
+                <path
+                  d="M15 12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h1.172a3 3 0 0 0 2.12-.879l.83-.828A1 1 0 0 1 6.827 3h2.344a1 1 0 0 1 .707.293l.828.828A3 3 0 0 0 12.828 5H14a1 1 0 0 1 1 1v6zM2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4H2z"
+                />
+                <path
+                  d="M8 11a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5zm0 1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 6.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z"
+                />
               </svg>
+              Import from photo
+            </button>
+            <button
+              id="importUrlBtn"
+              class="btn btn-outline-primary"
+              data-bs-toggle="modal"
+              data-bs-target="#importUrlModal"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                fill="currentColor"
+                class="bi bi-link-45deg me-1"
+                viewBox="0 0 16 16"
+              >
+                <path
+                  d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1.002 1.002 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4.018 4.018 0 0 1-.128-1.287z"
+                />
+                <path
+                  d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243L6.586 4.672z"
+                />
+              </svg>
+              Import from URL
             </button>
           </div>
-          <small class="text-muted mt-1 d-block">Tap the camera icon to take a photo directly (on supported devices).</small>
-        </div>
-        <button id="parseBtn" class="btn btn-primary">Parse Recipe</button>
-        
-        <div id="output" class="mt-4 p-3 border rounded d-none">
-          <h5>Parsed Recipe</h5>
-          <div id="recipe-html-container" class="mb-3"></div>
-          <div class="d-flex gap-2 mb-3">
-            <button id="viewJsonBtn" class="btn btn-sm btn-outline-secondary">Show JSON</button>
-            <a id="viewFullRecipeBtn" class="btn btn-sm btn-outline-primary" target="_blank">View Full Recipe</a>
+
+          <div id="recipe-list-section">
+            <h2 class="fs-5">Recent</h2>
+            <div id="recipe-list" class="list-group mb-3">
+              <div class="text-muted small p-3 text-center" id="recipe-list-empty">Loading…</div>
+            </div>
+            <a
+              href="recipes.html"
+              class="btn btn-sm btn-outline-secondary"
+              id="seeAllLink"
+              style="display: none"
+              >See all recipes</a
+            >
           </div>
-          <pre id="outputJson" class="mb-0 d-none"></pre>
-        </div>
-        <div id="bringImportCard" data-bring-import="" style="display:none;margin-top: 10px;">
-            <a href="https://www.getbring.com">Bring! Einkaufsliste App f&uuml;r iPhone und Android</a>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- User Modal -->
-  <div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="userModalLabel">Account</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <p id="userEmail">Logged in as: <span></span></p>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-          <button type="button" class="btn btn-danger" id="logoutBtn">Logout</button>
+    <!-- Import-from-photo modal -->
+    <div
+      class="modal fade"
+      id="importPhotoModal"
+      tabindex="-1"
+      aria-labelledby="importPhotoModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="importPhotoModalLabel">Import recipe from photo</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="photo" class="form-label">Upload recipe photo:</label>
+              <div class="input-group">
+                <input
+                  type="file"
+                  class="form-control"
+                  id="photo"
+                  accept="image/*"
+                  capture="environment"
+                />
+                <button
+                  class="btn btn-outline-secondary"
+                  type="button"
+                  id="cameraBtn"
+                  title="Take Photo"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    fill="currentColor"
+                    class="bi bi-camera"
+                    viewBox="0 0 16 16"
+                  >
+                    <path
+                      d="M15 12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h1.172a3 3 0 0 0 2.12-.879l.83-.828A1 1 0 0 1 6.827 3h2.344a1 1 0 0 1 .707.293l.828.828A3 3 0 0 0 12.828 5H14a1 1 0 0 1 1 1v6zM2 4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1.172a2 2 0 0 1-1.414-.586l-.828-.828A2 2 0 0 0 9.172 2H6.828a2 2 0 0 0-1.414.586l-.828.828A2 2 0 0 1 3.172 4H2z"
+                    />
+                    <path
+                      d="M8 11a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5zm0 1a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM3 6.5a.5.5 0 1 1-1 0 .5.5 0 0 1 1 0z"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <small class="text-muted mt-1 d-block" id="cameraHint"
+                >Tap the camera icon to take a photo directly (on supported devices).</small
+              >
+            </div>
+            <div id="image-preview-container"></div>
+            <div id="photoModalError" class="alert alert-danger d-none mt-3"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="photoParseBtn">Parse Recipe</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Bootstrap JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- Environment configuration must be loaded first -->
-  <script src="env-config.js"></script>
-  <!-- Config must be loaded before app.js -->
-  <script src="js/config.js"></script>
-  <script src="js/utils.js"></script>
-  <script src="js/app.js"></script>
-</body>
+    <!-- Import-from-URL modal -->
+    <div
+      class="modal fade"
+      id="importUrlModal"
+      tabindex="-1"
+      aria-labelledby="importUrlModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="importUrlModalLabel">Import recipe from URL</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="importUrlInput" class="form-label">Recipe page URL</label>
+              <input
+                type="url"
+                class="form-control"
+                id="importUrlInput"
+                placeholder="https://www.example.com/cookies"
+                required
+              />
+              <small class="text-muted"
+                >We'll fetch the page server-side and try to extract the recipe.</small
+              >
+            </div>
+            <div class="mb-3">
+              <label for="importUrlNote" class="form-label">Note (optional)</label>
+              <textarea
+                class="form-control"
+                id="importUrlNote"
+                rows="2"
+                placeholder="Any notes for yourself about this recipe…"
+              ></textarea>
+            </div>
+            <div id="urlModalError" class="alert alert-danger d-none"></div>
+            <div id="urlModalLoading" class="text-center d-none">
+              <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading…</span>
+              </div>
+              <p class="text-muted small mt-2">Fetching and parsing the page…</p>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="urlImportBtn">Import</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview modal (shown after a successful import; "Save" / "Add to Bring") -->
+    <div
+      class="modal fade"
+      id="previewModal"
+      tabindex="-1"
+      aria-labelledby="previewModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="previewModalLabel">Parsed recipe</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <div id="previewHtml"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-outline-primary" id="addToBringBtn">
+              Add to Bring
+            </button>
+            <button type="button" class="btn btn-primary" id="saveToLibraryBtn">
+              Save to library
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Modal -->
+    <div
+      class="modal fade"
+      id="userModal"
+      tabindex="-1"
+      aria-labelledby="userModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="userModalLabel">Account</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <p id="userEmail">Logged in as: <span></span></p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-danger" id="logoutBtn">Logout</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toastHost"></div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="env-config.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/lib/recipe-html.js"></script>
+    <script src="js/app.js"></script>
+  </body>
 </html>

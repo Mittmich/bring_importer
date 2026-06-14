@@ -28,7 +28,10 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key-for-jwt-signing-only")
 os.environ.setdefault("USERS_FILE", "users.json")
 
 import api  # noqa: E402  (env vars must be set first)
+from api import auth as api_auth  # noqa: E402
 from api import create_access_token  # noqa: E402
+from api import db as api_db  # noqa: E402
+from api.routers import recipes as api_recipes_router  # noqa: E402
 
 
 def _make_get_db_connection(db_path):
@@ -70,8 +73,18 @@ def app(tmp_db_path, monkeypatch):
 
     Calls ``api.init_db()`` once so the schema is in place before any test
     code runs. ``init_db`` is idempotent (``CREATE TABLE IF NOT EXISTS``).
+
+    The package split (comprehensive-recipe-management plan, step 1) moved
+    ``get_db_connection`` into ``api.db``. Any module that does
+    ``from api.db import get_db_connection`` creates its own binding in
+    that module's namespace, so we must patch every module's binding —
+    not just ``api.db`` and the ``api`` back-compat re-export.
     """
-    monkeypatch.setattr(api, "get_db_connection", _make_get_db_connection(tmp_db_path))
+    bound = _make_get_db_connection(tmp_db_path)
+    monkeypatch.setattr(api_db, "get_db_connection", bound)
+    monkeypatch.setattr(api, "get_db_connection", bound)
+    monkeypatch.setattr(api_auth, "get_db_connection", bound)
+    monkeypatch.setattr(api_recipes_router, "get_db_connection", bound)
     api.init_db()
     return api.app
 

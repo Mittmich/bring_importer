@@ -185,7 +185,14 @@ def check_db():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Manage users for Recipe Parser API")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Manage users for Recipe Parser API. Each user can attach an "
+            "optional free-form 'note' to their saved recipes (see the "
+            "'note' column on the recipes table); the script manages the "
+            "user accounts only."
+        )
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 

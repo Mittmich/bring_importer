@@ -1,553 +1,399 @@
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('ServiceWorker registration successful with scope:', registration.scope);
-      })
-      .catch(error => {
-        console.error('ServiceWorker registration failed:', error);
-      });
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then((reg) => console.log('ServiceWorker registered:', reg.scope))
+      .catch((err) => console.error('ServiceWorker registration failed:', err));
   });
 }
 
-// Check authentication status
-document.addEventListener('DOMContentLoaded', () => {
-  const token = localStorage.getItem('auth_token');
-  if (!token) {
-    // Not logged in, redirect to login page
-    window.location.href = 'login.html';
-    return;
-  }
-  
-  // Try to get user info from the token (JWT)
+// ----- Auth gate -----
+const token = localStorage.getItem('auth_token');
+let currentUserEmail = '';
+if (!token) {
+  window.location.href = 'login.html';
+} else {
   try {
-    const tokenPayload = JSON.parse(atob(token.split('.')[1]));
-    const userEmail = tokenPayload.sub;
-    document.querySelector('#userEmail span').textContent = userEmail;
+    currentUserEmail = JSON.parse(atob(token.split('.')[1])).sub || '';
   } catch (e) {
     console.error('Error parsing token:', e);
   }
-});
+}
 
-// Initialize Bootstrap modal
-const userModal = new bootstrap.Modal(document.getElementById('userModal'), {
-  keyboard: false
-});
-
-// Get DOM elements
+// ----- DOM refs -----
 const userBtn = document.getElementById('userBtn');
 const logoutBtn = document.getElementById('logoutBtn');
-const photoInput = document.getElementById('photo');
-const cameraBtn = document.getElementById('cameraBtn');
-const parseBtn = document.getElementById('parseBtn');
-const outputDiv = document.getElementById('output');
-const outputJson = document.getElementById('outputJson');
-const recipeHtmlContainer = document.getElementById('recipe-html-container');
-const viewJsonBtn = document.getElementById('viewJsonBtn');
-const viewFullRecipeBtn = document.getElementById('viewFullRecipeBtn');
-const bringImportCard = document.getElementById('bringImportCard');
+const userModalEl = document.getElementById('userModal');
+const userModal = new bootstrap.Modal(userModalEl, { keyboard: false });
 const installBtn = document.getElementById('installBtn');
+const recipeListEl = document.getElementById('recipe-list');
+const recipeListEmptyEl = document.getElementById('recipe-list-empty');
+const seeAllLink = document.getElementById('seeAllLink');
 
-// Check for camera support
-const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-const isiOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-const isAndroid = /Android/.test(navigator.userAgent);
+if (currentUserEmail && document.querySelector('#userEmail span')) {
+  document.querySelector('#userEmail span').textContent = currentUserEmail;
+}
 
-// Update UI based on device capabilities
-document.addEventListener('DOMContentLoaded', () => {
-  if (isMobileDevice && hasMediaDevices) {
-    // Show camera hint for mobile devices with camera support
-    document.querySelector('.text-muted.mt-1').style.display = 'block';
-    cameraBtn.style.display = 'block';
-  } else {
-    // Hide camera hint for desktop devices
-    document.querySelector('.text-muted.mt-1').style.display = 'none';
+// ----- Recipe list (load on page open) -----
+async function loadRecipeList() {
+  recipeListEmptyEl.textContent = 'Loading…';
+  try {
+    const resp = await fetch(`${config.apiUrl}/recipes`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (resp.status === 401) {
+      localStorage.removeItem('auth_token');
+      window.location.href = 'login.html';
+      return;
+    }
+    if (!resp.ok) {
+      throw new Error(`Server returned ${resp.status}`);
+    }
+    const recipes = await resp.json();
+    renderRecipeList(recipes);
+  } catch (err) {
+    recipeListEmptyEl.textContent = 'Could not load recipes. Pull to retry.';
+    console.error(err);
   }
-});
+}
 
-// Event listeners
-userBtn.addEventListener('click', () => {
-  userModal.show();
-});
+function renderRecipeList(recipes) {
+  recipeListEl.innerHTML = '';
+  if (!recipes || recipes.length === 0) {
+    recipeListEmptyEl.textContent = 'No recipes yet — import one to get started.';
+    recipeListEl.appendChild(recipeListEmptyEl);
+    seeAllLink.style.display = 'none';
+    return;
+  }
+  const recent = recipes.slice(0, 10);
+  for (const r of recent) {
+    const a = document.createElement('a');
+    a.href = `recipe-data.html?id=${r.uuid}`;
+    a.className =
+      'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+    a.innerHTML = `
+      <div>
+        <div class="fw-semibold">${escapeHtml(r.title || 'Untitled')}</div>
+        <div class="small text-muted">${formatSource(r.source)}</div>
+      </div>
+      <span class="badge bg-light text-secondary">${formatDate(r.datePublished)}</span>
+    `;
+    recipeListEl.appendChild(a);
+  }
+  seeAllLink.style.display = recipes.length > 10 ? 'inline-block' : 'none';
+}
 
+function formatSource(source) {
+  if (!source) return '';
+  if (source.kind === 'image') return 'Imported from photo';
+  if (source.kind === 'url') return `From ${truncate(source.value || '', 40)}`;
+  return 'Imported';
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  // datePublished is YYYY-MM-DD; render as Mon DD
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  const parts = d.split('-');
+  if (parts.length !== 3) return d;
+  return `${months[parseInt(parts[1], 10) - 1]} ${parseInt(parts[2], 10)}`;
+}
+
+function truncate(s, n) {
+  if (!s) return '';
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ----- User / install -----
+userBtn.addEventListener('click', () => userModal.show());
 logoutBtn.addEventListener('click', () => {
   localStorage.removeItem('auth_token');
   window.location.href = 'login.html';
 });
 
-// Camera button functionality
-cameraBtn.addEventListener('click', () => {
-  // For devices with camera support, trigger the file input with capture
-  if (isMobileDevice && hasMediaDevices) {
-    // Create a temporary input with capture attribute for taking a photo
-    const tempInput = document.createElement('input');
-    tempInput.type = 'file';
-    tempInput.accept = 'image/*';
-    tempInput.capture = 'environment'; // Use the back camera
-    
-    // Handle the file selection
-    tempInput.addEventListener('change', (event) => {
-      if (event.target.files && event.target.files[0]) {
-        // Copy the selected file to the main file input
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(event.target.files[0]);
-        photoInput.files = dataTransfer.files;
-        
-        // Show a preview if desired
-        showImagePreview(event.target.files[0]);
-      }
-    });
-    
-    // Trigger the file selection dialog
-    tempInput.click();
-  } else {
-    // For desktop or unsupported devices, just click the regular file input
-    photoInput.click();
-  }
-});
-
-// Preview the selected image
-function showImagePreview(file) {
-  // Create or get the preview element
-  let previewContainer = document.getElementById('image-preview-container');
-  if (!previewContainer) {
-    previewContainer = document.createElement('div');
-    previewContainer.id = 'image-preview-container';
-    previewContainer.className = 'mt-3 text-center';
-    photoInput.parentNode.parentNode.appendChild(previewContainer);
-  }
-  
-  // Clear any previous preview
-  previewContainer.innerHTML = `
-    <div class="spinner-border text-primary" role="status">
-      <span class="visually-hidden">Loading...</span>
-    </div>
-    <div class="text-muted small mt-2">Processing image...</div>
-  `;
-  
-  // Process the image through our optimization function for preview
-  fileToBase64(file)
-    .then(optimizedImage => {
-      previewContainer.innerHTML = `
-        <div class="position-relative d-inline-block">
-          <img src="${optimizedImage}" alt="Recipe preview" style="max-height: 200px; max-width: 100%;" class="rounded shadow-sm">
-          <button type="button" class="btn btn-sm btn-light position-absolute top-0 end-0 m-1" id="remove-preview">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-              <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z"/>
-            </svg>
-          </button>
-        </div>
-        <div class="text-muted small mt-1">Image optimized for processing</div>
-      `;
-      
-      // Add click handler to the remove button
-      document.getElementById('remove-preview').addEventListener('click', () => {
-        previewContainer.innerHTML = '';
-        photoInput.value = ''; // Clear the file input
-        
-        // Also remove any reduction message
-        if (window.sizeReductionMessage && window.sizeReductionMessage.parentNode) {
-          window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
-          window.sizeReductionMessage = null;
-        }
-      });
-    })
-    .catch(error => {
-      previewContainer.innerHTML = `
-        <div class="alert alert-danger">
-          <p>Error processing image preview: ${error.message}</p>
-          <button class="btn btn-sm btn-outline-danger" id="clear-error-preview">Try Again</button>
-        </div>
-      `;
-      
-      document.getElementById('clear-error-preview').addEventListener('click', () => {
-        previewContainer.innerHTML = '';
-        photoInput.value = '';
-      });
-    });
-}
-
-// Handle file selection from the regular input
-photoInput.addEventListener('change', (event) => {
-  if (event.target.files && event.target.files[0]) {
-    showImagePreview(event.target.files[0]);
-  }
-});
-
-// Toggle JSON visibility
-viewJsonBtn.addEventListener('click', () => {
-  const isHidden = outputJson.classList.contains('d-none');
-  if (isHidden) {
-    outputJson.classList.remove('d-none');
-    viewJsonBtn.textContent = 'Hide JSON';
-  } else {
-    outputJson.classList.add('d-none');
-    viewJsonBtn.textContent = 'Show JSON';
-  }
-});
-
-parseBtn.addEventListener('click', async () => {
-  const file = photoInput.files[0];
-  if (!file) {
-    alert('Please select an image file or take a photo');
-    return;
-  }
-  
-  // Show loading state
-  parseBtn.disabled = true;
-  parseBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Parsing...';
-  
-  // Hide the preview while processing
-  const previewContainer = document.getElementById('image-preview-container');
-  if (previewContainer) {
-    previewContainer.style.opacity = '0.5';
-  }
-  
-  // Reset output container
-  outputDiv.classList.add('d-none');
-  recipeHtmlContainer.innerHTML = '';
-  outputJson.textContent = '';
-  viewJsonBtn.textContent = 'Show JSON';
-  
-  try {
-    // Convert image to base64
-    const base64Image = await fileToBase64(file);
-    
-    // Get token for authentication
-    const token = localStorage.getItem('auth_token');
-    if (!token) {
-      throw new Error('Not authenticated. Please log in.');
-    }
-    
-    // Send to backend API
-    // The API expects the image as form data
-    const formData = new FormData();
-    formData.append('image', base64Image);
-    
-    const response = await fetch(`${config.apiUrl}/recipes/parse`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-    
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || 'Failed to parse recipe');
-    }
-    
-    const result = await response.json();
-    
-    if (result && result.uuid) {
-      // Get full recipe data as JSON
-      const recipeResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.json`);
-      const recipeData = await recipeResponse.json();
-      
-      // Store the recipe JSON data
-      outputJson.textContent = JSON.stringify(recipeData, null, 2);
-      outputJson.classList.add('d-none'); // Make sure JSON is initially hidden
-      
-      // Try to get the HTML content
-      try {
-        const htmlResponse = await fetch(`${config.apiUrl}/recipes/${result.uuid}.html`);
-        
-        if (htmlResponse.ok) {
-          // Get the HTML content as text
-          const htmlContent = await htmlResponse.text();
-          
-          // Display the HTML content in the container
-          recipeHtmlContainer.innerHTML = htmlContent;
-          
-          // Set up the full recipe view button
-          viewFullRecipeBtn.href = `recipe-data.html?id=${result.uuid}`;
-        } else {
-          // If HTML content is not available, display a simplified version
-          recipeHtmlContainer.innerHTML = createSimpleRecipeHtml(recipeData);
-          viewFullRecipeBtn.href = `recipe-data.html?id=${result.uuid}`;
-        }
-      } catch (htmlError) {
-        console.error('Error fetching HTML content:', htmlError);
-        recipeHtmlContainer.innerHTML = createSimpleRecipeHtml(recipeData);
-        viewFullRecipeBtn.href = `recipe-data.html?id=${result.uuid}`;
-      }
-      
-      // Display the output container
-      outputDiv.classList.remove('d-none');
-      
-      // Keep size reduction message visible for a while then fade it out
-      if (window.sizeReductionMessage) {
-        window.sizeReductionMessage.style.display = 'block';
-        
-        // Add a specific class for styling
-        window.sizeReductionMessage.classList.add('processing-complete');
-        
-        // Remove the message after 12 seconds with a fade effect
-        setTimeout(() => {
-          if (window.sizeReductionMessage) {
-            window.sizeReductionMessage.style.opacity = '0';
-            window.sizeReductionMessage.style.transition = 'opacity 1s';
-            
-            setTimeout(() => {
-              if (window.sizeReductionMessage && window.sizeReductionMessage.parentNode) {
-                window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
-              }
-              window.sizeReductionMessage = null;
-            }, 1000);
-          }
-        }, 12000);
-      }
-      
-      // Show Bring widget with recipe URL
-      showBringWidget(result.uuid);
-    } else {
-      alert('Failed to parse the recipe. Please try again with a clearer image.');
-    }
-  } catch (error) {
-    console.error('Error parsing recipe:', error);
-    
-    // Display a better error message for image processing issues
-    if (error.message.includes('image') || error.message.includes('file')) {
-      // Create a structured error message for image-related errors
-      const errorContainer = document.createElement('div');
-      errorContainer.className = 'alert alert-danger mt-3';
-      errorContainer.innerHTML = `
-        <h5>Image Processing Error</h5>
-        <p>${error.message}</p>
-        <p>Please try with a different image or take a clearer photo.</p>
-      `;
-      
-      // Replace any existing notification with the error
-      if (window.sizeReductionMessage && window.sizeReductionMessage.parentNode) {
-        window.sizeReductionMessage.parentNode.removeChild(window.sizeReductionMessage);
-      }
-      window.sizeReductionMessage = errorContainer;
-      document.querySelector('#photo').parentNode.parentNode.appendChild(errorContainer);
-      
-      // Remove error after 15 seconds
-      setTimeout(() => {
-        if (errorContainer.parentNode) {
-          errorContainer.parentNode.removeChild(errorContainer);
-        }
-        window.sizeReductionMessage = null;
-      }, 15000);
-    } else {
-      // For other errors, use a simpler alert
-      alert('Error: ' + error.message);
-    }
-    
-    // If unauthorized, redirect to login
-    if (error.message.includes('authenticated') || error.message.includes('401')) {
-      localStorage.removeItem('auth_token');
-      window.location.href = 'login.html';
-    }
-  } finally {
-    resetParseButton();
-  }
-});
-
-// PWA Install Prompt
 let deferredPrompt;
-
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
   if (installBtn) installBtn.classList.remove('d-none');
 });
-
 if (installBtn) {
   installBtn.addEventListener('click', async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-      } else {
-        console.log('User dismissed the install prompt');
-      }
-      deferredPrompt = null;
-      installBtn.classList.add('d-none');
-    }
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.classList.add('d-none');
   });
 }
 
-// Helper functions
-function resetParseButton() {
-  parseBtn.disabled = false;
-  parseBtn.innerHTML = 'Parse Recipe';
-  
-  // Restore preview opacity
-  const previewContainer = document.getElementById('image-preview-container');
-  if (previewContainer) {
-    previewContainer.style.opacity = '1';
+// ----- Import from photo -----
+const photoInput = document.getElementById('photo');
+const cameraBtn = document.getElementById('cameraBtn');
+const photoParseBtn = document.getElementById('photoParseBtn');
+const cameraHint = document.getElementById('cameraHint');
+const photoModalError = document.getElementById('photoModalError');
+const previewModalEl = document.getElementById('previewModal');
+const previewModal = new bootstrap.Modal(previewModalEl);
+const previewHtml = document.getElementById('previewHtml');
+const saveToLibraryBtn = document.getElementById('saveToLibraryBtn');
+const addToBringBtn = document.getElementById('addToBringBtn');
+const photoModalEl = document.getElementById('importPhotoModal');
+
+const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+  navigator.userAgent,
+);
+const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+
+if (!isMobileDevice || !hasMediaDevices) {
+  if (cameraHint) cameraHint.style.display = 'none';
+  if (cameraBtn) cameraBtn.style.display = 'none';
+}
+
+cameraBtn.addEventListener('click', () => {
+  if (isMobileDevice && hasMediaDevices) {
+    const temp = document.createElement('input');
+    temp.type = 'file';
+    temp.accept = 'image/*';
+    temp.capture = 'environment';
+    temp.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        const dt = new DataTransfer();
+        dt.items.add(e.target.files[0]);
+        photoInput.files = dt.files;
+        showImagePreview(e.target.files[0]);
+      }
+    });
+    temp.click();
+  } else {
+    photoInput.click();
   }
+});
+
+photoInput.addEventListener('change', (e) => {
+  if (e.target.files && e.target.files[0]) showImagePreview(e.target.files[0]);
+});
+
+function showImagePreview(file) {
+  const container = document.getElementById('image-preview-container');
+  container.innerHTML = '<div class="spinner-border text-primary" role="status"></div>';
+  fileToBase64(file)
+    .then((b64) => {
+      if (!b64) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = `
+        <div class="text-center">
+          <img src="${b64}" alt="preview" class="rounded shadow-sm" style="max-height:200px;max-width:100%;">
+        </div>`;
+    })
+    .catch((err) => {
+      photoModalError.textContent = err.message || 'Could not process the image.';
+      photoModalError.classList.remove('d-none');
+    });
 }
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
-    // Check if file is an image
-    if (!file.type.match('image.*')) {
-      return resolve(null);
-    }
-    
+    if (!file.type.match('image.*')) return resolve(null);
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        // Max dimensions for the image
-        const MAX_WIDTH = 1200;
-        const MAX_HEIGHT = 1200;
-        // Quality setting for JPEG compression (0.0 to 1.0)
-        const QUALITY = 0.85;
-        
-        let width = img.width;
-        let height = img.height;
-        let resized = false;
-        let sizeReduction = '';
-        
-        // Calculate original image size in KB
-        const originalSize = Math.round(file.size / 1024);
-        
-        // Always resize images to reasonable dimensions if they're large
-        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
-          if (width > height) {
-            // Landscape image
-            if (width > MAX_WIDTH) {
-              height = Math.round(height * (MAX_WIDTH / width));
-              width = MAX_WIDTH;
-              resized = true;
-            }
+        const MAX = 1200;
+        let w = img.width,
+          h = img.height;
+        if (w > MAX || h > MAX) {
+          if (w > h) {
+            h = Math.round(h * (MAX / w));
+            w = MAX;
           } else {
-            // Portrait image
-            if (height > MAX_HEIGHT) {
-              width = Math.round(width * (MAX_HEIGHT / height));
-              height = MAX_HEIGHT;
-              resized = true;
-            }
+            w = Math.round(w * (MAX / h));
+            h = MAX;
           }
         }
-        
-        // Create canvas and resize image
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = "white"; // Use white background
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        // Get resized image as base64 string with quality setting
-        const fileType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-        const base64String = canvas.toDataURL(fileType, QUALITY);
-        
-        // Estimate the new size in KB (very rough approximation)
-        const base64Data = base64String.split(',')[1];
-        const newSizeBytes = Math.round((base64Data.length * 3) / 4);
-        const newSize = Math.round(newSizeBytes / 1024);
-        
-        // Create notification about the processing
-        const processingInfo = resized ? 
-          `Image resized from ${img.width}×${img.height} to ${width}×${height}` :
-          `Image processed at ${width}×${height}`;
-          
-        const sizeInfo = `Size: ~${originalSize}KB → ~${newSize}KB`;
-        sizeReduction = `${processingInfo}<br>${sizeInfo}`;
-        
-        // Always show notification about the processing
-        if (!window.sizeReductionMessage) {
-          window.sizeReductionMessage = document.createElement('div');
-          window.sizeReductionMessage.className = 'alert alert-info mt-2';
-          window.sizeReductionMessage.style.display = 'block';
-          document.querySelector('#photo').parentNode.parentNode.appendChild(window.sizeReductionMessage);
-        }
-        window.sizeReductionMessage.innerHTML = sizeReduction;
-        
-        resolve(base64String);
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', 0.85));
       };
-      
-      img.onerror = () => {
-        reject(new Error('Failed to load image'));
-      };
-      
-      img.src = event.target.result;
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = ev.target.result;
     };
-    
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
 }
 
-
-
-function showToast(message) {
-  const toastContainer = document.createElement('div');
-  toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
-  toastContainer.style.zIndex = '5000';
-  
-  toastContainer.innerHTML = `
-    <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-      <div class="toast-header">
-        <strong class="me-auto">Recipe to Bring</strong>
-        <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
-      </div>
-      <div class="toast-body">
-        ${message}
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(toastContainer);
-  
-  setTimeout(() => {
-    document.body.removeChild(toastContainer);
-  }, 3000);
-}
-
-// Helper function to create a simple recipe HTML from JSON data
-function createSimpleRecipeHtml(recipeData) {
-  let html = `
-    <div itemscope itemtype="http://schema.org/Recipe" class="recipe-container">
-      <h2 itemprop="name">${recipeData.name || 'Recipe'}</h2>
-      
-      <div class="recipe-yield mb-3">
-        <strong>Serves:</strong> <span itemprop="recipeYield">${recipeData.recipeYield || '4 servings'}</span>
-      </div>`;
-      
-  if (recipeData.description) {
-    html += `
-      <div class="recipe-description mb-3">
-        <h4>Description</h4>
-        <p itemprop="description">${recipeData.description}</p>
-      </div>`;
+photoParseBtn.addEventListener('click', async () => {
+  const file = photoInput.files[0];
+  if (!file) {
+    photoModalError.textContent = 'Please choose an image first.';
+    photoModalError.classList.remove('d-none');
+    return;
   }
-  
-  if (recipeData.recipeIngredient && recipeData.recipeIngredient.length) {
-    html += `
-      <div class="recipe-ingredients mb-3">
-        <h4>Ingredients</h4>
-        <ul>`;
-        
-    recipeData.recipeIngredient.forEach(ingredient => {
-      html += `<li itemprop="recipeIngredient">${ingredient}</li>`;
+  photoModalError.classList.add('d-none');
+  photoParseBtn.disabled = true;
+  photoParseBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Parsing…';
+
+  try {
+    const b64 = await fileToBase64(file);
+    const fd = new FormData();
+    fd.append('image', b64);
+    const resp = await fetch(`${config.apiUrl}/recipes/parse`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: fd,
     });
-    
-    html += `
-        </ul>
-      </div>`;
-  }
-  
-  html += `</div>`;
-  
-  return html;
-}
+    if (!resp.ok) {
+      const detail = (await resp.json().catch(() => ({}))).detail || `HTTP ${resp.status}`;
+      throw new Error(detail);
+    }
+    const r = await resp.json();
+    // Fetch the JSON + HTML for preview.
+    const jsonResp = await fetch(`${config.apiUrl}/recipes/${r.uuid}.json`);
+    const jsonData = await jsonResp.json();
+    const htmlResp = await fetch(`${config.apiUrl}/recipes/${r.uuid}.html`);
+    const htmlContent = htmlResp.ok ? await htmlResp.text() : '';
 
-// Make sure the Bring widget is initialized when the page loads
-window.addEventListener('DOMContentLoaded', () => {
-  // Hide the import card initially
-  const bringImportCard = document.getElementById('bringImportCard');
-  if (bringImportCard) {
-    bringImportCard.classList.add('d-none');
+    previewHtml.innerHTML =
+      htmlContent ||
+      (window.recipeLib && window.recipeLib.createSimpleRecipeHtml
+        ? window.recipeLib.createSimpleRecipeHtml(jsonData)
+        : `<p>${escapeHtml(jsonData.name || 'Recipe')}</p>`);
+    previewHtml.dataset.uuid = r.uuid;
+
+    // Close the photo modal, open the preview modal.
+    bootstrap.Modal.getInstance(photoModalEl).hide();
+    previewModal.show();
+  } catch (err) {
+    photoModalError.textContent = err.message;
+    photoModalError.classList.remove('d-none');
+  } finally {
+    photoParseBtn.disabled = false;
+    photoParseBtn.textContent = 'Parse Recipe';
   }
 });
+
+// ----- Import from URL -----
+const importUrlInput = document.getElementById('importUrlInput');
+const importUrlNote = document.getElementById('importUrlNote');
+const urlImportBtn = document.getElementById('urlImportBtn');
+const urlModalError = document.getElementById('urlModalError');
+const urlModalLoading = document.getElementById('urlModalLoading');
+const urlModalEl = document.getElementById('importUrlModal');
+
+urlImportBtn.addEventListener('click', async () => {
+  const url = (importUrlInput.value || '').trim();
+  if (!url) {
+    urlModalError.textContent = 'Please paste a URL.';
+    urlModalError.classList.remove('d-none');
+    return;
+  }
+  if (
+    window.recipeLib &&
+    window.recipeLib.isLikelyRecipeUrl &&
+    !window.recipeLib.isLikelyRecipeUrl(url)
+  ) {
+    urlModalError.textContent = "That doesn't look like a recipe page URL.";
+    urlModalError.classList.remove('d-none');
+    return;
+  }
+  urlModalError.classList.add('d-none');
+  urlModalLoading.classList.remove('d-none');
+  urlImportBtn.disabled = true;
+
+  try {
+    const resp = await fetch(`${config.apiUrl}/recipes/import-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ url, note: importUrlNote.value || '' }),
+    });
+    if (!resp.ok) {
+      const detail = (await resp.json().catch(() => ({}))).detail || `HTTP ${resp.status}`;
+      throw new Error(detail);
+    }
+    const r = await resp.json();
+    const jsonResp = await fetch(`${config.apiUrl}/recipes/${r.uuid}.json`);
+    const jsonData = await jsonResp.json();
+    previewHtml.innerHTML =
+      window.recipeLib && window.recipeLib.createSimpleRecipeHtml
+        ? window.recipeLib.createSimpleRecipeHtml(jsonData)
+        : `<p>${escapeHtml(jsonData.name || 'Recipe')}</p>`;
+    previewHtml.dataset.uuid = r.uuid;
+
+    bootstrap.Modal.getInstance(urlModalEl).hide();
+    previewModal.show();
+  } catch (err) {
+    urlModalError.textContent = err.message;
+    urlModalError.classList.remove('d-none');
+  } finally {
+    urlModalLoading.classList.add('d-none');
+    urlImportBtn.disabled = false;
+  }
+});
+
+// ----- Preview modal actions -----
+saveToLibraryBtn.addEventListener('click', () => {
+  // The recipe is already saved on parse/import-url. Just close and refresh.
+  previewModal.hide();
+  showToast('Saved');
+  loadRecipeList();
+});
+
+addToBringBtn.addEventListener('click', () => {
+  const uuid = previewHtml.dataset.uuid;
+  if (!uuid || typeof showBringWidget !== 'function') return;
+  previewModal.hide();
+  showBringWidget(uuid);
+});
+
+// ----- Toast -----
+function showToast(message) {
+  const host = document.getElementById('toastHost');
+  if (!host) return;
+  const el = document.createElement('div');
+  el.className = 'position-fixed bottom-0 end-0 p-3';
+  el.style.zIndex = '5000';
+  el.innerHTML = `
+    <div class="toast show" role="alert">
+      <div class="toast-body">${escapeHtml(message)}</div>
+    </div>`;
+  host.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ----- Initial load -----
+loadRecipeList();

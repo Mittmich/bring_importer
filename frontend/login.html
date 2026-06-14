@@ -1,53 +1,56 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login - Recipe to Bring</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#3498db">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css">
-  <link rel="icon" href="images/icon-192.png">
-</head>
-<body>
-  <div class="container mt-4">
-    <div class="row justify-content-center">
-      <div class="col-md-6 col-lg-4">
-        <div class="card main-card">
-          <div class="card-header bg-primary text-white">
-            <h1 class="fs-4 mb-0">Recipe to Bring</h1>
-          </div>
-          <div class="card-body">
-            <div id="login-form">
-              <h5 class="mb-3">Login</h5>
-              <div class="mb-3">
-                <label for="email" class="form-label">Email:</label>
-                <input type="email" class="form-control" id="email" required>
-              </div>
-              <div class="mb-3">
-                <label for="password" class="form-label">Password:</label>
-                <input type="password" class="form-control" id="password" required>
-              </div>
-              <div class="d-grid gap-2">
-                <button id="loginBtn" class="btn btn-primary">Login</button>
-              </div>
-              <div class="text-center mt-3 text-muted">
-                <small>Contact administrator for account access</small>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login - Recipe to Bring</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#3498db" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="icon" href="images/icon-192.png" />
+  </head>
+  <body>
+    <div class="container mt-4">
+      <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+          <div class="card main-card">
+            <div class="card-header bg-primary text-white">
+              <h1 class="fs-4 mb-0">Recipe to Bring</h1>
+            </div>
+            <div class="card-body">
+              <div id="login-form">
+                <h5 class="mb-3">Login</h5>
+                <div class="mb-3">
+                  <label for="email" class="form-label">Email:</label>
+                  <input type="email" class="form-control" id="email" required />
+                </div>
+                <div class="mb-3">
+                  <label for="password" class="form-label">Password:</label>
+                  <input type="password" class="form-control" id="password" required />
+                </div>
+                <div class="d-grid gap-2">
+                  <button id="loginBtn" class="btn btn-primary">Login</button>
+                </div>
+                <div class="text-center mt-3 text-muted">
+                  <small>Contact administrator for account access</small>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Bootstrap JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- Environment configuration must be loaded first -->
-  <script src="env-config.js"></script>
-  <!-- Config must be loaded before auth.js -->
-  <script src="js/config.js"></script>
-  <script src="js/auth.js"></script>
-</body>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Environment configuration must be loaded first -->
+    <script src="env-config.js"></script>
+    <!-- Config must be loaded before auth.js -->
+    <script src="js/config.js"></script>
+    <script src="js/auth.js"></script>
+  </body>
 </html>

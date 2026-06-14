@@ -1,8 +1,5 @@
 """Unit tests for password hashing helpers in ``api``."""
 
-import passlib.exc
-import pytest
-
 import api
 
 
@@ -29,15 +26,11 @@ def test_verify_password_wrong():
     assert api.verify_password("wrongpassword", h) is False
 
 
-def test_verify_password_non_bcrypt_hash_raises():
-    """passlib raises ``UnknownHashError`` for hash formats it cannot identify.
-
-    This is the actual behavior of ``passlib.context.CryptContext.verify`` —
-    not a defect of our wrapper. Tests and callers must handle this exception
-    explicitly if they want to treat unknown hashes as "no match".
+def test_verify_password_non_bcrypt_hash_returns_false():
+    """Unknown hash formats (e.g. users migrated from another auth system)
+    are treated as 'no match' rather than crashing the request.
     """
-    with pytest.raises(passlib.exc.UnknownHashError):
-        api.verify_password("any-password", "not-a-bcrypt-hash")
+    assert api.verify_password("any-password", "not-a-bcrypt-hash") is False
 
 
 def test_verify_password_empty_against_real_hash():

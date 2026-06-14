@@ -1,111 +1,130 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Environment Configuration - Recipe to Bring</title>
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#3498db">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css">
-  <link rel="icon" href="images/icon-192.png">
-</head>
-<body>
-  <div class="container mt-4">
-    <div class="row justify-content-center">
-      <div class="col-md-8">
-        <div class="card main-card">
-          <div class="card-header bg-primary text-white">
-            <h1 class="fs-4 mb-0">Environment Configuration</h1>
-          </div>
-          <div class="card-body">
-            <div id="config-form">
-              <p class="mb-3">Configure environment settings for Recipe to Bring application.</p>
-              
-              <div class="alert alert-info">
-                <strong>Note:</strong> These settings are stored in your browser's localStorage and will 
-                override any server-side environment variables when they are set.
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Environment Configuration - Recipe to Bring</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#3498db" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/styles.css" />
+    <link rel="icon" href="images/icon-192.png" />
+  </head>
+  <body>
+    <div class="container mt-4">
+      <div class="row justify-content-center">
+        <div class="col-md-8">
+          <div class="card main-card">
+            <div class="card-header bg-primary text-white">
+              <h1 class="fs-4 mb-0">Environment Configuration</h1>
+            </div>
+            <div class="card-body">
+              <div id="config-form">
+                <p class="mb-3">Configure environment settings for Recipe to Bring application.</p>
+
+                <div class="alert alert-info">
+                  <strong>Note:</strong> These settings are stored in your browser's localStorage
+                  and will override any server-side environment variables when they are set.
+                </div>
+
+                <div class="mb-3">
+                  <label for="api-url" class="form-label">API URL:</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="api-url"
+                    placeholder="http://localhost:8001"
+                  />
+                  <div class="form-text">The URL for your backend API server.</div>
+                </div>
+
+                <div class="mb-3">
+                  <label for="frontend-url" class="form-label">Frontend URL:</label>
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="frontend-url"
+                    placeholder="http://localhost:80"
+                  />
+                  <div class="form-text">The URL for your frontend server.</div>
+                </div>
+
+                <div class="d-flex gap-2">
+                  <button id="save-btn" class="btn btn-primary">Save Settings</button>
+                  <button id="clear-btn" class="btn btn-danger">Clear Settings</button>
+                  <a href="index.html" class="btn btn-outline-secondary ms-auto">Return to App</a>
+                </div>
+
+                <div id="status-message" class="mt-3"></div>
               </div>
-              
-              <div class="mb-3">
-                <label for="api-url" class="form-label">API URL:</label>
-                <input type="text" class="form-control" id="api-url" placeholder="http://localhost:8001">
-                <div class="form-text">The URL for your backend API server.</div>
-              </div>
-              
-              <div class="mb-3">
-                <label for="frontend-url" class="form-label">Frontend URL:</label>
-                <input type="text" class="form-control" id="frontend-url" placeholder="http://localhost:80">
-                <div class="form-text">The URL for your frontend server.</div>
-              </div>
-              
-              <div class="d-flex gap-2">
-                <button id="save-btn" class="btn btn-primary">Save Settings</button>
-                <button id="clear-btn" class="btn btn-danger">Clear Settings</button>
-                <a href="index.html" class="btn btn-outline-secondary ms-auto">Return to App</a>
-              </div>
-              
-              <div id="status-message" class="mt-3"></div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      const apiUrlInput = document.getElementById('api-url');
-      const frontendUrlInput = document.getElementById('frontend-url');
-      const saveBtn = document.getElementById('save-btn');
-      const clearBtn = document.getElementById('clear-btn');
-      const statusMessage = document.getElementById('status-message');
-      
-      // Load current values from localStorage
-      apiUrlInput.value = localStorage.getItem('API_URL') || '';
-      frontendUrlInput.value = localStorage.getItem('FRONTEND_URL') || '';
-      
-      // Save settings to localStorage
-      saveBtn.addEventListener('click', () => {
-        const apiUrl = apiUrlInput.value.trim();
-        const frontendUrl = frontendUrlInput.value.trim();
-        
-        if (!apiUrl || !frontendUrl) {
-          showMessage('Please fill in all fields', 'danger');
-          return;
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const apiUrlInput = document.getElementById('api-url');
+        const frontendUrlInput = document.getElementById('frontend-url');
+        const saveBtn = document.getElementById('save-btn');
+        const clearBtn = document.getElementById('clear-btn');
+        const statusMessage = document.getElementById('status-message');
+
+        // Load current values from localStorage
+        apiUrlInput.value = localStorage.getItem('API_URL') || '';
+        frontendUrlInput.value = localStorage.getItem('FRONTEND_URL') || '';
+
+        // Save settings to localStorage
+        saveBtn.addEventListener('click', () => {
+          const apiUrl = apiUrlInput.value.trim();
+          const frontendUrl = frontendUrlInput.value.trim();
+
+          if (!apiUrl || !frontendUrl) {
+            showMessage('Please fill in all fields', 'danger');
+            return;
+          }
+
+          // Store values in localStorage
+          localStorage.setItem('API_URL', apiUrl);
+          localStorage.setItem('FRONTEND_URL', frontendUrl);
+
+          showMessage(
+            'Settings saved successfully! Please refresh any open app windows.',
+            'success',
+          );
+        });
+
+        // Clear settings from localStorage
+        clearBtn.addEventListener('click', () => {
+          localStorage.removeItem('API_URL');
+          localStorage.removeItem('FRONTEND_URL');
+
+          apiUrlInput.value = '';
+          frontendUrlInput.value = '';
+
+          showMessage(
+            'Settings cleared successfully! Reverting to server-side environment variables.',
+            'info',
+          );
+        });
+
+        // Helper function to show messages
+        function showMessage(message, type = 'info') {
+          statusMessage.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+
+          // Auto-dismiss after 5 seconds
+          setTimeout(() => {
+            statusMessage.innerHTML = '';
+          }, 5000);
         }
-        
-        // Store values in localStorage
-        localStorage.setItem('API_URL', apiUrl);
-        localStorage.setItem('FRONTEND_URL', frontendUrl);
-        
-        showMessage('Settings saved successfully! Please refresh any open app windows.', 'success');
       });
-      
-      // Clear settings from localStorage
-      clearBtn.addEventListener('click', () => {
-        localStorage.removeItem('API_URL');
-        localStorage.removeItem('FRONTEND_URL');
-        
-        apiUrlInput.value = '';
-        frontendUrlInput.value = '';
-        
-        showMessage('Settings cleared successfully! Reverting to server-side environment variables.', 'info');
-      });
-      
-      // Helper function to show messages
-      function showMessage(message, type = 'info') {
-        statusMessage.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
-        
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-          statusMessage.innerHTML = '';
-        }, 5000);
-      }
-    });
-  </script>
+    </script>
 
-  <!-- Bootstrap JS -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
 </html>

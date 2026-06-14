@@ -13,6 +13,9 @@ from unittest.mock import patch
 import pytest
 
 import api
+import api.auth as api_auth
+import api.db as api_db
+import api.routers.recipes as api_recipes_router
 import manage_users
 
 # ---------------------------------------------------------------------------
@@ -25,6 +28,10 @@ def manage_db(tmp_db_path, monkeypatch):
     """Wire up ``manage_users`` to use a per-test tmp db file.
 
     Returns the path so individual tests can inspect it directly.
+
+    As with the conftest's ``app`` fixture, the package split means
+    ``get_db_connection`` is bound in every module that did
+    ``from api.db import get_db_connection``; patch all of them.
     """
     monkeypatch.setattr(manage_users, "DB_PATH", str(tmp_db_path))
 
@@ -33,8 +40,12 @@ def manage_db(tmp_db_path, monkeypatch):
         conn.row_factory = sqlite3.Row
         return conn
 
-    monkeypatch.setattr(manage_users, "get_db_connection", _get_db_connection)
-    monkeypatch.setattr(api, "get_db_connection", _get_db_connection)
+    bound = _get_db_connection
+    monkeypatch.setattr(manage_users, "get_db_connection", bound)
+    monkeypatch.setattr(api_db, "get_db_connection", bound)
+    monkeypatch.setattr(api, "get_db_connection", bound)
+    monkeypatch.setattr(api_auth, "get_db_connection", bound)
+    monkeypatch.setattr(api_recipes_router, "get_db_connection", bound)
     # Build the schema in the tmp file.
     api.init_db()
     return tmp_db_path

@@ -36,6 +36,20 @@ jobs:
         run: |
           ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Ensure uv is installed on the Lightsail box
+        # uv isn't a system package on most stock images. The official
+        # installer is idempotent: it skips re-installing if uv is
+        # already on PATH. Installs into ~/.local/bin/uv.
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+            if ! command -v uv >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/uv" ]; then
+              echo "Installing uv..."
+              curl -LsSf https://astral.sh/uv/install.sh | sh
+            else
+              echo "uv already present"
+            fi
+          '
+
       - name: Stop existing app on Lightsail
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo ./stop.sh || true'
@@ -44,9 +58,21 @@ jobs:
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo git fetch origin && sudo git reset --hard origin/main'
 
-      - name: Install Python dependencies
+      - name: Reset the venv to avoid stale-file permission errors
+        # uv sync into an existing .venv can fail with "Permission denied"
+        # on individual files (e.g. bcrypt's __pycache__) when the venv
+        # was created by a different user (e.g. an earlier `sudo` run).
+        # Wipe and re-create from scratch on every deploy — fast and
+        # deterministic.
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }}/backend && source ~/.bashrc && uv sync || ~/.local/bin/uv sync || /usr/local/bin/uv sync'
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }}/backend && sudo rm -rf .venv'
+
+      - name: Install Python dependencies
+        # Uses the just-installed uv. `uv sync` (no --extra dev) installs
+        # only runtime deps; the dev extras (pytest, ruff, etc.) are
+        # not needed at runtime.
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} 'cd ${{ secrets.LIGHTSAIL_APP_PATH }}/backend && export PATH="$HOME/.local/bin:$PATH" && uv sync'
 
       - name: Start app on Lightsail
         run: |

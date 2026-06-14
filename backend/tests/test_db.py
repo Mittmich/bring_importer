@@ -11,14 +11,18 @@ import sqlite3
 import pytest
 
 import api
+import api.auth as api_auth
+import api.db as api_db
+import api.routers.recipes as api_recipes_router
 
 
 @pytest.fixture
 def fresh_db(tmp_db_path, monkeypatch):
     """A tmp db file with no schema; ``init_db`` hasn't been called yet.
 
-    Monkeypatches ``api.get_db_connection`` to point at the tmp file (same
-    pattern as the ``app`` fixture in conftest.py).
+    As with the conftest's ``app`` fixture, the package split means
+    ``get_db_connection`` is bound in every module that did
+    ``from api.db import get_db_connection``; patch all of them.
     """
 
     def _get_db_connection():
@@ -26,7 +30,11 @@ def fresh_db(tmp_db_path, monkeypatch):
         conn.row_factory = sqlite3.Row
         return conn
 
-    monkeypatch.setattr(api, "get_db_connection", _get_db_connection)
+    bound = _get_db_connection
+    monkeypatch.setattr(api_db, "get_db_connection", bound)
+    monkeypatch.setattr(api, "get_db_connection", bound)
+    monkeypatch.setattr(api_auth, "get_db_connection", bound)
+    monkeypatch.setattr(api_recipes_router, "get_db_connection", bound)
     return tmp_db_path
 
 
