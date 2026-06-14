@@ -9,3 +9,10 @@ logs/*
 backend/.venv
 *.egg-info/
 backend/*.egg-info/
+.coverage
+backend/.coverage
+htmlcov/
+backend/htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
