@@ -5,6 +5,8 @@
     "context": ".."
   },
 
+  "workspaceMount": "source=/home/michael/bring_importer,target=/workspace,type=bind,consistency=cached",
+
   "postCreateCommand": "REPO_ROOT=${containerWorkspaceFolder} bash /usr/local/bin/devcontainer-post-create.sh",
 
   "mounts": [
