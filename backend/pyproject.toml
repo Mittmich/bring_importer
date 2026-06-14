@@ -22,7 +22,8 @@ dependencies = [
     "python-jose[cryptography]>=3.3.0", # For JWT handling
     "passlib[bcrypt]>=1.7.4", # For password hashing
     "bcrypt<4.0", # passlib 1.7.4 is incompatible with bcrypt >= 4.0; pin until passlib is upgraded
-    "requests>=2.28.2", # For OpenAI API calls
+    "requests>=2.28.2",
+    "httpx>=0.24.0", # For OpenAI API calls
     "python-dotenv>=1.0.0",
     "pyjwt>=2.9.0",
     "beautifulsoup4>=4.13.4",
@@ -42,12 +43,13 @@ dev = [
     "types-requests",
 ]
 
-# The backend uses a "flat layout" (api.py, run.py, manage_users.py,
-# generate_password.py all at the top of backend/, no __init__.py).
-# Modern setuptools refuses to auto-discover packages in a flat layout
-# because the intent is ambiguous, so we declare the modules explicitly.
+# Backend layout: `api/` is a package (comprehensive-recipe-management
+# plan step 1 split it out of the old flat api.py); the rest stay flat.
+# Declare the package and the flat modules explicitly so setuptools is
+# happy with the mix.
 [tool.setuptools]
-py-modules = ["api", "run", "manage_users", "generate_password"]
+packages = ["api", "api.routers"]
+py-modules = ["run", "manage_users", "generate_password"]
 
 [tool.black]
 line-length = 100
@@ -56,6 +58,10 @@ target-version = ["py38", "py39", "py310"]
 [tool.isort]
 profile = "black"
 line_length = 100
+
+[[tool.mypy.overrides]]
+module = ["_spike_url_import"]
+ignore_errors = true
 
 [tool.mypy]
 python_version = "3.8"
