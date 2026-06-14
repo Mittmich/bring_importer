@@ -48,5 +48,16 @@ RUN rm -f /etc/apt/sources.list.d/yarn.list \
 
 # Drop privileges: run subsequent build steps (and the container itself)
 # as the unprivileged `vscode` user that the base image provides.
+#
+# The dev containers CLI will bind-mount the project tree on top of
+# `/workspace` (matching `workspaceFolder` in devcontainer.json) at
+# container-start time. We pre-create the directory here -- owned by
+# `vscode` and matching the WORKDIR -- so the path always exists in
+# the image, which prevents a transient race in VS Code's terminal
+# integration that otherwise reports
+#   "Starting directory (cwd) \"/workspace\" does not exist"
+# on the first terminal open.
+USER root
+RUN mkdir -p /workspace && chown vscode:vscode /workspace
 USER vscode
-WORKDIR /home/vscode/bring_importer
+WORKDIR /workspace
