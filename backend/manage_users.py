@@ -132,13 +132,15 @@ def list_users():
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT u.id, u.email, COUNT(r.uuid) as recipe_count 
             FROM users u 
             LEFT JOIN recipes r ON u.id = r.user_id 
             GROUP BY u.id, u.email
             ORDER BY u.email
-        """)
+        """
+        )
         users = cursor.fetchall()
 
         if not users:
