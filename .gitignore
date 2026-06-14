@@ -17,3 +17,4 @@ backend/htmlcov/
 .ruff_cache/
 .mypy_cache/
 backend/_spike_url_import.py
+backend/.coveragerc
