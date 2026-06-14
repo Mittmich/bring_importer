@@ -148,8 +148,7 @@ async def import_url(
     except httpx.RequestError as e:
         raise HTTPException(
             status_code=422,
-            detail=f"Couldn't fetch that URL ({type(e).__name__}). "
-            "Check the link and try again.",
+            detail=f"Couldn't fetch that URL ({type(e).__name__}). Check the link and try again.",
         ) from e
 
     if len(response.content) > MAX_FETCH_BYTES:
@@ -253,8 +252,7 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT uuid, title, recipe_json FROM recipes "
-        "WHERE user_id = ? ORDER BY created_at DESC",
+        "SELECT uuid, title, recipe_json FROM recipes WHERE user_id = ? ORDER BY created_at DESC",
         (user_id,),
     )
     rows = cursor.fetchall()
