@@ -6,6 +6,15 @@
   },
   "postCreateCommand": "bash .devcontainer/post-create.sh",
 
+  "mounts": [
+    {
+      "source": "/home/michael/.pi",
+      "target": "/home/vscode/.pi",
+      "type": "bind",
+      "consistency": "cached"
+    }
+  ],
+
   "customizations": {
     "vscode": {
       "extensions": [
