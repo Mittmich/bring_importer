@@ -5,12 +5,18 @@ startup, and includes the routers. Imported by ``api/__init__.py`` for
 the back-compat ``from api import app`` re-export.
 """
 
-# Install test-only request stubs if RECIPE_TEST_MOCKS=1. Must happen
-# before any other api.* import that might call requests. No-op in
-# production (env var not set).
-from api import testing  # noqa: E402,F401
+import os
 
-testing.install()
+# Install test-only request stubs if RECIPE_TEST_MOCKS=1. The
+# ``api.testing`` module imports ``responses`` and ``httpx`` at the top,
+# both of which are dev-only deps (or, in httpx's case, not always
+# installed on a slim prod image). Gating the import on the env var
+# keeps production deploys from pulling those into the import graph.
+# In production (env var not set) this is a no-op.
+if os.environ.get("RECIPE_TEST_MOCKS") == "1":
+    from api import testing  # noqa: E402
+
+    testing.install()
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
