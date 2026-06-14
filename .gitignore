@@ -5,3 +5,5 @@ users.json
 logs/*
 *.pyc
 */__pycache__/*
+.venv
+backend/.venv
