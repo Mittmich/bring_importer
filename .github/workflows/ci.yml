@@ -25,17 +25,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
-
-      - name: Install uv
+      - name: Install uv and Python
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.4.x"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/pyproject.toml
+            backend/uv.lock
 
       - name: Install backend (dev extras)
         working-directory: backend
@@ -56,10 +54,12 @@ jobs:
   # ---------------------------------------------------------------------------
   # Type-check: mypy
   # ---------------------------------------------------------------------------
-  # NOTE: per plan, the existing [tool.mypy] is strict and the codebase is
-  # untyped. We start with continue-on-error: true so the first PR merges
-  # even if mypy is noisy; a follow-up plan will add type hints and tighten
-  # this back to false.
+  # NOTE: The [tool.mypy] config in backend/pyproject.toml is currently
+  # permissive (no `disallow_untyped_defs`) because the codebase is untyped;
+  # step 16 of `.pi/plans/2026-06-14-comprehensive-recipe-management.md` is
+  # the follow-up that adds type hints and re-tightens the config. Until
+  # then, `continue-on-error: true` is a safety net in case mypy picks up
+  # something unexpected.
   typecheck:
     name: Type-check (mypy)
     runs-on: ubuntu-latest
@@ -68,17 +68,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
-
-      - name: Install uv
+      - name: Install uv and Python
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.4.x"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/pyproject.toml
+            backend/uv.lock
 
       - name: Install backend (dev extras)
         working-directory: backend
@@ -98,17 +96,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: backend/pyproject.toml
-
-      - name: Install uv
+      - name: Install uv and Python
         uses: astral-sh/setup-uv@v3
         with:
           version: "0.4.x"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: |
+            backend/pyproject.toml
+            backend/uv.lock
 
       - name: Install backend (dev extras)
         working-directory: backend

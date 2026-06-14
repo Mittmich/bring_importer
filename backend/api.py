@@ -167,13 +167,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: str = payload.get("sub")
+        email = payload.get("sub")
         if email is None:
             raise credentials_exception
         token_data = TokenData(email=email)
     except jwt.PyJWTError as err:
         raise credentials_exception from err
-    user = get_user(email=token_data.email)
+    user = get_user(email=email)
     if user is None:
         raise credentials_exception
     return user
@@ -221,34 +221,35 @@ def _extract_recipe_from_html(html: str) -> Recipe:
     soup = BeautifulSoup(html_content, "html.parser")
 
     # Find recipe element
-    recipe_element = soup.find(itemtype=re.compile(r"schema.org/Recipe"))
+    recipe_element = soup.find(itemtype=re.compile(r"schema.org/Recipe"))  # type: ignore[call-overload]
 
     if not recipe_element:
         # Try alternate format
-        recipe_element = soup.find(attrs={"itemtype": re.compile(r"schema.org/Recipe")})
+        recipe_element = soup.find(attrs={"itemtype": re.compile(r"schema.org/Recipe")})  # type: ignore[call-overload]
 
     if not recipe_element:
         # If still not found, use the entire soup
         recipe_element = soup
 
     # Extract title
-    title_element = recipe_element.find(attrs={"itemprop": "name"})
+    title_element = recipe_element.find(attrs={"itemprop": "name"})  # type: ignore[call-overload]
     title = title_element.text.strip() if title_element else "Untitled Recipe"
 
     # Extract ingredients
-    ingredient_elements = recipe_element.find_all(attrs={"itemprop": "recipeIngredient"})
+    ingredient_elements = recipe_element.find_all(attrs={"itemprop": "recipeIngredient"})  # type: ignore[call-overload]
     ingredients = [ing.text.strip() for ing in ingredient_elements]
 
     # If no specific ingredients found, look for list items
-    if not ingredients and recipe_element.find("ul"):
-        ingredients = [li.text.strip() for li in recipe_element.find("ul").find_all("li")]
+    ul_element = recipe_element.find("ul")
+    if not ingredients and ul_element is not None:
+        ingredients = [li.text.strip() for li in ul_element.find_all("li")]
 
     # Extract yield
-    yield_element = recipe_element.find(attrs={"itemprop": "recipeYield"})
+    yield_element = recipe_element.find(attrs={"itemprop": "recipeYield"})  # type: ignore[call-overload]
     recipe_yield = yield_element.text.strip() if yield_element else "4 servings"
 
     # Extract description
-    description_element = recipe_element.find(attrs={"itemprop": "description"})
+    description_element = recipe_element.find(attrs={"itemprop": "description"})  # type: ignore[call-overload]
     description = description_element.text.strip() if description_element else ""
 
     return Recipe(
@@ -293,7 +294,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         "max_tokens": 2000,
     }
 
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload)  # type: ignore[arg-type]
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail=f"OpenAI API error: {response.text}")
 
