@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cancel in-flight runs on the same ref when a new commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint: ruff + black + isort
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (ruff + black + isort)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.x"
+
+      - name: Install backend (dev extras)
+        working-directory: backend
+        run: uv pip install --system -e ".[dev]"
+
+      - name: ruff check
+        working-directory: backend
+        run: ruff check .
+
+      - name: black --check
+        working-directory: backend
+        run: black --check .
+
+      - name: isort --check-only
+        working-directory: backend
+        run: isort --check-only .
+
+  # ---------------------------------------------------------------------------
+  # Type-check: mypy
+  # ---------------------------------------------------------------------------
+  # NOTE: per plan, the existing [tool.mypy] is strict and the codebase is
+  # untyped. We start with continue-on-error: true so the first PR merges
+  # even if mypy is noisy; a follow-up plan will add type hints and tighten
+  # this back to false.
+  typecheck:
+    name: Type-check (mypy)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.x"
+
+      - name: Install backend (dev extras)
+        working-directory: backend
+        run: uv pip install --system -e ".[dev]"
+
+      - name: mypy
+        working-directory: backend
+        run: mypy .
+
+  # ---------------------------------------------------------------------------
+  # Test: pytest with coverage
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (pytest + coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.x"
+
+      - name: Install backend (dev extras)
+        working-directory: backend
+        run: uv pip install --system -e ".[dev]"
+
+      - name: pytest
+        working-directory: backend
+        run: |
+          pytest \
+            --cov=api \
+            --cov=manage_users \
+            --cov-fail-under=80 \
+            --junitxml=pytest-junit.xml \
+            -v
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-junit
+          path: backend/pytest-junit.xml
+          retention-days: 14
