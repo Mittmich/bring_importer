@@ -1,10 +1,14 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "recipe-parser-api"
 version = "0.1.0"
 description = "Recipe Parser API for Bring Importer PWA"
 readme = "README.md"
 requires-python = ">=3.8"
-license = {text = "MIT"}
+license = "MIT"
 authors = [
     {name = "Recipe App Developer", email = "example@example.com"}
 ]
@@ -31,6 +35,14 @@ dev = [
     "mypy>=1.3.0",
     "ruff>=0.0.272",
 ]
+
+# The backend uses a "flat layout" (api.py, run.py, manage_users.py,
+# generate_password.py all at the top of backend/, no __init__.py).
+# Modern setuptools refuses to auto-discover packages in a flat layout
+# because the intent is ambiguous, so we declare the modules explicitly.
+[tool.setuptools]
+py-modules = ["api", "run", "manage_users", "generate_password"]
+
 [tool.black]
 line-length = 100
 target-version = ["py38", "py39", "py310"]

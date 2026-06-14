@@ -7,3 +7,5 @@ logs/*
 */__pycache__/*
 .venv
 backend/.venv
+*.egg-info/
+backend/*.egg-info/
