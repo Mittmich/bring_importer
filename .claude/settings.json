@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(docker info *)",
+      "Bash(docker compose *)",
+      "Bash(curl -s http://localhost/api/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/index.html)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/login.html)",
+      "Bash(curl -s http://localhost/api/nonexistent)"
+    ]
+  }
+}
