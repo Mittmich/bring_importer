@@ -1,0 +1,23 @@
+{
+  "name": "Recipe to Bring Importer",
+  "short_name": "Recipe2Bring",
+  "description": "Upload recipe photos and import ingredients to Bring shopping list",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3498db",
+  "icons": [
+    {
+      "src": "/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

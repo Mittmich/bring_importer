@@ -33,15 +33,11 @@ class RecipeResponse(BaseModel):
 
 
 class RecipeUpdate(BaseModel):
-    """Body for ``PUT /recipes/{uuid}`` — the editor's editable surface.
-
-    The editor (step 8) only touches the structured fields for v1; the
-    original ``html_content`` is round-tripped unchanged in a hidden form
-    field.
-    """
+    """Body for ``PUT /recipes/{uuid}`` — the editor's editable surface."""
 
     title: Optional[str] = None
     recipeIngredient: Optional[List[str]] = None
+    recipeInstructions: Optional[List[str]] = None
     recipeYield: Optional[str] = None
     description: Optional[str] = None
     note: Optional[str] = None
@@ -51,6 +47,7 @@ class RecipeUpdate(BaseModel):
 class Recipe(BaseModel):
     title: str
     recipeIngredient: List[str]
+    recipeInstructions: Optional[List[str]] = None
     recipeYield: str = "4 servings"
     datePublished: Optional[str] = None
     description: Optional[str] = None

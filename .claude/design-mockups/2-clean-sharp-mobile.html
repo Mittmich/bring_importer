@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Style 2: Clean & Sharp — Mobile</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #E2E8F0;
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 48px;
+      padding: 40px 24px;
+      min-height: 100vh;
+    }
+
+    /* ── Phone frame ── */
+    .phone {
+      width: 390px;
+      height: 844px;
+      background: #F8FAFC;
+      border-radius: 48px;
+      box-shadow: 0 0 0 10px #1E293B, 0 32px 64px rgba(0,0,0,0.35);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    /* Status bar */
+    .status-bar {
+      height: 44px;
+      background: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 28px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #0F172A;
+      flex-shrink: 0;
+    }
+    .status-right { display: flex; gap: 6px; align-items: center; }
+
+    /* Screen container — slides between screens */
+    .screens {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+      display: flex;
+    }
+    .screen {
+      min-width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ── Top app bars ── */
+    .app-bar {
+      height: 56px;
+      background: white;
+      border-bottom: 1px solid #E2E8F0;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .app-bar-title { font-size: 17px; font-weight: 700; color: #0F172A; flex: 1; }
+    .app-bar-action {
+      width: 36px; height: 36px;
+      border-radius: 8px; border: none;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 18px; color: #475569;
+      background: none;
+    }
+    .app-bar-action:active { background: #F1F5F9; }
+    .back-btn {
+      display: flex; align-items: center; gap: 4px;
+      background: none; border: none;
+      color: #6366F1; font-size: 14px; font-weight: 600;
+      cursor: pointer; padding: 4px 0;
+      font-family: 'Inter', sans-serif;
+    }
+    .back-btn svg { width: 18px; height: 18px; }
+    .btn-bring-sm {
+      background: #6366F1; color: white; border: none;
+      padding: 7px 14px; border-radius: 8px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      white-space: nowrap;
+    }
+
+    /* ── Scrollable content ── */
+    .screen-body {
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* ── Recipe list screen ── */
+    .search-bar {
+      padding: 12px 16px;
+      background: white;
+      border-bottom: 1px solid #F1F5F9;
+    }
+    .search-input {
+      width: 100%; padding: 9px 12px 9px 36px;
+      border: 1px solid #E2E8F0; border-radius: 10px;
+      font-size: 14px; color: #475569;
+      background: #F8FAFC url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;
+      outline: none; font-family: 'Inter', sans-serif;
+    }
+    .section-label {
+      padding: 16px 16px 8px;
+      font-size: 11px; font-weight: 600; color: #94A3B8;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .recipe-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px;
+      background: white;
+      border-bottom: 1px solid #F1F5F9;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+    .recipe-row:active { background: #F8FAFC; }
+    .recipe-row-left { display: flex; align-items: center; gap: 12px; }
+    .recipe-icon {
+      width: 44px; height: 44px;
+      background: #F1F5F9; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+    }
+    .recipe-row-name { font-size: 15px; font-weight: 600; color: #0F172A; margin-bottom: 2px; }
+    .recipe-row-meta { font-size: 12px; color: #94A3B8; }
+    .recipe-row-arrow { color: #CBD5E1; font-size: 18px; }
+
+    .import-fab {
+      position: absolute;
+      bottom: 72px; right: 20px;
+      width: 52px; height: 52px;
+      background: #6366F1; color: white;
+      border-radius: 16px; border: none;
+      font-size: 26px; font-weight: 300;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+    }
+
+    /* ── Recipe detail screen ── */
+    .detail-hero {
+      background: white;
+      padding: 20px 16px 16px;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .detail-title { font-size: 22px; font-weight: 700; color: #0F172A; margin-bottom: 10px; }
+    .meta-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .chip {
+      background: #F1F5F9; color: #64748B;
+      padding: 5px 10px; border-radius: 100px;
+      font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .action-row { display: flex; gap: 8px; }
+    .btn-ghost-sm {
+      flex: 1; background: none; border: 1px solid #E2E8F0; color: #475569;
+      padding: 9px; border-radius: 8px;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      font-family: 'Inter', sans-serif; text-align: center;
+    }
+    .btn-indigo-sm {
+      flex: 2; background: #6366F1; color: white; border: none;
+      padding: 9px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      font-family: 'Inter', sans-serif; text-align: center;
+    }
+
+    .detail-card {
+      background: white; margin: 12px 16px 0;
+      border: 1px solid #E2E8F0; border-radius: 12px;
+      overflow: hidden;
+    }
+    .detail-card:last-child { margin-bottom: 16px; }
+    .card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid #F1F5F9;
+      font-size: 11px; font-weight: 600; color: #94A3B8;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .ingredient-list { padding: 4px 0; }
+    .ingredient-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 16px;
+      border-bottom: 1px solid #F8FAFC;
+      font-size: 14px; color: #334155;
+    }
+    .ingredient-row:last-child { border-bottom: none; }
+    .ingredient-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #C7D2FE; flex-shrink: 0;
+    }
+    .step-list { padding: 4px 0; }
+    .step-row {
+      display: flex; gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #F8FAFC;
+      font-size: 14px; line-height: 1.6; color: #334155;
+    }
+    .step-row:last-child { border-bottom: none; }
+    .step-num-badge {
+      font-size: 11px; font-weight: 700; color: #6366F1;
+      min-width: 20px; padding-top: 2px; flex-shrink: 0;
+    }
+
+    /* ── Bottom navigation ── */
+    .bottom-nav {
+      height: 56px;
+      background: white;
+      border-top: 1px solid #E2E8F0;
+      display: flex;
+      flex-shrink: 0;
+    }
+    .nav-tab {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 3px; cursor: pointer;
+      border: none; background: none;
+      color: #94A3B8; font-size: 10px; font-weight: 500;
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nav-tab.active { color: #6366F1; }
+    .nav-tab svg { width: 22px; height: 22px; }
+
+    /* ── Label below phones ── */
+    .phone-label {
+      text-align: center;
+      margin-top: 16px;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px; font-weight: 600;
+      color: #475569;
+    }
+    .phone-sublabel {
+      text-align: center;
+      font-family: 'Inter', sans-serif;
+      font-size: 11px; color: #94A3B8;
+      margin-top: 4px;
+    }
+    .phone-wrapper { display: flex; flex-direction: column; align-items: center; }
+  </style>
+</head>
+<body>
+
+  <!-- ════════ Phone 1: Recipe List ════════ -->
+  <div class="phone-wrapper">
+    <div class="phone">
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span>9:41</span>
+        <div class="status-right">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity=".3"/></svg>
+          <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+          <strong>100%</strong>
+        </div>
+      </div>
+
+      <!-- App bar -->
+      <div class="app-bar">
+        <span class="app-bar-title">My Recipes</span>
+        <button class="app-bar-action">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="8" r="4"/><path d="M6 20v-2a4 4 0 014-4h4a4 4 0 014 4v2"/></svg>
+        </button>
+      </div>
+
+      <!-- Scrollable body -->
+      <div class="screen-body" style="background: #F8FAFC;">
+        <!-- Search -->
+        <div class="search-bar">
+          <input class="search-input" placeholder="Search recipes…" readonly>
+        </div>
+
+        <!-- Recent -->
+        <div class="section-label">Recent</div>
+        <div class="recipe-row">
+          <div class="recipe-row-left">
+            <div class="recipe-icon">🍝</div>
+            <div>
+              <div class="recipe-row-name">Pasta Carbonara</div>
+              <div class="recipe-row-meta">4 servings · 30 min · 2 days ago</div>
+            </div>
+          </div>
+          <span class="recipe-row-arrow">›</span>
+        </div>
+        <div class="recipe-row">
+          <div class="recipe-row-left">
+            <div class="recipe-icon">🍛</div>
+            <div>
+              <div class="recipe-row-name">Butter Chicken</div>
+              <div class="recipe-row-meta">6 servings · 45 min · 5 days ago</div>
+            </div>
+          </div>
+          <span class="recipe-row-arrow">›</span>
+        </div>
+
+        <!-- All recipes -->
+        <div class="section-label">All Recipes</div>
+        <div class="recipe-row">
+          <div class="recipe-row-left">
+            <div class="recipe-icon">🍳</div>
+            <div>
+              <div class="recipe-row-name">Shakshuka</div>
+              <div class="recipe-row-meta">4 servings · 25 min · 1 week ago</div>
+            </div>
+          </div>
+          <span class="recipe-row-arrow">›</span>
+        </div>
+        <div class="recipe-row">
+          <div class="recipe-row-left">
+            <div class="recipe-icon">🍚</div>
+            <div>
+              <div class="recipe-row-name">Lemon Risotto</div>
+              <div class="recipe-row-meta">4 servings · 35 min · 2 weeks ago</div>
+            </div>
+          </div>
+          <span class="recipe-row-arrow">›</span>
+        </div>
+        <div class="recipe-row">
+          <div class="recipe-row-left">
+            <div class="recipe-icon">🥗</div>
+            <div>
+              <div class="recipe-row-name">Caesar Salad</div>
+              <div class="recipe-row-meta">2 servings · 15 min · 3 weeks ago</div>
+            </div>
+          </div>
+          <span class="recipe-row-arrow">›</span>
+        </div>
+      </div>
+
+      <!-- FAB -->
+      <button class="import-fab">+</button>
+
+      <!-- Bottom nav -->
+      <div class="bottom-nav">
+        <button class="nav-tab active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Home
+        </button>
+        <button class="nav-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          Recipes
+        </button>
+        <button class="nav-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Import
+        </button>
+        <button class="nav-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Account
+        </button>
+      </div>
+    </div>
+    <div class="phone-label">Recipe list</div>
+    <div class="phone-sublabel">Home tab · full-screen</div>
+  </div>
+
+  <!-- ════════ Phone 2: Recipe Detail ════════ -->
+  <div class="phone-wrapper">
+    <div class="phone">
+      <!-- Status bar -->
+      <div class="status-bar">
+        <span>9:41</span>
+        <div class="status-right">
+          <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/><rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity=".3"/></svg>
+          <svg width="16" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0114.08 0"/><path d="M1.42 9a16 16 0 0121.16 0"/><path d="M8.53 16.11a6 6 0 016.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
+          <strong>100%</strong>
+        </div>
+      </div>
+
+      <!-- App bar with back -->
+      <div class="app-bar">
+        <button class="back-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          Recipes
+        </button>
+        <span style="flex:1"></span>
+        <button class="btn-bring-sm">Add to Bring</button>
+      </div>
+
+      <!-- Scrollable body -->
+      <div class="screen-body" style="background: #F8FAFC;">
+        <!-- Hero -->
+        <div class="detail-hero">
+          <h1 class="detail-title">Pasta Carbonara</h1>
+          <div class="meta-chips">
+            <span class="chip">🍽 4 servings</span>
+            <span class="chip">⏱ 30 min</span>
+          </div>
+          <div class="action-row">
+            <button class="btn-ghost-sm">Edit</button>
+            <button class="btn-indigo-sm">Add to Bring</button>
+          </div>
+        </div>
+
+        <!-- Ingredients -->
+        <div class="detail-card">
+          <div class="card-header">Ingredients</div>
+          <div class="ingredient-list">
+            <div class="ingredient-row"><span class="ingredient-dot"></span> 400g spaghetti</div>
+            <div class="ingredient-row"><span class="ingredient-dot"></span> 200g guanciale</div>
+            <div class="ingredient-row"><span class="ingredient-dot"></span> 4 large egg yolks</div>
+            <div class="ingredient-row"><span class="ingredient-dot"></span> 100g Pecorino Romano</div>
+            <div class="ingredient-row"><span class="ingredient-dot"></span> Freshly ground black pepper</div>
+            <div class="ingredient-row"><span class="ingredient-dot"></span> Coarse salt</div>
+          </div>
+        </div>
+
+        <!-- Instructions -->
+        <div class="detail-card">
+          <div class="card-header">Instructions</div>
+          <div class="step-list">
+            <div class="step-row"><span class="step-num-badge">01</span><span>Bring a large pot of well-salted water to a boil. Cook spaghetti until al dente.</span></div>
+            <div class="step-row"><span class="step-num-badge">02</span><span>Cut guanciale into cubes and fry over medium heat until crisp and golden. Remove from heat.</span></div>
+            <div class="step-row"><span class="step-num-badge">03</span><span>Whisk egg yolks with grated Pecorino Romano and a generous amount of black pepper.</span></div>
+            <div class="step-row"><span class="step-num-badge">04</span><span>Reserve ½ cup pasta water, then drain pasta and add to the pan with guanciale.</span></div>
+            <div class="step-row"><span class="step-num-badge">05</span><span>Off the heat, pour in the egg mixture. Toss rapidly, adding pasta water until glossy.</span></div>
+            <div class="step-row"><span class="step-num-badge">06</span><span>Serve immediately with extra Pecorino and black pepper.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom nav -->
+      <div class="bottom-nav">
+        <button class="nav-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Home
+        </button>
+        <button class="nav-tab active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+          Recipes
+        </button>
+        <button class="nav-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Import
+        </button>
+        <button class="nav-tab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          Account
+        </button>
+      </div>
+    </div>
+    <div class="phone-label">Recipe detail</div>
+    <div class="phone-sublabel">← back to list · Recipes tab active</div>
+  </div>
+
+</body>
+</html>
