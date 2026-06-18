@@ -19,7 +19,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-}
       APP_VERSION: ${APP_VERSION:-1.0.0}
     volumes:
-      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend-react/dist:/usr/share/nginx/html:ro
       - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./logs:/var/log/nginx
     depends_on:

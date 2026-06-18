@@ -126,10 +126,10 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
-  # Frontend lint: eslint + prettier
+  # Frontend: type-check + build (React/Vite)
   # ---------------------------------------------------------------------------
-  frontend-lint:
-    name: Frontend lint (eslint + prettier)
+  frontend-build:
+    name: Frontend build (React + Vite)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -138,21 +138,17 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: frontend-react/package-lock.json
 
       - name: Install npm deps
-        working-directory: frontend
+        working-directory: frontend-react
         run: npm ci
 
-      - name: eslint
-        working-directory: frontend
-        run: npm run lint
-
-      - name: prettier --check
-        working-directory: frontend
-        run: npm run format:check
+      - name: Type-check + build
+        working-directory: frontend-react
+        run: npm run build
 
   # ---------------------------------------------------------------------------
   # Docker build: validate backend/Dockerfile builds cleanly
