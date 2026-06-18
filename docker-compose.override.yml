@@ -1,0 +1,9 @@
+# Dev overrides: live-reloads the backend on code changes.
+# Applied automatically by `docker compose up` — no extra flags needed.
+# Mounts only source files so the image-built .venv is not hidden.
+services:
+  backend:
+    volumes:
+      - ./backend/api:/app/api
+      - ./backend/run.py:/app/run.py
+    command: [".venv/bin/uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]

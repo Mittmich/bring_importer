@@ -1,4 +1,4 @@
-const CACHE_NAME = 'recipe-to-bring-cache-v3';
+const CACHE_NAME = 'recipe-to-bring-cache-v4';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -44,9 +44,11 @@ self.addEventListener('activate', (event) => {
 // Fetch event - serve from cache if available, otherwise fetch from network
 self.addEventListener('fetch', (event) => {
   // Skip cross-origin requests and API calls
+  const requestUrl = new URL(event.request.url);
   if (
     !event.request.url.startsWith(self.location.origin) ||
-    event.request.url.includes('api.openai.com')
+    event.request.url.includes('api.openai.com') ||
+    requestUrl.pathname.startsWith('/api/')
   ) {
     return;
   }
