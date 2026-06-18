@@ -54,7 +54,7 @@ jobs:
       - name: Pull latest code
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
-            sudo chown -R $USER:$USER ${{ secrets.LIGHTSAIL_APP_PATH }}/.git
+            sudo chown -R $USER:$USER ${{ secrets.LIGHTSAIL_APP_PATH }}
             cd ${{ secrets.LIGHTSAIL_APP_PATH }}
             git fetch origin
             git reset --hard origin/main
