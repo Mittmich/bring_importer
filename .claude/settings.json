@@ -9,7 +9,9 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/index.html)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost/login.html)",
-      "Bash(curl -s http://localhost/api/nonexistent)"
+      "Bash(curl -s http://localhost/api/nonexistent)",
+      "Bash(npm run *)",
+      "Bash(echo \"exit: $?\")"
     ]
   }
 }
