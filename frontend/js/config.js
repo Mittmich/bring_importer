@@ -2,10 +2,9 @@
 const config = {
   // API backend URL. Treat an unsubstituted ``{{...}}`` placeholder as
   // "not set" so dev (no nginx) falls back to localhost:8001 cleanly.
-  apiUrl: (
-    window.ENV && window.ENV.API_URL && !/^\{\{/.test(window.ENV.API_URL)
-      ? window.ENV.API_URL
-      : localStorage.getItem('API_URL') || 'http://localhost:8001'
+  apiUrl: (window.ENV && window.ENV.API_URL && !/^\{\{/.test(window.ENV.API_URL)
+    ? window.ENV.API_URL
+    : localStorage.getItem('API_URL') || 'http://localhost:8001'
   ).replace(/\/$/, ''),
 
   // Frontend URL with fallback to current origin
