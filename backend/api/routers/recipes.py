@@ -311,8 +311,14 @@ async def update_recipe(
 
     # "title" in RecipeUpdate maps to "name" in the stored Schema.org JSON blob.
     _JSON_KEY: Dict[str, str] = {"title": "name"}
-    for field in ("title", "recipeIngredient", "recipeInstructions",
-                  "recipeYield", "description", "html_content"):
+    for field in (
+        "title",
+        "recipeIngredient",
+        "recipeInstructions",
+        "recipeYield",
+        "description",
+        "html_content",
+    ):
         value = getattr(body, field)
         if value is not None:
             stored[_JSON_KEY.get(field, field)] = value
