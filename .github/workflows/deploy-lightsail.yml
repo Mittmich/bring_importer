@@ -53,8 +53,12 @@ jobs:
 
       - name: Pull latest code
         run: |
-          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
-            'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && git fetch origin && git reset --hard origin/main'
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+            sudo chown -R $USER:$USER ${{ secrets.LIGHTSAIL_APP_PATH }}/.git
+            cd ${{ secrets.LIGHTSAIL_APP_PATH }}
+            git fetch origin
+            git reset --hard origin/main
+          '
 
       - name: Write .env from secrets
         env:
