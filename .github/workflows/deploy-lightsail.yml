@@ -71,6 +71,7 @@ jobs:
             echo "NGINX_PORT=80"
             echo "BACKEND_PORT=8001"
             echo "COMPOSE_PROJECT_NAME=bring_importer"
+            echo "API_URL=/api"
           } | ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
               "cat > ${{ secrets.LIGHTSAIL_APP_PATH }}/.env"
 
