@@ -255,23 +255,14 @@ Recommendation: start with build-on-server (simpler). Switch to GHCR if deploy t
 | `start.sh` | Delete |
 | `stop.sh` | Delete |
 
-## One-time server setup
-
-Before the new deploy workflow can run, the Lightsail instance needs Docker and Compose installed, and the deploy user must be in the `docker` group:
-
-```bash
-# Install Docker Engine (Ubuntu)
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin
-
-# Allow deploy user to run docker without sudo
-sudo usermod -aG docker $USER   # log out + back in to take effect
-```
-
-This is a one-time manual step; it does not go in the workflow.
-
 ## Outcome
 
 All 9 steps implemented. `start.sh` and `stop.sh` deleted. Stack is now `docker compose up -d`. CI validates the Dockerfile on every PR. Deploy pipeline reduced from 7 steps to 2 (pull + `docker compose up -d --build`).
+
+Post-merge additions to `deploy-lightsail.yml`:
+- Idempotent Docker install step (mirrors old uv idempotent install pattern).
+- `OPENAI_API_KEY` and `SECRET_KEY` sourced from GitHub secrets and written to the server's `.env` via `cat > .env` over SSH stdin — no values on the command line, masked in logs.
+- `sudo docker compose` used for the deploy command to handle the race where Docker was just installed but the `docker` group isn't active in the current session yet.
 
 ## Definition of done
 

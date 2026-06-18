@@ -4,9 +4,13 @@
 # This is enforced by the `workflow_run` event below — no commit can reach
 # the server without first passing CI (lint, typecheck, test, docker-build).
 #
-# One-time server setup (run manually on the Lightsail instance):
-#   sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin
-#   sudo usermod -aG docker $USER   # then log out + back in
+# Required GitHub secrets:
+#   LIGHTSAIL_SSH_KEY     — private SSH key for the Lightsail instance
+#   LIGHTSAIL_HOST        — public IP or hostname of the instance
+#   LIGHTSAIL_USER        — SSH user (e.g. ubuntu)
+#   LIGHTSAIL_APP_PATH    — absolute path to the repo on the instance (e.g. /home/ubuntu/bring_importer)
+#   OPENAI_API_KEY        — passed into the container via .env
+#   SECRET_KEY            — JWT signing secret; passed into the container via .env
 
 name: Deploy to AWS Lightsail
 
@@ -33,15 +37,44 @@ jobs:
       - name: Add Lightsail host to known_hosts
         run: ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
 
+      - name: Ensure Docker is installed on Lightsail
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker not found — installing..."
+              sudo apt-get update -qq
+              sudo apt-get install -y docker.io docker-compose-plugin
+              sudo usermod -aG docker $USER
+              echo "Docker installed."
+            else
+              echo "Docker already present: $(docker --version)"
+            fi
+          '
+
       - name: Pull latest code
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
             'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && git fetch origin && git reset --hard origin/main'
 
+      - name: Write .env from secrets
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+        run: |
+          {
+            echo "OPENAI_API_KEY=${OPENAI_API_KEY}"
+            echo "SECRET_KEY=${SECRET_KEY}"
+            echo "APP_VERSION=$(git rev-parse --short HEAD)"
+            echo "NGINX_PORT=80"
+            echo "BACKEND_PORT=8001"
+            echo "COMPOSE_PROJECT_NAME=bring_importer"
+          } | ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
+              "cat > ${{ secrets.LIGHTSAIL_APP_PATH }}/.env"
+
       - name: Deploy with docker compose
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
-            'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && docker compose up -d --build'
+            'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo docker compose up -d --build'
 
       - name: Print deployment success
         run: echo "Deployment to AWS Lightsail completed."
