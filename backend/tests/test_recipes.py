@@ -372,13 +372,14 @@ def test_update_recipe_round_trip(client, auth_headers, mocked_openai, tmp_db_pa
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert body["title"] == "Updated Pancakes"
+    # The stored JSON uses Schema.org "name" — not "title" — as the title key.
+    assert body["name"] == "Updated Pancakes"
     assert body["note"] == "Used the 3.5 cup flour trick."
     assert body["recipeIngredient"] == ["1.5 cup flour", "2 eggs"]
 
     # The public JSON endpoint reflects the update.
     pub = client.get(f"/recipes/{recipe_uuid}.json")
-    assert pub.json()["title"] == "Updated Pancakes"
+    assert pub.json()["name"] == "Updated Pancakes"
 
     # The note column is also persisted at the row level.
     conn = sqlite3.connect(str(tmp_db_path))

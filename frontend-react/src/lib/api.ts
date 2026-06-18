@@ -39,12 +39,14 @@ export interface RecipeListItem {
   uuid: string
   title: string
   datePublished?: string
+  createdAt?: string
   source: { kind: string; value: string }
 }
 
 export interface RecipeUpdate {
   title?: string
   recipeIngredient?: string[]
+  recipeInstructions?: string[]
   recipeYield?: string
   description?: string
   note?: string
@@ -54,6 +56,7 @@ export interface RecipeUpdate {
 export interface Recipe {
   name: string
   recipeIngredient: string[]
+  recipeInstructions?: string[]
   recipeYield?: string
   description?: string
   html_content?: string

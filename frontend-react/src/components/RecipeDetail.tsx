@@ -140,14 +140,17 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           )}
 
           {/* Instructions */}
-          {recipe.html_content && (
+          {(recipe.recipeInstructions?.length || recipe.html_content) && (
             <div className="bg-white rounded-lg border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Instructions
                 </h2>
               </div>
-              <InstructionsDisplay html={recipe.html_content} />
+              {recipe.recipeInstructions?.length
+                ? <StructuredInstructions steps={recipe.recipeInstructions} />
+                : <InstructionsDisplay html={recipe.html_content!} />
+              }
             </div>
           )}
 
@@ -190,6 +193,21 @@ export function RecipeDetail({ uuid, recipe }: Props) {
         </div>
       </div>
     </div>
+  )
+}
+
+function StructuredInstructions({ steps }: { steps: string[] }) {
+  return (
+    <ol className="divide-y divide-border/50">
+      {steps.map((step, i) => (
+        <li key={i} className="flex gap-3 px-4 py-3">
+          <span className="text-xs font-bold text-primary min-w-[20px] pt-0.5 tabular-nums">
+            {String(i + 1).padStart(2, '0')}
+          </span>
+          <span className="text-sm text-foreground leading-relaxed">{step}</span>
+        </li>
+      ))}
+    </ol>
   )
 }
 

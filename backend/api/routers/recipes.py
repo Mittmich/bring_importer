@@ -54,6 +54,7 @@ def _store_recipe(
         "@type": "Recipe",
         "name": recipe.title,
         "recipeIngredient": recipe.recipeIngredient,
+        "recipeInstructions": recipe.recipeInstructions,
         "recipeYield": recipe.recipeYield,
         "datePublished": recipe.datePublished,
         "description": recipe.description,
@@ -252,7 +253,8 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT uuid, title, recipe_json FROM recipes WHERE user_id = ? ORDER BY created_at DESC",
+        "SELECT uuid, title, recipe_json, created_at FROM recipes "
+        "WHERE user_id = ? ORDER BY created_at DESC",
         (user_id,),
     )
     rows = cursor.fetchall()
@@ -270,6 +272,7 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
                 "uuid": row["uuid"],
                 "title": row["title"],
                 "datePublished": recipe_json.get("datePublished"),
+                "createdAt": row["created_at"],
                 "source": source,
             }
         )
@@ -306,13 +309,16 @@ async def update_recipe(
     except Exception:
         stored = {}
 
-    for field in ("title", "recipeIngredient", "recipeYield", "description", "html_content"):
+    # "title" in RecipeUpdate maps to "name" in the stored Schema.org JSON blob.
+    _JSON_KEY: Dict[str, str] = {"title": "name"}
+    for field in ("title", "recipeIngredient", "recipeInstructions",
+                  "recipeYield", "description", "html_content"):
         value = getattr(body, field)
         if value is not None:
-            stored[field] = value
+            stored[_JSON_KEY.get(field, field)] = value
     if body.note is not None:
         stored["note"] = body.note
-    new_title = stored.get("title", "")
+    new_title = stored.get("name", "")
     new_note = stored.get("note", "")
 
     cursor.execute(

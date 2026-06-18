@@ -23,6 +23,7 @@ export function EditRecipePage() {
   const [yield_, setYield] = useState('')
   const [description, setDescription] = useState('')
   const [ingredients, setIngredients] = useState('')
+  const [instructions, setInstructions] = useState('')
   const [note, setNote] = useState('')
 
   useEffect(() => {
@@ -31,6 +32,7 @@ export function EditRecipePage() {
     setYield(recipe.recipeYield ?? '')
     setDescription(recipe.description ?? '')
     setIngredients((recipe.recipeIngredient ?? []).join('\n'))
+    setInstructions((recipe.recipeInstructions ?? []).join('\n'))
     setNote(recipe.note ?? '')
   }, [recipe])
 
@@ -41,6 +43,7 @@ export function EditRecipePage() {
         recipeYield: yield_,
         description,
         recipeIngredient: ingredients.split('\n').map((s) => s.trim()).filter(Boolean),
+        recipeInstructions: instructions.split('\n').map((s) => s.trim()).filter(Boolean),
         note,
       }),
     onSuccess: () => {
@@ -127,6 +130,19 @@ export function EditRecipePage() {
               value={ingredients}
               onChange={(e) => setIngredients(e.target.value)}
               placeholder={'400g spaghetti\n200g guanciale\n4 egg yolks'}
+              rows={8}
+              className="font-mono text-sm"
+            />
+          </div>
+
+          <div className="bg-white rounded-xl border border-border p-5 space-y-1.5">
+            <Label htmlFor="instructions">Instructions</Label>
+            <p className="text-xs text-muted-foreground">One step per line</p>
+            <Textarea
+              id="instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder={'Boil salted water.\nCook pasta until al dente.\nMix eggs and cheese.'}
               rows={8}
               className="font-mono text-sm"
             />

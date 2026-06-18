@@ -107,9 +107,31 @@ def _extract_recipe_from_html(html: str) -> Recipe:
     description_element = recipe_element.find(attrs={"itemprop": "description"})
     description = description_element.text.strip() if description_element else ""
 
+    # Extract instruction steps.
+    # Prefer elements tagged itemprop="recipeInstructions"; fall back to <ol><li>.
+    instruction_elements = recipe_element.find_all(attrs={"itemprop": "recipeInstructions"})
+    instructions: list = []
+    for el in instruction_elements:
+        sub_steps = el.find_all("li")
+        if sub_steps:
+            instructions.extend(
+                li.get_text(" ", strip=True) for li in sub_steps if li.get_text(strip=True)
+            )
+        else:
+            text = el.get_text(" ", strip=True)
+            if text:
+                instructions.append(text)
+    if not instructions:
+        ol = recipe_element.find("ol")
+        if ol:
+            instructions = [
+                li.get_text(" ", strip=True) for li in ol.find_all("li") if li.get_text(strip=True)
+            ]
+
     return Recipe(
         title=title,
         recipeIngredient=ingredients,
+        recipeInstructions=instructions or None,
         recipeYield=recipe_yield,
         description=description,
         datePublished=datetime.now().strftime("%Y-%m-%d"),
@@ -218,9 +240,26 @@ def extract_recipe_from_jsonld(jsonld_obj: Any) -> Optional[Recipe]:
     if isinstance(description, list):
         description = " ".join(str(d) for d in description)
 
+    # recipeInstructions can be a string, list of strings, or list of HowToStep dicts.
+    raw_instr = found.get("recipeInstructions") or []
+    instructions: list = []
+    if isinstance(raw_instr, str):
+        if raw_instr:
+            instructions = [raw_instr]
+    elif isinstance(raw_instr, list):
+        for step in raw_instr:
+            if isinstance(step, str):
+                if step:
+                    instructions.append(step)
+            elif isinstance(step, dict):
+                text = step.get("text") or step.get("name") or ""
+                if text:
+                    instructions.append(text)
+
     return Recipe(
         title=name,
         recipeIngredient=ingredients,
+        recipeInstructions=instructions or None,
         recipeYield=str(yield_),
         description=description,
         datePublished=datetime.now().strftime("%Y-%m-%d"),

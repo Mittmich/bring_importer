@@ -101,7 +101,7 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
           {recipe.title}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {relativeDate(recipe.datePublished)}
+          {relativeDate(recipe.datePublished ?? recipe.createdAt)}
           {recipe.source?.kind === 'url' && recipe.source.value && (
             <> · {new URL(recipe.source.value).hostname.replace('www.', '')}</>
           )}
