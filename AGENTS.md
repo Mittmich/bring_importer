@@ -34,9 +34,11 @@ A Progressive Web App that turns a recipe photo into a **Bring!** shopping list:
 | `frontend/css/`               | Styles.                                                                   |
 | `frontend/service-worker.js`  | Bump cache version when shipping frontend changes.                        |
 | `frontend/manifest.json`      | PWA manifest.                                                             |
-| `nginx.conf.template`         | Template — do not edit the rendered `nginx.conf` directly.                |
-| `start.sh` / `stop.sh`        | Orchestrate backend + Nginx. Reads `.env`.                                |
-| `setup-dev.sh` / `setup-env.sh` | One-shot dev environment bootstrap.                                     |
+| `nginx.conf.template`         | Template — the nginx container renders it at startup via envsubst.        |
+| `docker-compose.yml`          | Orchestrates backend + nginx. `docker compose up -d` to start.           |
+| `docker-compose.override.yml` | Dev overrides: live-reload backend with `--reload`.                      |
+| `backend/Dockerfile`          | Backend container image (python:3.12-slim + uv).                         |
+| `setup-dev.sh` / `setup-env.sh` | One-shot dev environment bootstrap (bare-metal only).                  |
 | `.devcontainer/`              | VS Code dev container (Python + Ruff + Black + isort).                    |
 | `.env.example`                | Reference env vars. Never commit a real `.env`.                          |
 
@@ -56,16 +58,16 @@ NGINX_PORT=80
 BACKEND_PORT=8001
 ```
 
-Bootstrap:
+Bootstrap (Docker):
 
 ```bash
-./setup-dev.sh                 # creates backend/.venv, installs deps (uv preferred, else pip)
-./setup-env.sh                 # OS-level deps (nginx, etc.)
-./start.sh                     # full stack
-./stop.sh
+cp .env.example .env           # fill in OPENAI_API_KEY and SECRET_KEY
+docker compose up -d           # builds backend image, starts backend + nginx
+docker compose logs -f         # tail logs
+docker compose down            # stop everything
 ```
 
-Bare backend (no Nginx):
+Bare backend (no Docker, rapid iteration):
 
 ```bash
 cd backend && source .venv/bin/activate && python3 run.py   # http://localhost:8001
@@ -139,24 +141,17 @@ If you add tests, follow FastAPI's `TestClient` convention and put them under `b
 
 ## Plans workflow (read this before non-trivial work)
 
-This repo uses **plan files in `.pi/plans/`** as the source of truth for in-flight work. The convention is fully documented in `.pi/plans/README.md` and the frontmatter / section structure is fixed in `.pi/plans/_template.md`. Three prompt templates and one extension wire it into pi:
-
-| Resource                                       | Purpose                                                           |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| `.pi/prompts/plan.md`                          | `/plan <topic>` — creates a new plan file in `draft` status.     |
-| `.pi/prompts/plan-execute.md`                  | `/plan-execute <name>` — reads a plan, executes it, updates it.   |
-| `.pi/prompts/plan-list.md`                     | `/plan-list` — lists all plans grouped by status.                 |
-| `.pi/extensions/active-plans.ts`               | Auto-injects `active` + `draft` plans into every turn's context.  |
+This repo uses **plan files in `.claude/plans/`** as the source of truth for in-flight work.
 
 ### When to make a plan
 
-- **Make a plan** for any non-trivial change (multi-step, multi-file, or anything the user might want to review before code is written). Use `/plan <topic>`.
+- **Make a plan** for any non-trivial change (multi-step, multi-file, or anything the user might want to review before code is written).
 - **Skip the plan** for trivial fixes (one-line typo, single-file obvious bug fix) — but if in doubt, make the plan. The cost of a short plan file is tiny compared to the cost of going the wrong direction.
-- **Always** read the active plan (if any) before starting work that touches the same area. The `active-plans` extension will usually surface it; if not, run `/plan-list` or `ls .pi/plans/`.
+- **Always** read the active plan (if any) before starting work that touches the same area. Run `ls .claude/plans/` to list plans.
 
 ### When executing a plan
 
-- Follow `.pi/prompts/plan-execute.md` literally: read the plan, confirm with the user, flip `status: draft` → `status: active`, do the work **in step order**, and edit the plan file to check off each step as you finish. The plan file is the progress log — never rely on chat history.
+- Read the plan file from `.claude/plans/`, confirm with the user, flip `status: draft` → `status: active`, do the work **in step order**, and edit the plan file to check off each step as you finish. The plan file is the progress log — never rely on chat history.
 - Update the plan's `updated:` frontmatter field whenever you change the file.
 - When all steps are checked: set `status: done` and append an `## Outcome` section.
 
@@ -167,7 +162,7 @@ This repo uses **plan files in `.pi/plans/`** as the source of truth for in-flig
 ## Things to watch out for
 
 - The dev container `devcontainer.json` has a hard-coded host path (`/home/michael/bring_importer`) and a host user (`michael`). If you regenerate the container, update those to match the current host or VS Code will fail to mount.
-- `start.sh` uses `envsubst` to render `nginx.conf` from `nginx.conf.template`. If you add new placeholders, make sure they're listed in the `envsubst` call in `start.sh`.
+- `nginx.conf.template` is rendered by the nginx container at startup via `envsubst`. If you add a new `${VAR}` placeholder, make sure it is set in the `environment:` block of the `nginx` service in `docker-compose.yml`.
 - The `setup-dev.sh` script has a `#!/bin/zsh` shebang — run it with `zsh` if your default shell is bash and you hit odd quoting issues.
 - OpenAI model: pinned to GPT-4o for vision. Don't silently downgrade — surface it if cost/availability forces a change.
 - The Bring! API is third-party and can change; keep the Bring client code isolated so it's easy to update.

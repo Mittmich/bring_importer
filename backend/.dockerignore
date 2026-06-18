@@ -1,0 +1,9 @@
+.venv
+__pycache__
+*.pyc
+*.egg-info
+recipes.db
+users.json
+.env
+tests/
+TESTING.md

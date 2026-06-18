@@ -95,37 +95,31 @@ python -m http.server 8000
 
 Then navigate to http://localhost:8000 in your browser.
 
-### Running with Nginx
+### Running with Docker Compose (recommended)
 
-For production-like deployments, you can use Nginx to serve the static frontend files and proxy API requests to the backend:
+Docker Compose builds the backend image and starts both the FastAPI backend and an Nginx reverse proxy with a single command. No host-level Python, nginx, or uv installation needed.
 
-1. Make sure Nginx is installed:
+1. Copy `.env.example` to `.env` and fill in the required values:
    ```bash
-   brew install nginx     # On macOS
-   # or
-   sudo apt install nginx # On Ubuntu/Debian
+   cp .env.example .env
+   # edit .env — set OPENAI_API_KEY and SECRET_KEY at minimum
    ```
 
-2. Start the application using the provided script:
+2. Start the stack:
    ```bash
-   ./start.sh
+   docker compose up -d
    ```
-   
-   This script will:
-   - Start the FastAPI backend
-   - Configure and start Nginx with the provided configuration
-   - Serve the frontend at http://localhost:80
-   - Proxy API requests from /api/* to the backend
+   The frontend is served at http://localhost (or `http://localhost:$NGINX_PORT`).
 
-3. To stop the application:
+3. Tail logs:
    ```bash
-   ./stop.sh
+   docker compose logs -f
    ```
 
-Note: If you want to run Nginx on port 80, you'll need to run the start script with sudo privileges:
-```bash
-sudo ./start.sh
-```
+4. Stop:
+   ```bash
+   docker compose down
+   ```
 
 ### Requirements
 
@@ -249,13 +243,14 @@ make hooks
 
 ### CI
 
-Every push and PR to `main` runs `.github/workflows/ci.yml` with three parallel jobs:
+Every push and PR to `main` runs `.github/workflows/ci.yml` with four parallel jobs:
 
 - **Lint** — `ruff check` + `black --check` + `isort --check-only`
-- **Type-check** — `mypy backend/` (currently `continue-on-error: true` until type hints land)
+- **Type-check** — `mypy backend/`
 - **Test** — `pytest --cov-fail-under=80` with JUnit XML uploaded as an artifact
+- **Docker build** — validates `backend/Dockerfile` builds successfully (with GHA layer cache)
 
-All three must pass before a PR can be merged. The existing `deploy-lightsail.yml` is gated on the `CI` workflow succeeding on `main` via the `workflow_run` event.
+All four must pass before a PR can be merged. `deploy-lightsail.yml` is gated on the `CI` workflow succeeding on `main` via the `workflow_run` event.
 
 To run the same checks locally:
 

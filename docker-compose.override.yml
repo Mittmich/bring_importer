@@ -1,0 +1,7 @@
+# Dev overrides: live-reloads the backend on code changes.
+# Applied automatically by `docker compose up` — no extra flags needed.
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+    command: uvicorn api:app --host 0.0.0.0 --port 8001 --reload
