@@ -38,25 +38,25 @@ export function RecipeListPanel({ activeUuid }: Props) {
   return (
     <div className="flex flex-col w-full md:w-[300px] md:min-w-[300px] border-r border-border bg-white h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3.5 border-b border-border">
-        <span className="text-sm font-semibold text-foreground">Recipes</span>
+      <div className="flex items-center justify-between px-4 py-4 border-b border-border">
+        <span className="text-base font-semibold text-foreground">Recipes</span>
         <button
           onClick={onImport}
-          className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+          className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
         >
-          <Plus className="w-3.5 h-3.5" /> Import
+          <Plus className="w-4 h-4" /> Import
         </button>
       </div>
 
       {/* Search */}
-      <div className="px-3 py-2 border-b border-border/50">
+      <div className="px-3 py-2.5 border-b border-border/50">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search recipes…"
-            className="w-full pl-8 pr-3 py-1.5 text-sm bg-muted/50 rounded-md border border-transparent focus:outline-none focus:border-ring focus:bg-white transition-colors placeholder:text-muted-foreground"
+            className="w-full pl-9 pr-3 py-2.5 text-base bg-muted/50 rounded-md border border-transparent focus:outline-none focus:border-ring focus:bg-white transition-colors placeholder:text-muted-foreground"
           />
         </div>
       </div>
@@ -87,27 +87,27 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
     <NavLink
       to={`/recipes/${recipe.uuid}`}
       className={cn(
-        'flex items-center justify-between px-4 py-3 border-b border-border/50 transition-colors',
+        'flex items-center justify-between px-4 py-4 border-b border-border/50 transition-colors',
         isActive ? 'bg-primary/5' : 'hover:bg-muted/40',
       )}
     >
       <div className="min-w-0">
         <p
           className={cn(
-            'text-sm font-medium truncate',
+            'text-base font-medium truncate',
             isActive ? 'text-primary' : 'text-foreground',
           )}
         >
           {recipe.title}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5">
+        <p className="text-sm text-muted-foreground mt-1">
           {relativeDate(recipe.datePublished ?? recipe.createdAt)}
           {recipe.source?.kind === 'url' && recipe.source.value && (
             <> · {new URL(recipe.source.value).hostname.replace('www.', '')}</>
           )}
         </p>
       </div>
-      <ChevronRight className={cn('w-4 h-4 flex-shrink-0 ml-2', isActive ? 'text-primary' : 'text-muted-foreground/50')} />
+      <ChevronRight className={cn('w-5 h-5 flex-shrink-0 ml-2', isActive ? 'text-primary' : 'text-muted-foreground/50')} />
     </NavLink>
   )
 }

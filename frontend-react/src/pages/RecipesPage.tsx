@@ -36,7 +36,7 @@ export function RecipesPage() {
           </div>
         ) : recipe ? (
           <div className="flex-1 overflow-hidden">
-            <RecipeDetail uuid={uuid} recipe={recipe} />
+            <RecipeDetail key={uuid} uuid={uuid} recipe={recipe} />
           </div>
         ) : null}
       </div>

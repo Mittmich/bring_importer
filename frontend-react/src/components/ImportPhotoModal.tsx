@@ -4,6 +4,36 @@ import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 
+const MAX_PX = 1024
+const JPEG_QUALITY = 0.82
+
+function downscaleImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let { width, height } = img
+      if (width > MAX_PX || height > MAX_PX) {
+        if (width >= height) {
+          height = Math.round((height * MAX_PX) / width)
+          width = MAX_PX
+        } else {
+          width = Math.round((width * MAX_PX) / height)
+          height = MAX_PX
+        }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+      resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY))
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -28,11 +58,14 @@ export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: 
     onOpenChange(false)
   }
 
-  function handleFile(file: File) {
-    const reader = new FileReader()
-    reader.onload = (e) => setPreview(e.target?.result as string)
-    reader.readAsDataURL(file)
+  async function handleFile(file: File) {
     setError(null)
+    try {
+      const dataUrl = await downscaleImage(file)
+      setPreview(dataUrl)
+    } catch {
+      setError('Could not read image.')
+    }
   }
 
   async function handleParse() {
