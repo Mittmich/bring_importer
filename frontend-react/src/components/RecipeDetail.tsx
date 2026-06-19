@@ -5,7 +5,51 @@ import { ArrowLeft, Pencil, Trash2, ExternalLink } from 'lucide-react'
 import { api, type Recipe } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { config } from '@/lib/config'
+
+function parseServings(recipeYield?: string): number {
+  if (!recipeYield) return 4
+  const m = recipeYield.match(/\d+/)
+  return m ? parseInt(m[0], 10) : 4
+}
+
+function servingsUnit(recipeYield?: string): string {
+  if (!recipeYield) return 'servings'
+  return recipeYield.replace(/^\d+\s*/, '').trim() || 'servings'
+}
+
+// Scale a number to a readable form, using Unicode fraction symbols for
+// common values (½, ⅓, ¼ …) and one decimal place otherwise.
+function formatAmount(n: number): string {
+  n = Math.round(n * 100) / 100
+  const whole = Math.floor(n)
+  const frac = n - whole
+  const FRACS: [number, string][] = [
+    [1 / 4, '¼'], [1 / 3, '⅓'], [1 / 2, '½'], [2 / 3, '⅔'], [3 / 4, '¾'],
+  ]
+  for (const [val, sym] of FRACS) {
+    if (Math.abs(frac - val) < 0.06) return whole > 0 ? `${whole}${sym}` : sym
+  }
+  if (frac < 0.05) return String(whole)
+  const fixed = Math.round(n * 10) / 10
+  return fixed % 1 === 0 ? String(fixed) : fixed.toFixed(1)
+}
+
+// Scale all numbers in an ingredient string by `factor`.
+// Handles: integers ("2"), decimals ("1.5", "1,5"), fractions ("1/2"),
+// and mixed numbers ("1 1/2").
+function scaleIngredient(text: string, factor: number): string {
+  if (Math.abs(factor - 1) < 0.001) return text
+  return text.replace(
+    /(\d+)\s+(\d+)\s*\/\s*(\d+)|(\d+)\s*\/\s*(\d+)|(\d+(?:[.,]\d+)?)/g,
+    (_m, mW, mN, mD, fN, fD, num) => {
+      const value =
+        mW !== undefined ? parseInt(mW) + parseInt(mN) / parseInt(mD)
+        : fN !== undefined ? parseInt(fN) / parseInt(fD)
+        : parseFloat(num.replace(',', '.'))
+      return formatAmount(value * factor)
+    },
+  )
+}
 
 interface Props {
   uuid: string
@@ -17,6 +61,11 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
 
+  const baseServings = parseServings(recipe.recipeYield)
+  const unit = servingsUnit(recipe.recipeYield)
+  const [servings, setServings] = useState(baseServings)
+  const scale = servings / baseServings
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteRecipe(uuid),
     onSuccess: () => {
@@ -25,22 +74,25 @@ export function RecipeDetail({ uuid, recipe }: Props) {
     },
   })
 
-  const bringUrl = `${config.frontendUrl}/api/recipes/${uuid}.json`
-  const bringImportUrl = `https://www.getbring.com/excuse?source=bringrecipe&url=${encodeURIComponent(bringUrl)}`
+  const bringUrl = `${window.location.origin}/api/recipes/${uuid}.json`
+  const bringImportUrl =
+    `https://api.getbring.com/rest/bringrecipes/deeplink` +
+    `?url=${encodeURIComponent(bringUrl)}` +
+    `&baseQuantity=${baseServings}&requestedQuantity=${servings}&source=web`
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC]">
       {/* Mobile top bar */}
-      <div className="md:hidden flex items-center gap-2 px-4 py-3 bg-white border-b border-border">
+      <div className="md:hidden flex items-center gap-2 px-4 py-4 bg-white border-b border-border">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1 text-sm font-medium text-primary"
+          className="flex items-center gap-1.5 text-base font-medium text-primary"
         >
-          <ArrowLeft className="w-4 h-4" /> Recipes
+          <ArrowLeft className="w-5 h-5" /> Recipes
         </button>
         <span className="flex-1" />
         <Button variant="outline" size="sm" onClick={() => navigate(`/recipes/${uuid}/edit`)}>
-          <Pencil className="w-3.5 h-3.5" />
+          <Pencil className="w-4 h-4" />
         </Button>
       </div>
 
@@ -51,7 +103,19 @@ export function RecipeDetail({ uuid, recipe }: Props) {
 
           <div className="flex flex-wrap gap-2 mb-4">
             {recipe.recipeYield && (
-              <Badge variant="muted">🍽 {recipe.recipeYield}</Badge>
+              <div className="flex items-center gap-1 px-2 py-1 rounded-full border border-border bg-muted/50 text-sm font-medium text-muted-foreground select-none">
+                <button
+                  onClick={() => setServings((s) => Math.max(1, s - 1))}
+                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-lg leading-none"
+                  aria-label="Fewer servings"
+                >−</button>
+                <span className="px-1">🍽 {servings} {unit}</span>
+                <button
+                  onClick={() => setServings((s) => s + 1)}
+                  className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-lg leading-none"
+                  aria-label="More servings"
+                >+</button>
+              </div>
             )}
             {recipe.source?.kind === 'url' && recipe.source.value && (
               <Badge variant="muted">
@@ -69,7 +133,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           </div>
 
           {recipe.description && (
-            <p className="text-sm text-muted-foreground mb-4 leading-relaxed">{recipe.description}</p>
+            <p className="text-base text-muted-foreground mb-4 leading-relaxed">{recipe.description}</p>
           )}
 
           <div className="flex gap-2">
@@ -129,10 +193,10 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 {recipe.recipeIngredient.map((ing, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-3 px-4 py-2.5 border-b border-border/50 last:border-0"
+                    className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 last:border-0"
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary/40 flex-shrink-0" />
-                    <span className="text-sm text-foreground">{ing}</span>
+                    <span className="w-2 h-2 rounded-full bg-primary/40 flex-shrink-0" />
+                    <span className="text-base text-foreground">{scaleIngredient(ing, scale)}</span>
                   </div>
                 ))}
               </div>
@@ -204,7 +268,7 @@ function StructuredInstructions({ steps }: { steps: string[] }) {
           <span className="text-xs font-bold text-primary min-w-[20px] pt-0.5 tabular-nums">
             {String(i + 1).padStart(2, '0')}
           </span>
-          <span className="text-sm text-foreground leading-relaxed">{step}</span>
+          <span className="text-base text-foreground leading-relaxed">{step}</span>
         </li>
       ))}
     </ol>
@@ -245,7 +309,7 @@ function InstructionsDisplay({ html }: { html: string }) {
           <span className="text-xs font-bold text-primary min-w-[20px] pt-0.5 tabular-nums">
             {String(i + 1).padStart(2, '0')}
           </span>
-          <span className="text-sm text-foreground leading-relaxed">{step}</span>
+          <span className="text-base text-foreground leading-relaxed">{step}</span>
         </li>
       ))}
     </ol>

@@ -17,10 +17,10 @@ export function BottomNav({ onImport }: { onImport: () => void }) {
           <button
             key={to}
             onClick={onImport}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-muted-foreground"
+            className="flex-1 flex flex-col items-center justify-center gap-1 py-3.5 text-muted-foreground"
           >
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] font-medium">{label}</span>
+            <Icon className="w-6 h-6" />
+            <span className="text-xs font-medium">{label}</span>
           </button>
         ) : (
           <NavLink
@@ -29,13 +29,13 @@ export function BottomNav({ onImport }: { onImport: () => void }) {
             end={end}
             className={({ isActive }) =>
               cn(
-                'flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors',
+                'flex-1 flex flex-col items-center justify-center gap-1 py-3.5 transition-colors',
                 isActive ? 'text-primary' : 'text-muted-foreground',
               )
             }
           >
-            <Icon className="w-5 h-5" />
-            <span className="text-[10px] font-medium">{label}</span>
+            <Icon className="w-6 h-6" />
+            <span className="text-xs font-medium">{label}</span>
           </NavLink>
         ),
       )}
