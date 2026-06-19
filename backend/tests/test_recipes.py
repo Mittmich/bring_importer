@@ -141,9 +141,7 @@ def test_get_recipe_html_returns_stored_html(client, auth_headers, mocked_openai
 
 
 @pytest.mark.integration
-def test_get_recipe_html_returns_jsonld_page(
-    client, auth_headers, mocked_openai, tmp_db_path
-):
+def test_get_recipe_html_returns_jsonld_page(client, auth_headers, mocked_openai, tmp_db_path):
     """The .html endpoint returns a valid HTML page with embedded JSON-LD
     regardless of whether html_content is present, so Bring can always
     parse recipe ingredients."""
@@ -157,7 +155,7 @@ def test_get_recipe_html_returns_jsonld_page(
     resp = client.get(f"/recipes/{recipe_uuid}.html")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
-    assert 'application/ld+json' in resp.text
+    assert "application/ld+json" in resp.text
     assert '"@type": "Recipe"' in resp.text
 
 
