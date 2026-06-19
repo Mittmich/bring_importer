@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Home, BookOpen, Plus, User, LogOut } from 'lucide-react'
+import { Home, BookOpen, Plus, User, LogOut, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getUserEmail, logout } from '@/hooks/useAuth'
+import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 
 const navItems = [
   { to: '/', icon: Home, label: 'Home', end: true },
@@ -12,6 +13,7 @@ const navItems = [
 export function Sidebar({ onImport }: { onImport: () => void }) {
   const email = getUserEmail()
   const navigate = useNavigate()
+  const { canInstall, triggerInstall } = useInstallPrompt()
 
   return (
     <aside className="hidden md:flex flex-col w-[220px] min-w-[220px] border-r border-border bg-white">
@@ -55,6 +57,15 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
       </nav>
 
       <div className="p-2 border-t border-border space-y-0.5">
+        {canInstall && (
+          <button
+            onClick={triggerInstall}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+          >
+            <Download className="w-4 h-4 flex-shrink-0" />
+            Install App
+          </button>
+        )}
         <button
           onClick={() => navigate('/account')}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
