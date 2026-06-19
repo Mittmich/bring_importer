@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Camera, Upload } from 'lucide-react'
+import { Camera, Loader2, Upload } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
@@ -94,7 +94,12 @@ export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: 
         </DialogHeader>
 
         <div className="space-y-4">
-          {!preview ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-8">
+              <Loader2 className="w-8 h-8 text-primary animate-spin" />
+              <p className="text-sm text-muted-foreground">Analyzing recipe with AI…</p>
+            </div>
+          ) : !preview ? (
             <div className="space-y-3">
               <button
                 onClick={() => {

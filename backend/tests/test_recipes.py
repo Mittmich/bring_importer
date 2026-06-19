@@ -141,10 +141,12 @@ def test_get_recipe_html_returns_stored_html(client, auth_headers, mocked_openai
 
 
 @pytest.mark.integration
-def test_get_recipe_html_for_recipe_without_html_returns_404(
+def test_get_recipe_html_returns_jsonld_page(
     client, auth_headers, mocked_openai, tmp_db_path
 ):
-    """A recipe with no html_content in its stored blob returns 404 for the .html endpoint."""
+    """The .html endpoint returns a valid HTML page with embedded JSON-LD
+    regardless of whether html_content is present, so Bring can always
+    parse recipe ingredients."""
     create = client.post(
         "/recipes/parse",
         headers=auth_headers,
@@ -152,25 +154,11 @@ def test_get_recipe_html_for_recipe_without_html_returns_404(
     )
     recipe_uuid = create.json()["uuid"]
 
-    # Mutate the stored recipe to drop html_content.
-    conn = sqlite3.connect(str(tmp_db_path))
-    conn.row_factory = sqlite3.Row
-    try:
-        row = conn.execute(
-            "SELECT recipe_json FROM recipes WHERE uuid = ?", (recipe_uuid,)
-        ).fetchone()
-        blob = json.loads(row["recipe_json"])
-        blob.pop("html_content", None)
-        conn.execute(
-            "UPDATE recipes SET recipe_json = ? WHERE uuid = ?",
-            (json.dumps(blob), recipe_uuid),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
     resp = client.get(f"/recipes/{recipe_uuid}.html")
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
+    assert 'application/ld+json' in resp.text
+    assert '"@type": "Recipe"' in resp.text
 
 
 # ---------------------------------------------------------------------------

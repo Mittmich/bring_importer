@@ -219,23 +219,57 @@ async def get_recipe(recipe_uuid: str):
 
 @router.get("/{recipe_uuid}.html", include_in_schema=False)
 async def get_recipe_html(recipe_uuid: str):
-    # Public endpoint (no auth) so Bring can fetch the rendered HTML.
+    """HTML page with embedded JSON-LD for Bring and other recipe parsers.
+
+    Returns a minimal HTML page containing a clean schema.org/Recipe
+    JSON-LD block — the format recipe aggregators (including Bring's
+    deeplink API) expect when they fetch a recipe URL.
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT recipe_json FROM recipes WHERE uuid = ?", (recipe_uuid,))
-    recipe = cursor.fetchone()
+    row = cursor.fetchone()
     conn.close()
 
-    if not recipe:
+    if not row:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    recipe_data = json.loads(recipe["recipe_json"])
-    html_content = recipe_data.get("html_content")
+    data = json.loads(row["recipe_json"])
+    name = data.get("name", "Recipe")
 
-    if not html_content:
-        raise HTTPException(status_code=404, detail="No HTML content available for this recipe")
+    # Build a clean JSON-LD using only standard schema.org/Recipe fields.
+    jsonld: Dict[str, Any] = {
+        "@context": "https://schema.org/",
+        "@type": "Recipe",
+        "name": name,
+        "recipeIngredient": data.get("recipeIngredient") or [],
+        "recipeYield": data.get("recipeYield") or "",
+        "description": data.get("description") or "",
+    }
 
-    return HTMLResponse(content=html_content, status_code=200)
+    # recipeInstructions as HowToStep objects for maximum parser compatibility.
+    instructions = data.get("recipeInstructions")
+    if instructions:
+        jsonld["recipeInstructions"] = [
+            {"@type": "HowToStep", "text": step} for step in instructions
+        ]
+
+    html = (
+        "<!DOCTYPE html>\n"
+        '<html lang="en">\n'
+        "<head>\n"
+        '  <meta charset="UTF-8">\n'
+        f"  <title>{name}</title>\n"
+        '  <script type="application/ld+json">\n'
+        f"  {json.dumps(jsonld, ensure_ascii=False)}\n"
+        "  </script>\n"
+        "</head>\n"
+        "<body>\n"
+        f"  <h1>{name}</h1>\n"
+        "</body>\n"
+        "</html>"
+    )
+    return HTMLResponse(content=html)
 
 
 @router.get("", response_model=List[Dict[str, Any]])
