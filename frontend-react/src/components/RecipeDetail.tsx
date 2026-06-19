@@ -74,7 +74,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
     },
   })
 
-  const bringUrl = `${window.location.origin}/api/recipes/${uuid}.json`
+  const bringUrl = `${window.location.origin}/api/recipes/${uuid}.html`
   const bringImportUrl =
     `https://api.getbring.com/rest/bringrecipes/deeplink` +
     `?url=${encodeURIComponent(bringUrl)}` +

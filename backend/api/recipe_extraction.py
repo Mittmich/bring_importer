@@ -151,18 +151,39 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         image_base64 = image_base64.split("base64,")[1]
 
     payload = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-5.4-nano",
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that extracts recipe information from images. The most important ascept of the recipe is the ingredients, which must be included in the recipeIngredient itemprop. Return a valid HTML with proper schema.org/Recipe markup.",  # noqa: E501
+                "content": (
+                    "You are a helpful assistant that extracts recipe information from images "
+                    "and returns valid HTML with schema.org/Recipe markup. Follow these rules strictly:\n"
+                    "- Ingredients (individual items with amounts) must each appear in their own element "
+                    'with itemprop="recipeIngredient". One ingredient per element.\n'
+                    "- Cooking steps (what to do, in order) must each appear in their own element "
+                    'with itemprop="recipeInstructions". One step per element.\n'
+                    "- Never mix ingredients and instructions — they are always distinct sections. "
+                    "Ingredients are a shopping list; instructions are numbered cooking actions."
+                ),
             },
             {
                 "role": "user",
                 "content": [
                     {
                         "type": "text",
-                        "text": """Extract the recipe information from this image. Return a valid HTML with proper schema.org/Recipe markup. Include itemscope, itemtype, and itemprop attributes to make it fully compliant with schema.org/Recipe. It is vital that all ingredients individually receive the recipeIngredient itemprop. Do not include JSON blocks in your response, only return valid HTML.""",  # noqa: E501
+                        "text": (
+                            "Extract the recipe information from this image. "
+                            "Return valid HTML with proper schema.org/Recipe markup — "
+                            "include itemscope, itemtype, and itemprop attributes. "
+                            "It is vital that:\n"
+                            '1. Every ingredient has its own element with itemprop="recipeIngredient" '
+                            '(e.g. <li itemprop="recipeIngredient">200g flour</li>).\n'
+                            '2. Every cooking step has its own element with itemprop="recipeInstructions" '
+                            '(e.g. <li itemprop="recipeInstructions">Mix flour and water until smooth.</li>).\n'
+                            "3. The two sections are kept completely separate — "
+                            "ingredients list shopping items, instructions list cooking actions.\n"
+                            "Do not include JSON blocks in your response, only return valid HTML."
+                        ),
                     },
                     {
                         "type": "image_url",
@@ -290,7 +311,7 @@ def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
         "Authorization": f"Bearer {OPENAI_API_KEY}",
     }
     payload = {
-        "model": "gpt-4o-mini",
+        "model": "gpt-5-mini",
         "messages": [
             {
                 "role": "system",
