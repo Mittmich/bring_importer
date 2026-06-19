@@ -196,7 +196,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                 ],
             },
         ],
-        "max_tokens": 2000,
+        "max_completion_tokens": 2000,
     }
 
     response = requests.post(url, headers=headers, json=payload)
