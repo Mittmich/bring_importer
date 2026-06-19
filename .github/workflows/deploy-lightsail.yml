@@ -75,6 +75,19 @@ jobs:
           } | ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
               "cat > ${{ secrets.LIGHTSAIL_APP_PATH }}/.env"
 
+      - name: Ensure Node.js is installed on Lightsail
+        run: |
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} '
+            if ! command -v node >/dev/null 2>&1; then
+              echo "Node.js not found — installing via NodeSource..."
+              curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+              echo "Node installed: $(node --version), npm: $(npm --version)"
+            else
+              echo "Node already present: $(node --version), npm: $(npm --version)"
+            fi
+          '
+
       - name: Build frontend
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
