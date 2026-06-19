@@ -10,9 +10,10 @@ services:
     restart: unless-stopped
 
   nginx:
-    image: nginx:alpine
+    build: ./nginx
     ports:
       - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
     environment:
       BACKEND_URL: http://backend:${BACKEND_PORT:-8001}
       API_URL: ${API_URL:-}
@@ -22,6 +23,7 @@ services:
       - ./frontend-react/dist:/usr/share/nginx/html:ro
       - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./logs:/var/log/nginx
+      - nginx-certs:/etc/nginx/certs
     depends_on:
       - backend
     networks:
@@ -30,3 +32,6 @@ services:
 
 networks:
   app:
+
+volumes:
+  nginx-certs:
