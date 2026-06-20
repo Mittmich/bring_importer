@@ -30,6 +30,12 @@ server {
         add_header Cache-Control no-store;
     }
 
+    # PWA files must not be cached — browsers need to check for updates on every load
+    location ~ ^/(sw\.js|manifest\.json|registerSW\.js|workbox-.+\.js)$ {
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        try_files $uri =404;
+    }
+
     # Serve static assets; fall back to index.html for client-side routing
     location / {
         try_files $uri $uri/ /index.html;
