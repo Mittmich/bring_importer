@@ -43,23 +43,31 @@ export interface RecipeListItem {
   source: { kind: string; value: string }
 }
 
+export interface Ingredient {
+  amount: string  // "2 cups", "200 g", "" for "to taste"
+  name: string
+}
+
+export interface InstructionStep {
+  text: string
+  ingredients: number[]  // zero-based indices into Recipe.ingredients
+}
+
 export interface RecipeUpdate {
   title?: string
-  recipeIngredient?: string[]
-  recipeInstructions?: string[]
+  ingredients?: Ingredient[]
+  instructions?: InstructionStep[]
   recipeYield?: string
   description?: string
   note?: string
-  html_content?: string
 }
 
 export interface Recipe {
   name: string
-  recipeIngredient: string[]
-  recipeInstructions?: string[]
+  ingredients: Ingredient[]
+  instructions: InstructionStep[]
   recipeYield?: string
   description?: string
-  html_content?: string
   source?: { kind: string; value: string }
   note?: string
   datePublished?: string

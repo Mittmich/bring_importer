@@ -1,0 +1,51 @@
+# Manually-triggered migration: convert existing recipes from flat-string format
+# to the new structured {ingredients, instructions} format.
+#
+# Trigger: Actions → "Migrate recipe data" → Run workflow
+#
+# The migration script is idempotent — recipes already in the new format are
+# skipped — so it is safe to run multiple times.
+#
+# Required secrets (shared with deploy-lightsail.yml):
+#   LIGHTSAIL_SSH_KEY   — private SSH key for the Lightsail instance
+#   LIGHTSAIL_HOST      — public IP or hostname
+#   LIGHTSAIL_USER      — SSH user (e.g. ubuntu)
+#   LIGHTSAIL_APP_PATH  — absolute path to the repo on the instance
+
+name: Migrate recipe data
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print changes without writing)"
+        type: boolean
+        default: true
+      limit:
+        description: "Max recipes to process (leave blank for all)"
+        type: string
+        default: ""
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+      - name: Add Lightsail host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run migration inside backend container
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          FLAGS=""
+          [ "$DRY_RUN" = "true" ] && FLAGS="$FLAGS --dry-run"
+          [ -n "$LIMIT" ] && FLAGS="$FLAGS --limit $LIMIT"
+
+          ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
+            "sudo docker exec bring_importer-backend-1 python migrate_recipes.py $FLAGS"

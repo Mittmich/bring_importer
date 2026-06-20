@@ -32,23 +32,31 @@ class RecipeResponse(BaseModel):
     url: str
 
 
-class RecipeUpdate(BaseModel):
-    """Body for ``PUT /recipes/{uuid}`` — the editor's editable surface."""
+class Ingredient(BaseModel):
+    amount: str  # "2 cups", "200 g", "" for "to taste"
+    name: str
 
-    title: Optional[str] = None
-    recipeIngredient: Optional[List[str]] = None
-    recipeInstructions: Optional[List[str]] = None
-    recipeYield: Optional[str] = None
-    description: Optional[str] = None
-    note: Optional[str] = None
-    html_content: Optional[str] = None
+
+class InstructionStep(BaseModel):
+    text: str
+    ingredients: List[int] = []  # zero-based indices into Recipe.ingredients
 
 
 class Recipe(BaseModel):
     title: str
-    recipeIngredient: List[str]
-    recipeInstructions: Optional[List[str]] = None
+    ingredients: List[Ingredient]
+    instructions: List[InstructionStep] = []
     recipeYield: str = "4 servings"
     datePublished: Optional[str] = None
     description: Optional[str] = None
-    html_content: Optional[str] = None
+
+
+class RecipeUpdate(BaseModel):
+    """Body for ``PUT /recipes/{uuid}`` — the editor's editable surface."""
+
+    title: Optional[str] = None
+    ingredients: Optional[List[Ingredient]] = None
+    instructions: Optional[List[InstructionStep]] = None
+    recipeYield: Optional[str] = None
+    description: Optional[str] = None
+    note: Optional[str] = None

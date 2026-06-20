@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime
+from unittest.mock import patch
 
 import pytest
-import responses as responses_lib
 from fastapi.testclient import TestClient
 from passlib.context import CryptContext
 
@@ -31,6 +32,7 @@ import api  # noqa: E402  (env vars must be set first)
 from api import auth as api_auth  # noqa: E402
 from api import create_access_token  # noqa: E402
 from api import db as api_db  # noqa: E402
+from api.models import Ingredient, InstructionStep, Recipe  # noqa: E402
 from api.routers import recipes as api_recipes_router  # noqa: E402
 
 
@@ -45,20 +47,22 @@ def _make_get_db_connection(db_path):
     return _get_db_connection
 
 
-# Canonical recipe HTML returned by the mocked OpenAI endpoint. Kept as a
-# module-level constant so individual tests can re-use or extend it.
-CANONICAL_RECIPE_HTML = """\
-<div itemscope itemtype="https://schema.org/Recipe">
-  <h1 itemprop="name">Test Pancakes</h1>
-  <span itemprop="recipeYield">4 servings</span>
-  <p itemprop="description">Light and fluffy.</p>
-  <ul>
-    <li itemprop="recipeIngredient">1 cup flour</li>
-    <li itemprop="recipeIngredient">2 eggs</li>
-    <li itemprop="recipeIngredient">1 cup milk</li>
-  </ul>
-</div>
-"""
+# Canonical recipe returned by all mocked extraction functions.
+CANONICAL_RECIPE = Recipe(
+    title="Test Pancakes",
+    ingredients=[
+        Ingredient(amount="1 cup", name="flour"),
+        Ingredient(amount="2", name="eggs"),
+        Ingredient(amount="1 cup", name="milk"),
+    ],
+    instructions=[
+        InstructionStep(text="Mix dry ingredients.", ingredients=[0]),
+        InstructionStep(text="Add eggs and milk, stir.", ingredients=[1, 2]),
+    ],
+    recipeYield="4 servings",
+    description="Light and fluffy.",
+    datePublished=datetime.now().strftime("%Y-%m-%d"),
+)
 
 
 @pytest.fixture
@@ -69,17 +73,7 @@ def tmp_db_path(tmp_path):
 
 @pytest.fixture
 def app(tmp_db_path, monkeypatch):
-    """FastAPI app with ``get_db_connection`` bound to a per-test tmp db.
-
-    Calls ``api.init_db()`` once so the schema is in place before any test
-    code runs. ``init_db`` is idempotent (``CREATE TABLE IF NOT EXISTS``).
-
-    The package split (comprehensive-recipe-management plan, step 1) moved
-    ``get_db_connection`` into ``api.db``. Any module that does
-    ``from api.db import get_db_connection`` creates its own binding in
-    that module's namespace, so we must patch every module's binding —
-    not just ``api.db`` and the ``api`` back-compat re-export.
-    """
+    """FastAPI app with ``get_db_connection`` bound to a per-test tmp db."""
     bound = _make_get_db_connection(tmp_db_path)
     monkeypatch.setattr(api_db, "get_db_connection", bound)
     monkeypatch.setattr(api, "get_db_connection", bound)
@@ -120,12 +114,32 @@ def auth_headers(seed_user):
 
 @pytest.fixture
 def mocked_openai():
-    """Mock ``POST https://api.openai.com/v1/chat/completions`` with a canonical Recipe HTML payload."""  # noqa: E501
-    with responses_lib.RequestsMock(assert_all_requests_are_fired=False) as rsps:
-        rsps.add(
-            responses_lib.POST,
-            "https://api.openai.com/v1/chat/completions",
-            json={"choices": [{"message": {"content": CANONICAL_RECIPE_HTML}}]},
-            status=200,
-        )
-        yield rsps
+    """Patch all three high-level extraction functions to return CANONICAL_RECIPE.
+
+    The extraction functions call the OpenAI SDK internally; patching at this
+    level keeps tests independent of SDK internals and avoids real HTTP calls.
+
+    We patch at both the source module (api.recipe_extraction) and the router
+    module (api.routers.recipes) because Python's ``from X import Y`` binds the
+    name locally — patching only the source module would leave the router's
+    local binding pointing at the original function.
+    """
+    with (
+        patch(
+            "api.routers.recipes.parse_recipe_with_openai",
+            return_value=CANONICAL_RECIPE,
+        ) as mock_image,
+        patch(
+            "api.routers.recipes.extract_recipe_from_jsonld",
+            return_value=CANONICAL_RECIPE,
+        ) as mock_jsonld,
+        patch(
+            "api.routers.recipes.extract_recipe_from_html_text",
+            return_value=CANONICAL_RECIPE,
+        ) as mock_html,
+    ):
+        yield {
+            "parse_image": mock_image,
+            "jsonld": mock_jsonld,
+            "html_text": mock_html,
+        }

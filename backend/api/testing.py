@@ -114,7 +114,7 @@ def install() -> None:
         # attempted; the test should be mocking what it needs).
         return _orig_get(url, *args, **kwargs)
 
-    requests.get = _patched_get  # type: ignore[assignment]
+    requests.get = _patched_get  # type: ignore
 
     # Same for httpx, which the URL import flow uses for the actual
     # outbound fetch. The URL import uses ``httpx.AsyncClient`` as a
@@ -145,7 +145,7 @@ def install() -> None:
         kwargs.setdefault("transport", mock_transport)
         return _orig_async_client(*args, **kwargs)
 
-    _httpx.AsyncClient = _patched_async_client  # type: ignore[assignment,misc]
+    _httpx.AsyncClient = _patched_async_client  # type: ignore
 
     # Auto-seed a test user on first import. This is the user the E2E
     # tests log in as. Only happens when RECIPE_TEST_MOCKS=1.

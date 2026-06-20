@@ -5,8 +5,8 @@
 - ``GET /recipes`` — auth required; list the current user's recipes.
 - ``PUT /recipes/{uuid}`` — auth required; edit structured fields.
 - ``DELETE /recipes/{uuid}`` — auth required; 204 on success.
-- ``GET /recipes/{uuid}.json`` — public; full recipe JSON for Bring etc.
-- ``GET /recipes/{uuid}.html`` — public; raw HTML for Bring etc.
+- ``GET /recipes/{uuid}.json`` — public; full recipe JSON.
+- ``GET /recipes/{uuid}.html`` — public; schema.org/Recipe HTML page for Bring.
 """
 
 import json
@@ -29,8 +29,8 @@ from api.recipe_extraction import (
     parse_recipe_with_openai,
 )
 
-# 5 MB is enough for any recipe page; bigger bodies are almost
-# certainly a feed or wrapper page and not a single recipe.
+# 5 MB is enough for any recipe page; bigger bodies are almost certainly a
+# feed or wrapper page and not a single recipe.
 MAX_FETCH_BYTES = 5 * 1024 * 1024
 FETCH_TIMEOUT_SECONDS = 10.0
 
@@ -44,21 +44,16 @@ def _store_recipe(
     source: Dict[str, str],
     note: str = "",
 ) -> None:
-    """Persist a parsed recipe with the standard shape and metadata.
-
-    Shared by the image import and the URL import; keeps both
-    endpoints in sync.
-    """
+    """Persist a parsed recipe with the standard shape and metadata."""
     schema_recipe = {
         "@context": "https://schema.org/",
         "@type": "Recipe",
         "name": recipe.title,
-        "recipeIngredient": recipe.recipeIngredient,
-        "recipeInstructions": recipe.recipeInstructions,
+        "ingredients": [ing.model_dump() for ing in recipe.ingredients],
+        "instructions": [step.model_dump() for step in recipe.instructions],
         "recipeYield": recipe.recipeYield,
         "datePublished": recipe.datePublished,
         "description": recipe.description,
-        "html_content": recipe.html_content,
         "source": source,
         "note": note,
     }
@@ -89,6 +84,8 @@ async def parse_recipe(
         recipe = parse_recipe_with_openai(image)
         recipe_uuid = str(uuid_mod.uuid4())
         user_id = get_user_id(current_user.email)
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Unknown user")
         _store_recipe(
             recipe_uuid=recipe_uuid,
             user_id=user_id,
@@ -114,15 +111,11 @@ async def import_url(
 
     Flow:
       1. Server-side fetch with a real User-Agent (10 s timeout, 5 MB cap).
-         422 on a network/HTTP error with a user-readable message.
-      2. Try JSON-LD extraction (covers ~3/5 of mainstream sites per the
-         step-2 spike). On hit, normalise to a ``Recipe``.
-      3. Fall back to OpenAI text extraction (gpt-4o-mini) on a
-         chrome-stripped version of the page; the response is parsed
-         by the same ``_extract_recipe_from_html`` used by the image
-         flow.
-      4. Store with ``source={"kind":"url","value":url}`` and return
-         the same ``RecipeResponse`` shape as the image endpoint.
+      2. Try JSON-LD extraction (covers ~3/5 of mainstream sites).
+         On hit, uses two LLM calls to produce structured ingredients +
+         instruction-ingredient mappings.
+      3. Fall back to OpenAI structured-output text extraction.
+      4. Store with ``source={"kind":"url","value":url}`` and return uuid.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -204,7 +197,7 @@ async def import_url(
 
 @router.get("/{recipe_uuid}.json", include_in_schema=False)
 async def get_recipe(recipe_uuid: str):
-    # Public endpoint (no auth) so Bring can fetch the recipe by UUID.
+    # Public endpoint — no auth — so Bring and the React frontend can fetch by UUID.
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT recipe_json FROM recipes WHERE uuid = ?", (recipe_uuid,))
@@ -217,13 +210,23 @@ async def get_recipe(recipe_uuid: str):
     return JSONResponse(content=json.loads(recipe["recipe_json"]))
 
 
+def _ingredient_string(ing: Dict[str, Any]) -> str:
+    """Format a structured ingredient dict as a flat string for Bring."""
+    amount = ing.get("amount", "")
+    name = ing.get("name", "")
+    return f"{amount} {name}".strip()
+
+
 @router.get("/{recipe_uuid}.html", include_in_schema=False)
 async def get_recipe_html(recipe_uuid: str):
     """HTML page with embedded JSON-LD for Bring and other recipe parsers.
 
-    Returns a minimal HTML page containing a clean schema.org/Recipe
-    JSON-LD block — the format recipe aggregators (including Bring's
-    deeplink API) expect when they fetch a recipe URL.
+    Converts the new structured {ingredients, instructions} format into the
+    flat schema.org/Recipe arrays (recipeIngredient: string[],
+    recipeInstructions: HowToStep[]) that Bring's deeplink API expects.
+
+    Also handles old-format recipes (recipeIngredient: string[]) so the
+    endpoint keeps working before the migration script is run.
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -237,21 +240,25 @@ async def get_recipe_html(recipe_uuid: str):
     data = json.loads(row["recipe_json"])
     name = data.get("name", "Recipe")
 
-    # Build a clean JSON-LD using only standard schema.org/Recipe fields.
+    # Support both new format (ingredients list of dicts) and old (flat strings).
+    if "ingredients" in data:
+        ingredient_strings = [_ingredient_string(ing) for ing in data["ingredients"]]
+        instruction_texts = [s.get("text", "") for s in data.get("instructions", [])]
+    else:
+        ingredient_strings = data.get("recipeIngredient") or []
+        instruction_texts = data.get("recipeInstructions") or []
+
     jsonld: Dict[str, Any] = {
         "@context": "https://schema.org/",
         "@type": "Recipe",
         "name": name,
-        "recipeIngredient": data.get("recipeIngredient") or [],
+        "recipeIngredient": ingredient_strings,
         "recipeYield": data.get("recipeYield") or "",
         "description": data.get("description") or "",
     }
-
-    # recipeInstructions as HowToStep objects for maximum parser compatibility.
-    instructions = data.get("recipeInstructions")
-    if instructions:
+    if instruction_texts:
         jsonld["recipeInstructions"] = [
-            {"@type": "HowToStep", "text": step} for step in instructions
+            {"@type": "HowToStep", "text": text} for text in instruction_texts
         ]
 
     html = (
@@ -274,12 +281,7 @@ async def get_recipe_html(recipe_uuid: str):
 
 @router.get("", response_model=List[Dict[str, Any]])
 async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa: B008
-    """Return the current user's recipes (uuid, title, datePublished, source).
-
-    Auth required (step 3) so a user only sees their own recipes. The
-    pre-existing endpoint returned every user's recipes to anyone who
-    hit it; that cross-user leak is now closed.
-    """
+    """Return the current user's recipes (uuid, title, datePublished, source, createdAt)."""
     user_id = get_user_id(current_user.email)
     if user_id is None:
         return []
@@ -299,7 +301,6 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
             recipe_json = json.loads(row["recipe_json"])
         except Exception:
             recipe_json = {}
-        # Backfill source for pre-step-3 rows.
         source = recipe_json.get("source") or {"kind": "unknown", "value": ""}
         recipes.append(
             {
@@ -323,6 +324,11 @@ async def update_recipe(
 
     Returns 404 (not 403) when the recipe exists but is owned by another
     user, so an attacker can't probe for valid UUIDs.
+
+    Accepts the new structured ``ingredients`` and ``instructions`` fields.
+    The ``instructions`` field carries full ``InstructionStep`` objects so
+    the caller can edit both step text and ingredient-index mappings in one
+    PUT.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -343,21 +349,22 @@ async def update_recipe(
     except Exception:
         stored = {}
 
-    # "title" in RecipeUpdate maps to "name" in the stored Schema.org JSON blob.
-    _JSON_KEY: Dict[str, str] = {"title": "name"}
-    for field in (
-        "title",
-        "recipeIngredient",
-        "recipeInstructions",
-        "recipeYield",
-        "description",
-        "html_content",
-    ):
-        value = getattr(body, field)
-        if value is not None:
-            stored[_JSON_KEY.get(field, field)] = value
+    if body.title is not None:
+        stored["name"] = body.title
+    if body.recipeYield is not None:
+        stored["recipeYield"] = body.recipeYield
+    if body.description is not None:
+        stored["description"] = body.description
     if body.note is not None:
         stored["note"] = body.note
+    if body.ingredients is not None:
+        stored["ingredients"] = [ing.model_dump() for ing in body.ingredients]
+        # Remove old-format key if present
+        stored.pop("recipeIngredient", None)
+    if body.instructions is not None:
+        stored["instructions"] = [step.model_dump() for step in body.instructions]
+        stored.pop("recipeInstructions", None)
+
     new_title = stored.get("name", "")
     new_note = stored.get("note", "")
 
@@ -379,9 +386,9 @@ async def delete_recipe(
 ):
     """Delete a recipe owned by the current user.
 
-    Returns 204 on success, 404 (not 403) if the recipe exists but is
-    owned by another user. After deletion, the public JSON/HTML
-    endpoints for that UUID will 404, which is fine for Bring.
+    Returns 204 on success, 404 (not 403) if the recipe doesn't belong
+    to the current user. After deletion, public endpoints for that UUID
+    will 404.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:

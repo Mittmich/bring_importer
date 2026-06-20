@@ -13,7 +13,10 @@
       "Bash(npm run *)",
       "Bash(echo \"exit: $?\")",
       "Edit(.claude/plans/*)",
-      "Write(.claude/plans/*)"
+      "Write(.claude/plans/*)",
+      "Bash(uv run *)",
+      "Skill(run)",
+      "Skill(run:*)"
     ]
   }
 }

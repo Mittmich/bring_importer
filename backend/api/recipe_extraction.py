@@ -1,170 +1,205 @@
-"""Recipe extraction: OpenAI HTTP call + schema.org/Recipe HTML parser.
+"""Recipe extraction: OpenAI structured-output calls + JSON-LD parser.
 
-Two entry points:
+Entry points:
 
-  - ``_extract_recipe_from_html(html)``: pure function, parses a
-    ``schema.org/Recipe`` HTML string into a ``Recipe`` model. Unit-tested
-    in ``backend/tests/test_html_parser.py``.
-  - ``parse_recipe_with_openai(image_base64)``: HTTP wrapper that calls
-    OpenAI's chat completions endpoint and delegates the response to
-    ``_extract_recipe_from_html``.
+  - ``parse_recipe_with_openai(image_base64)``: calls OpenAI vision with
+    structured output to extract a ``Recipe`` directly from an image.
 
-URL import (step 5) adds two more:
+  - ``extract_recipe_from_jsonld(jsonld_obj)``: converts a parsed
+    ``application/ld+json`` Recipe object into the new structured ``Recipe``
+    model, using two helper LLM calls (_parse_ingredient_strings and
+    _map_ingredients_to_instructions).
 
-  - ``extract_recipe_from_jsonld(jsonld)``: turns a parsed
-    ``application/ld+json`` object whose ``@type`` is ``Recipe`` into a
-    ``Recipe``. Tolerant of the @graph / array shapes real-world
-    schema.org emits.
-  - ``extract_recipe_from_html_text(text)``: takes a raw HTML body,
-    strips it to a reasonable size, and calls OpenAI with a text-only
-    prompt that asks for the same schema.org/Recipe HTML it asks for
-    in the image flow. Returns a ``Recipe``.
+  - ``extract_recipe_from_html_text(text)``: strips a raw HTML body and sends
+    it to OpenAI with structured output to extract a ``Recipe``.
 
-The two-function split was introduced by the tests/CI plan's step 4 to
-make the HTML parser testable without HTTP mocks. This package split
-(step 1 of the comprehensive plan) inherits the same shape.
+  - ``_parse_ingredient_strings(strings)``: splits flat ingredient strings
+    ("2 cups flour") into ``Ingredient`` objects. Shared by JSON-LD extraction
+    and the migration script.
+
+  - ``_map_ingredients_to_instructions(ingredients, instruction_texts)``: given
+    the ingredient list and plain instruction texts, asks the LLM to return
+    ``InstructionStep`` objects with ingredient-index references. Shared by
+    JSON-LD extraction and the migration script.
 """
 
-import re
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-import requests
 from bs4 import BeautifulSoup
 from fastapi import HTTPException
+from openai import OpenAI
+from pydantic import BaseModel
 
 from api.config import OPENAI_API_KEY
-from api.models import Recipe
+from api.models import Ingredient, InstructionStep, Recipe
 
-# User-Agent sent when we fetch a page server-side (step 5). A real
-# browser string avoids getting soft-banned by sites that reject
-# default urllib/python-requests user agents.
+# User-Agent sent when we fetch a page server-side. A real browser string
+# avoids getting soft-banned by sites that reject default python user agents.
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
-# Cap the HTML body sent to OpenAI for the text fallback (step 5).
-# 30K chars is ~7.5K tokens; enough to cover ~99% of real recipe
-# pages after the chrome/ads are stripped.
+# Cap the HTML body sent to OpenAI for the text fallback.
+# 30K chars is ~7.5K tokens; enough to cover ~99% of real recipe pages.
 MAX_HTML_CHARS_FOR_OPENAI = 30_000
 
+# Lazy singleton — avoids crashing at import time when OPENAI_API_KEY is absent
+# (e.g. during the health-check startup path or in tests).
+_client: Optional[OpenAI] = None
 
-def _extract_recipe_from_html(html: str) -> Recipe:
-    """Parse a schema.org/Recipe HTML string into a ``Recipe`` model.
 
-    Tolerant of three real-world shapes OpenAI's chat completions returns:
-      1. Clean ``schema.org/Recipe`` HTML.
-      2. Markdown-fenced HTML (`` ```html ... ``` ``).
-      3. Plain markdown-fenced HTML with no language (`` ``` ... ``` ``).
+def _get_client() -> OpenAI:
+    global _client
+    if _client is None:
+        _client = OpenAI(api_key=OPENAI_API_KEY)
+    return _client
 
-    Falls back to ``<ul><li>`` items if no ``recipeIngredient`` itemprops are
-    present, and to the entire ``soup`` if no ``itemtype`` wrapper is found.
+
+# ---------------------------------------------------------------------------
+# Intermediate Pydantic model for structured output (image + text extraction)
+# ---------------------------------------------------------------------------
+
+
+class _RecipeOutput(BaseModel):
+    """Schema returned by OpenAI for image and HTML-text extraction.
+
+    Ingredients include indices in instructions so the LLM produces the
+    full mapping in a single call.
     """
-    html_content = html
 
-    # Clean up the HTML content - remove markdown code blocks if present
-    if "```html" in html_content:
-        html_match = re.search(r"```html\s*(.*?)\s*```", html_content, re.DOTALL)
-        if html_match:
-            html_content = html_match.group(1)
-    elif "```" in html_content:
-        html_match = re.search(r"```\s*(.*?)\s*```", html_content, re.DOTALL)
-        if html_match:
-            html_content = html_match.group(1)
-
-    soup = BeautifulSoup(html_content, "html.parser")
-
-    # Find recipe element
-    recipe_element = soup.find(itemtype=re.compile(r"schema.org/Recipe"))
-
-    if not recipe_element:
-        # Try alternate format
-        recipe_element = soup.find(attrs={"itemtype": re.compile(r"schema.org/Recipe")})
-
-    if not recipe_element:
-        # If still not found, use the entire soup
-        recipe_element = soup
-
-    # Extract title
-    title_element = recipe_element.find(attrs={"itemprop": "name"})
-    title = title_element.text.strip() if title_element else "Untitled Recipe"
-
-    # Extract ingredients
-    ingredient_elements = recipe_element.find_all(attrs={"itemprop": "recipeIngredient"})
-    ingredients = [ing.text.strip() for ing in ingredient_elements]
-
-    # If no specific ingredients found, look for list items
-    ul_element = recipe_element.find("ul")
-    if not ingredients and ul_element is not None:
-        ingredients = [li.text.strip() for li in ul_element.find_all("li")]
-
-    # Extract yield
-    yield_element = recipe_element.find(attrs={"itemprop": "recipeYield"})
-    recipe_yield = yield_element.text.strip() if yield_element else "4 servings"
-
-    # Extract description
-    description_element = recipe_element.find(attrs={"itemprop": "description"})
-    description = description_element.text.strip() if description_element else ""
-
-    # Extract instruction steps.
-    # Prefer elements tagged itemprop="recipeInstructions"; fall back to <ol><li>.
-    instruction_elements = recipe_element.find_all(attrs={"itemprop": "recipeInstructions"})
-    instructions: list = []
-    for el in instruction_elements:
-        sub_steps = el.find_all("li")
-        if sub_steps:
-            instructions.extend(
-                li.get_text(" ", strip=True) for li in sub_steps if li.get_text(strip=True)
-            )
-        else:
-            text = el.get_text(" ", strip=True)
-            if text:
-                instructions.append(text)
-    if not instructions:
-        ol = recipe_element.find("ol")
-        if ol:
-            instructions = [
-                li.get_text(" ", strip=True) for li in ol.find_all("li") if li.get_text(strip=True)
-            ]
-
-    return Recipe(
-        title=title,
-        recipeIngredient=ingredients,
-        recipeInstructions=instructions or None,
-        recipeYield=recipe_yield,
-        description=description,
-        datePublished=datetime.now().strftime("%Y-%m-%d"),
-        html_content=str(soup),
-    )
+    title: str
+    recipeYield: str
+    description: str
+    ingredients: List[Ingredient]
+    instructions: List[InstructionStep]
 
 
-def parse_recipe_with_openai(image_base64: str) -> Recipe:
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-    }
+# ---------------------------------------------------------------------------
+# Public helpers shared with the migration script
+# ---------------------------------------------------------------------------
 
-    # Ensure base64 is properly formatted
-    if "base64," in image_base64:
-        image_base64 = image_base64.split("base64,")[1]
 
-    payload = {
-        "model": "gpt-5.4-nano",
-        "messages": [
+def _parse_ingredient_strings(strings: List[str]) -> List[Ingredient]:
+    """Split flat ingredient strings into ``Ingredient`` objects.
+
+    E.g. "2 cups flour, sifted" → ``Ingredient(amount="2 cups", name="flour, sifted")``.
+    Uses ``gpt-5.4-nano`` with structured output.
+    """
+    if not strings:
+        return []
+
+    class _IngredientList(BaseModel):
+        ingredients: List[Ingredient]
+
+    numbered = "\n".join(f"{i}. {s}" for i, s in enumerate(strings))
+    completion = _get_client().beta.chat.completions.parse(
+        model="gpt-5.4-nano",
+        messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant that extracts recipe information from images "
-                    "and returns valid HTML with schema.org/Recipe markup. "
-                    "Follow these rules strictly:\n"
-                    "- Ingredients (individual items with amounts) must each appear in their own "
-                    'element with itemprop="recipeIngredient". One ingredient per element.\n'
-                    "- Cooking steps (what to do, in order) must each appear in their own "
-                    'element with itemprop="recipeInstructions". One step per element.\n'
-                    "- Never mix ingredients and instructions — they are always distinct sections. "
-                    "Ingredients are a shopping list; instructions are numbered cooking actions."
+                    "You split recipe ingredient strings into amount and name. "
+                    "amount is the quantity + unit (e.g. '2 cups', '200 g', '1 tbsp'), "
+                    "name is everything else (e.g. 'flour', 'eggs, beaten', 'salt to taste'). "
+                    "If there is no quantity, leave amount as an empty string."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Split each of these {len(strings)} ingredient strings into amount and name, "
+                    f"preserving order:\n{numbered}"
+                ),
+            },
+        ],
+        response_format=_IngredientList,
+    )
+    result = completion.choices[0].message.parsed
+    if result is None:
+        return [Ingredient(amount="", name=s) for s in strings]
+    return result.ingredients
+
+
+def _map_ingredients_to_instructions(
+    ingredients: List[Ingredient],
+    instruction_texts: List[str],
+) -> List[InstructionStep]:
+    """Return ``InstructionStep`` objects with ingredient-index references.
+
+    For each instruction step, determines which ingredient indices (0-based)
+    from the ingredient list are used in that step. Uses ``gpt-5.4-nano``
+    with structured output.
+    """
+    if not instruction_texts:
+        return []
+
+    class _StepList(BaseModel):
+        steps: List[InstructionStep]
+
+    ing_list = "\n".join(
+        f"{i}. {ing.amount} {ing.name}".strip() for i, ing in enumerate(ingredients)
+    )
+    step_list = "\n".join(f"{i}. {t}" for i, t in enumerate(instruction_texts))
+
+    completion = _get_client().beta.chat.completions.parse(
+        model="gpt-5.4-nano",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You map recipe instruction steps to the ingredient indices they use. "
+                    "Return one step per input step, preserving order. "
+                    "The 'text' field must be the original step text verbatim. "
+                    "The 'ingredients' field is the list of 0-based ingredient indices "
+                    "needed for that step. Use [] if a step needs no specific ingredients."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Ingredients (indexed 0–{len(ingredients) - 1}):\n{ing_list}\n\n"
+                    f"Instruction steps (map each to its ingredient indices):\n{step_list}"
+                ),
+            },
+        ],
+        response_format=_StepList,
+    )
+    result = completion.choices[0].message.parsed
+    if result is None:
+        return [InstructionStep(text=t, ingredients=[]) for t in instruction_texts]
+    # Ensure the step texts are preserved (LLM might paraphrase)
+    steps = result.steps
+    for i, text in enumerate(instruction_texts):
+        if i < len(steps):
+            steps[i].text = text
+        else:
+            steps.append(InstructionStep(text=text, ingredients=[]))
+    return steps[: len(instruction_texts)]
+
+
+# ---------------------------------------------------------------------------
+# Image extraction
+# ---------------------------------------------------------------------------
+
+
+def parse_recipe_with_openai(image_base64: str) -> Recipe:
+    """Extract a structured recipe from a base64-encoded image."""
+    if "base64," in image_base64:
+        image_base64 = image_base64.split("base64,")[1]
+
+    completion = _get_client().beta.chat.completions.parse(
+        model="gpt-5.4-nano",
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You extract recipes from images and return structured data. "
+                    "Ingredients are individual shopping-list items with amounts. "
+                    "Instructions are ordered cooking steps. "
+                    "In each instruction step, list the 0-based indices of ingredients "
+                    "from the ingredient list that are used in that step."
                 ),
             },
             {
@@ -173,20 +208,10 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                     {
                         "type": "text",
                         "text": (
-                            "Extract the recipe information from this image. "
-                            "Return valid HTML with proper schema.org/Recipe markup — "
-                            "include itemscope, itemtype, and itemprop attributes. "
-                            "It is vital that:\n"
-                            "1. Every ingredient has its own element with "
-                            'itemprop="recipeIngredient" '
-                            '(e.g. <li itemprop="recipeIngredient">200g flour</li>).\n'
-                            "2. Every cooking step has its own element with "
-                            'itemprop="recipeInstructions" '
-                            '(e.g. <li itemprop="recipeInstructions">'
-                            "Mix flour and water until smooth.</li>).\n"
-                            "3. The two sections are kept completely separate — "
-                            "ingredients list shopping items, instructions list cooking actions.\n"
-                            "Do not include JSON blocks in your response, only return valid HTML."
+                            "Extract the recipe from this image. "
+                            "Return all ingredients with their amounts and the ingredient's name "
+                            "separately. For each instruction step, include the indices of the "
+                            "ingredients used."
                         ),
                     },
                     {
@@ -196,24 +221,26 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                 ],
             },
         ],
-        "max_completion_tokens": 2000,
-    }
+        response_format=_RecipeOutput,
+        max_completion_tokens=2000,
+    )
 
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail=f"OpenAI API error: {response.text}")
+    out = completion.choices[0].message.parsed
+    if out is None:
+        raise HTTPException(status_code=500, detail="OpenAI returned no structured content")
 
-    result = response.json()
-    html_content = result["choices"][0]["message"]["content"]
-
-    try:
-        return _extract_recipe_from_html(html_content)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to parse recipe: {str(e)}") from e
+    return Recipe(
+        title=out.title,
+        ingredients=out.ingredients,
+        instructions=out.instructions,
+        recipeYield=out.recipeYield or "4 servings",
+        description=out.description,
+        datePublished=datetime.now().strftime("%Y-%m-%d"),
+    )
 
 
 # ---------------------------------------------------------------------------
-# URL import helpers (step 5)
+# URL import helpers
 # ---------------------------------------------------------------------------
 
 
@@ -221,8 +248,7 @@ def _find_recipe_in_jsonld(obj: Any) -> Optional[Dict[str, Any]]:
     """Walk an ``application/ld+json`` payload and return the Recipe object.
 
     Handles three real-world shapes:
-
-      1. ``{"@type": "Recipe", ...}`` (most common)
+      1. ``{"@type": "Recipe", ...}``
       2. ``{"@type": ["Thing", "Recipe"], ...}`` (multi-type)
       3. ``{"@graph": [{"@type": "Recipe", ...}, ...]}`` (graph wrapper)
     """
@@ -249,15 +275,16 @@ def extract_recipe_from_jsonld(jsonld_obj: Any) -> Optional[Recipe]:
 
     Returns ``None`` if no Recipe-shaped object is present. The caller
     is expected to fall back to OpenAI text extraction in that case.
+
+    After extracting the flat ingredient/instruction strings from JSON-LD,
+    makes two LLM calls to split ingredients into {amount, name} and to
+    map ingredient indices onto each instruction step.
     """
     found = _find_recipe_in_jsonld(jsonld_obj)
     if found is None:
         return None
 
     name = found.get("name") or "Untitled Recipe"
-    ingredients = found.get("recipeIngredient") or []
-    if isinstance(ingredients, str):
-        ingredients = [ingredients]
     yield_ = found.get("recipeYield") or "4 servings"
     if isinstance(yield_, list):
         yield_ = ", ".join(str(y) for y in yield_)
@@ -265,43 +292,47 @@ def extract_recipe_from_jsonld(jsonld_obj: Any) -> Optional[Recipe]:
     if isinstance(description, list):
         description = " ".join(str(d) for d in description)
 
-    # recipeInstructions can be a string, list of strings, or list of HowToStep dicts.
+    # Flat ingredient strings from JSON-LD
+    raw_ingredients = found.get("recipeIngredient") or []
+    if isinstance(raw_ingredients, str):
+        raw_ingredients = [raw_ingredients]
+
+    # Flat instruction strings from JSON-LD
     raw_instr = found.get("recipeInstructions") or []
-    instructions: list = []
+    instruction_texts: List[str] = []
     if isinstance(raw_instr, str):
         if raw_instr:
-            instructions = [raw_instr]
+            instruction_texts = [raw_instr]
     elif isinstance(raw_instr, list):
         for step in raw_instr:
             if isinstance(step, str):
                 if step:
-                    instructions.append(step)
+                    instruction_texts.append(step)
             elif isinstance(step, dict):
                 text = step.get("text") or step.get("name") or ""
                 if text:
-                    instructions.append(text)
+                    instruction_texts.append(text)
+
+    # LLM calls to produce structured data
+    ingredients = _parse_ingredient_strings(raw_ingredients)
+    instructions = _map_ingredients_to_instructions(ingredients, instruction_texts)
 
     return Recipe(
         title=name,
-        recipeIngredient=ingredients,
-        recipeInstructions=instructions or None,
+        ingredients=ingredients,
+        instructions=instructions,
         recipeYield=str(yield_),
         description=description,
         datePublished=datetime.now().strftime("%Y-%m-%d"),
-        html_content=None,  # URL imports don't have the original OpenAI HTML
     )
 
 
 def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
-    """OpenAI text-extraction fallback for URL import.
+    """OpenAI structured-output extraction fallback for URL import.
 
-    Strips the HTML to a reasonable size, sends the cleaned body to
-    OpenAI with the same schema.org/Recipe prompt used by the image
-    flow, and delegates the response to ``_extract_recipe_from_html``.
+    Strips the HTML to a reasonable size, then calls OpenAI with structured
+    output to extract a fully-mapped ``Recipe`` in a single call.
     """
-    # Cheap chrome-strip: drop script/style, then keep just the visible
-    # text. We keep tags so OpenAI sees some structural cues (itemtype,
-    # itemprop) where the page exposes them.
     soup = BeautifulSoup(html, "html.parser")
     for tag in soup(["script", "style", "noscript", "iframe"]):
         tag.decompose()
@@ -309,22 +340,17 @@ def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
     if len(cleaned) > MAX_HTML_CHARS_FOR_OPENAI:
         cleaned = cleaned[:MAX_HTML_CHARS_FOR_OPENAI]
 
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}",
-    }
-    payload = {
-        "model": "gpt-5-mini",
-        "messages": [
+    completion = _get_client().beta.chat.completions.parse(
+        model="gpt-5.4-nano",
+        messages=[
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant that extracts recipe information "
-                    "from webpage HTML. The most important aspect of the recipe is "
-                    "the ingredients, which must be included in the recipeIngredient "
-                    "itemprop. Return a valid HTML with proper schema.org/Recipe "
-                    "markup. Do not include JSON blocks, only return valid HTML."
+                    "You extract recipes from webpage HTML and return structured data. "
+                    "Ingredients are individual shopping-list items with amounts. "
+                    "Instructions are ordered cooking steps. "
+                    "In each instruction step, list the 0-based indices of ingredients "
+                    "from the ingredient list that are used in that step."
                 ),
             },
             {
@@ -332,18 +358,25 @@ def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
                 "content": (
                     f"Extract the recipe from the following page"
                     f"{f' (source: {source_url})' if source_url else ''}. "
-                    "Return a valid HTML with proper schema.org/Recipe markup, including "
-                    "itemscope, itemtype, and itemprop attributes. It is vital that all "
-                    "ingredients individually receive the recipeIngredient itemprop.\n\n"
+                    "Return all ingredients with amount and name separated. "
+                    "For each instruction step include the indices of ingredients used.\n\n"
                     f"{cleaned}"
                 ),
             },
         ],
-        "max_tokens": 2000,
-    }
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code != 200:
-        raise HTTPException(status_code=500, detail=f"OpenAI API error: {response.text}")
-    result = response.json()
-    html_content = result["choices"][0]["message"]["content"]
-    return _extract_recipe_from_html(html_content)
+        response_format=_RecipeOutput,
+        max_tokens=2000,
+    )
+
+    out = completion.choices[0].message.parsed
+    if out is None:
+        raise HTTPException(status_code=500, detail="OpenAI returned no structured content")
+
+    return Recipe(
+        title=out.title,
+        ingredients=out.ingredients,
+        instructions=out.instructions,
+        recipeYield=out.recipeYield or "4 servings",
+        description=out.description,
+        datePublished=datetime.now().strftime("%Y-%m-%d"),
+    )
