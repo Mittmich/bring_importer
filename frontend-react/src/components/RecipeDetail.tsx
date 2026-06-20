@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Pencil, Trash2, ExternalLink } from 'lucide-react'
-import { api, type Recipe } from '@/lib/api'
+import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 
@@ -34,10 +34,10 @@ function formatAmount(n: number): string {
   return fixed % 1 === 0 ? String(fixed) : fixed.toFixed(1)
 }
 
-// Scale all numbers in an ingredient string by `factor`.
+// Scale all numbers in a string by `factor`.
 // Handles: integers ("2"), decimals ("1.5", "1,5"), fractions ("1/2"),
 // and mixed numbers ("1 1/2").
-function scaleIngredient(text: string, factor: number): string {
+function scaleText(text: string, factor: number): string {
   if (Math.abs(factor - 1) < 0.001) return text
   return text.replace(
     /(\d+)\s+(\d+)\s*\/\s*(\d+)|(\d+)\s*\/\s*(\d+)|(\d+(?:[.,]\d+)?)/g,
@@ -49,6 +49,11 @@ function scaleIngredient(text: string, factor: number): string {
       return formatAmount(value * factor)
     },
   )
+}
+
+function formatIngredient(ing: Ingredient, scale: number): string {
+  const scaledAmount = scaleText(ing.amount, scale)
+  return `${scaledAmount} ${ing.name}`.trim()
 }
 
 interface Props {
@@ -182,7 +187,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
 
         <div className="p-4 md:p-6 space-y-4">
           {/* Ingredients */}
-          {recipe.recipeIngredient && recipe.recipeIngredient.length > 0 && (
+          {recipe.ingredients && recipe.ingredients.length > 0 && (
             <div className="bg-white rounded-lg border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -190,13 +195,13 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 </h2>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-0">
-                {recipe.recipeIngredient.map((ing, i) => (
+                {recipe.ingredients.map((ing, i) => (
                   <div
                     key={i}
                     className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 last:border-0"
                   >
                     <span className="w-2 h-2 rounded-full bg-primary/40 flex-shrink-0" />
-                    <span className="text-base text-foreground">{scaleIngredient(ing, scale)}</span>
+                    <span className="text-base text-foreground">{formatIngredient(ing, scale)}</span>
                   </div>
                 ))}
               </div>
@@ -204,17 +209,18 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           )}
 
           {/* Instructions */}
-          {(recipe.recipeInstructions?.length || recipe.html_content) && (
+          {recipe.instructions && recipe.instructions.length > 0 && (
             <div className="bg-white rounded-lg border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Instructions
                 </h2>
               </div>
-              {recipe.recipeInstructions?.length
-                ? <StructuredInstructions steps={recipe.recipeInstructions} />
-                : <InstructionsDisplay html={recipe.html_content!} />
-              }
+              <StructuredInstructions
+                steps={recipe.instructions}
+                ingredients={recipe.ingredients}
+                scale={scale}
+              />
             </div>
           )}
 
@@ -260,56 +266,40 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   )
 }
 
-function StructuredInstructions({ steps }: { steps: string[] }) {
+function StructuredInstructions({
+  steps,
+  ingredients,
+  scale,
+}: {
+  steps: InstructionStep[]
+  ingredients: Ingredient[]
+  scale: number
+}) {
   return (
     <ol className="divide-y divide-border/50">
       {steps.map((step, i) => (
-        <li key={i} className="flex gap-3 px-4 py-3">
-          <span className="text-xs font-bold text-primary min-w-[20px] pt-0.5 tabular-nums">
-            {String(i + 1).padStart(2, '0')}
-          </span>
-          <span className="text-base text-foreground leading-relaxed">{step}</span>
-        </li>
-      ))}
-    </ol>
-  )
-}
-
-function InstructionsDisplay({ html }: { html: string }) {
-  // Extract steps from HTML or render as numbered paragraphs
-  const parser = new DOMParser()
-  const doc = parser.parseFromString(html, 'text/html')
-
-  // Try to get <li> items first (common recipe format)
-  const steps: string[] = []
-  const listItems = doc.querySelectorAll('li')
-  if (listItems.length > 0) {
-    listItems.forEach((li) => {
-      const text = li.textContent?.trim()
-      if (text) steps.push(text)
-    })
-  } else {
-    // Fall back to paragraphs
-    doc.querySelectorAll('p').forEach((p) => {
-      const text = p.textContent?.trim()
-      if (text) steps.push(text)
-    })
-  }
-
-  if (steps.length === 0) {
-    // Last resort: render raw text
-    const text = doc.body.textContent?.trim() ?? ''
-    return <p className="px-4 py-3 text-sm text-foreground">{text}</p>
-  }
-
-  return (
-    <ol className="divide-y divide-border/50">
-      {steps.map((step, i) => (
-        <li key={i} className="flex gap-3 px-4 py-3">
-          <span className="text-xs font-bold text-primary min-w-[20px] pt-0.5 tabular-nums">
-            {String(i + 1).padStart(2, '0')}
-          </span>
-          <span className="text-base text-foreground leading-relaxed">{step}</span>
+        <li key={i} className="px-4 py-3 space-y-1.5">
+          <div className="flex gap-3">
+            <span className="text-xs font-bold text-primary min-w-[20px] pt-0.5 tabular-nums">
+              {String(i + 1).padStart(2, '0')}
+            </span>
+            <span className="text-base text-foreground leading-relaxed">{step.text}</span>
+          </div>
+          {step.ingredients.length > 0 && (
+            <div className="ml-8 flex flex-wrap gap-1">
+              {step.ingredients.map((idx) => {
+                const ing = ingredients[idx]
+                return ing ? (
+                  <span
+                    key={idx}
+                    className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium"
+                  >
+                    {formatIngredient(ing, scale)}
+                  </span>
+                ) : null
+              })}
+            </div>
+          )}
         </li>
       ))}
     </ol>

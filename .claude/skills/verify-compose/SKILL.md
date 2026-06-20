@@ -65,7 +65,7 @@ Then wait up to 30 seconds for the backend to become healthy. Poll every 2 secon
 
 ```bash
 for i in $(seq 1 15); do
-  status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/api/health 2>/dev/null)
+  status=$(curl -s -o /dev/null -w "%{http_code}" https://localhost/api/health 2>/dev/null)
   [ "$status" = "200" ] && echo "ready after ${i}s" && break
   echo "waiting... (${i}s)"
   sleep 2
@@ -80,12 +80,12 @@ Run each check individually and record pass/fail:
 
 | Check | Command | Expected |
 |---|---|---|
-| Backend health | `curl -sf http://localhost/api/health` | HTTP 200, body contains `"status":"healthy"` |
-| Frontend root | `curl -s -o /dev/null -w "%{http_code}" http://localhost/` | HTTP 200 |
-| Frontend static asset | `curl -s -o /dev/null -w "%{http_code}" http://localhost/index.html` | HTTP 200 |
-| Login page | `curl -s -o /dev/null -w "%{http_code}" http://localhost/login.html` | HTTP 200 |
-| API 404 shape | `curl -s http://localhost/api/nonexistent` | HTTP 404, not nginx's default error page |
-| API auth guard | `curl -s -o /dev/null -w "%{http_code}" http://localhost/api/recipes` | HTTP 401 or 403 (not 200, not 500) |
+| Backend health | `curl -sf https://localhost/api/health` | HTTP 200, body contains `"status":"healthy"` |
+| Frontend root | `curl -s -o /dev/null -w "%{http_code}" https://localhost/` | HTTP 200 |
+| Frontend static asset | `curl -s -o /dev/null -w "%{http_code}" https://localhost/index.html` | HTTP 200 |
+| Login page | `curl -s -o /dev/null -w "%{http_code}" https://localhost/login.html` | HTTP 200 |
+| API 404 shape | `curl -s https://localhost/api/nonexistent` | HTTP 404, not nginx's default error page |
+| API auth guard | `curl -s -o /dev/null -w "%{http_code}" https://localhost/api/recipes` | HTTP 401 or 403 (not 200, not 500) |
 
 For the backend health test extract and show the response body so the timestamp is visible.
 

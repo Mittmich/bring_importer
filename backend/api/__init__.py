@@ -42,7 +42,7 @@ from api.auth import (
 from api.config import ALGORITHM, SECRET_KEY
 from api.db import get_db_connection, init_db
 from api.main import app
-from api.recipe_extraction import _extract_recipe_from_html, parse_recipe_with_openai
+from api.recipe_extraction import parse_recipe_with_openai
 
 __all__ = [
     "ALGORITHM",
@@ -57,6 +57,5 @@ __all__ = [
     "authenticate_user",
     "get_current_user",
     "create_access_token",
-    "_extract_recipe_from_html",
     "parse_recipe_with_openai",
 ]

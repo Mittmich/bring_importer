@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft } from 'lucide-react'
-import { api } from '@/lib/api'
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { api, type Ingredient, type InstructionStep } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -22,8 +22,8 @@ export function EditRecipePage() {
   const [title, setTitle] = useState('')
   const [yield_, setYield] = useState('')
   const [description, setDescription] = useState('')
-  const [ingredients, setIngredients] = useState('')
-  const [instructions, setInstructions] = useState('')
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [instructions, setInstructions] = useState<InstructionStep[]>([])
   const [note, setNote] = useState('')
 
   useEffect(() => {
@@ -31,19 +31,19 @@ export function EditRecipePage() {
     setTitle(recipe.name ?? '')
     setYield(recipe.recipeYield ?? '')
     setDescription(recipe.description ?? '')
-    setIngredients((recipe.recipeIngredient ?? []).join('\n'))
-    setInstructions((recipe.recipeInstructions ?? []).join('\n'))
+    setIngredients(recipe.ingredients ?? [])
+    setInstructions(recipe.instructions ?? [])
     setNote(recipe.note ?? '')
   }, [recipe])
 
   const saveMutation = useMutation({
     mutationFn: () =>
       api.updateRecipe(uuid!, {
-        title: title,
+        title,
         recipeYield: yield_,
         description,
-        recipeIngredient: ingredients.split('\n').map((s) => s.trim()).filter(Boolean),
-        recipeInstructions: instructions.split('\n').map((s) => s.trim()).filter(Boolean),
+        ingredients,
+        instructions,
         note,
       }),
     onSuccess: () => {
@@ -52,6 +52,58 @@ export function EditRecipePage() {
       navigate(`/recipes/${uuid}`)
     },
   })
+
+  // --- Ingredient helpers ---
+
+  function updateIngredient(index: number, field: keyof Ingredient, value: string) {
+    setIngredients((prev) => prev.map((ing, i) => (i === index ? { ...ing, [field]: value } : ing)))
+  }
+
+  function addIngredient() {
+    setIngredients((prev) => [...prev, { amount: '', name: '' }])
+  }
+
+  function removeIngredient(index: number) {
+    setIngredients((prev) => prev.filter((_, i) => i !== index))
+    // Remove deleted index from all instruction ingredient refs, shift higher indices down
+    setInstructions((prev) =>
+      prev.map((step) => ({
+        ...step,
+        ingredients: step.ingredients
+          .filter((idx) => idx !== index)
+          .map((idx) => (idx > index ? idx - 1 : idx)),
+      })),
+    )
+  }
+
+  // --- Instruction helpers ---
+
+  function updateInstructionText(index: number, text: string) {
+    setInstructions((prev) =>
+      prev.map((step, i) => (i === index ? { ...step, text } : step)),
+    )
+  }
+
+  function toggleIngredientForStep(stepIndex: number, ingIndex: number) {
+    setInstructions((prev) =>
+      prev.map((step, i) => {
+        if (i !== stepIndex) return step
+        const has = step.ingredients.includes(ingIndex)
+        const next = has
+          ? step.ingredients.filter((idx) => idx !== ingIndex)
+          : [...step.ingredients, ingIndex].sort((a, b) => a - b)
+        return { ...step, ingredients: next }
+      }),
+    )
+  }
+
+  function addInstruction() {
+    setInstructions((prev) => [...prev, { text: '', ingredients: [] }])
+  }
+
+  function removeInstruction(index: number) {
+    setInstructions((prev) => prev.filter((_, i) => i !== index))
+  }
 
   if (isLoading) {
     return (
@@ -89,6 +141,7 @@ export function EditRecipePage() {
             </p>
           )}
 
+          {/* Basic info */}
           <div className="bg-white rounded-xl border border-border p-5 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="title">Title</Label>
@@ -122,32 +175,119 @@ export function EditRecipePage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-border p-5 space-y-1.5">
-            <Label htmlFor="ingredients">Ingredients</Label>
-            <p className="text-xs text-muted-foreground">One ingredient per line</p>
-            <Textarea
-              id="ingredients"
-              value={ingredients}
-              onChange={(e) => setIngredients(e.target.value)}
-              placeholder={'400g spaghetti\n200g guanciale\n4 egg yolks'}
-              rows={8}
-              className="font-mono text-sm"
-            />
+          {/* Ingredients */}
+          <div className="bg-white rounded-xl border border-border p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Ingredients</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">Amount and name separately</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={addIngredient}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+              </Button>
+            </div>
+
+            {ingredients.length === 0 && (
+              <p className="text-sm text-muted-foreground italic">No ingredients yet.</p>
+            )}
+
+            <div className="space-y-2">
+              {ingredients.map((ing, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground w-5 text-right shrink-0">{i + 1}.</span>
+                  <Input
+                    value={ing.amount}
+                    onChange={(e) => updateIngredient(i, 'amount', e.target.value)}
+                    placeholder="Amount (e.g. 2 cups)"
+                    className="w-32 shrink-0 text-sm"
+                  />
+                  <Input
+                    value={ing.name}
+                    onChange={(e) => updateIngredient(i, 'name', e.target.value)}
+                    placeholder="Ingredient name"
+                    className="flex-1 text-sm"
+                  />
+                  <button
+                    onClick={() => removeIngredient(i)}
+                    className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                    aria-label="Remove ingredient"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-border p-5 space-y-1.5">
-            <Label htmlFor="instructions">Instructions</Label>
-            <p className="text-xs text-muted-foreground">One step per line</p>
-            <Textarea
-              id="instructions"
-              value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
-              placeholder={'Boil salted water.\nCook pasta until al dente.\nMix eggs and cheese.'}
-              rows={8}
-              className="font-mono text-sm"
-            />
+          {/* Instructions */}
+          <div className="bg-white rounded-xl border border-border p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Instructions</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Check which ingredients each step uses
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={addInstruction}>
+                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+              </Button>
+            </div>
+
+            {instructions.length === 0 && (
+              <p className="text-sm text-muted-foreground italic">No steps yet.</p>
+            )}
+
+            <div className="space-y-4">
+              {instructions.map((step, stepIdx) => (
+                <div key={stepIdx} className="space-y-2 border border-border/60 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs font-bold text-primary min-w-[20px] pt-2.5 tabular-nums shrink-0">
+                      {String(stepIdx + 1).padStart(2, '0')}
+                    </span>
+                    <Textarea
+                      value={step.text}
+                      onChange={(e) => updateInstructionText(stepIdx, e.target.value)}
+                      placeholder="Describe this step…"
+                      rows={2}
+                      className="flex-1 text-sm"
+                    />
+                    <button
+                      onClick={() => removeInstruction(stepIdx)}
+                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-2"
+                      aria-label="Remove step"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {ingredients.length > 0 && (
+                    <div className="ml-7 flex flex-wrap gap-1.5">
+                      {ingredients.map((ing, ingIdx) => {
+                        const checked = step.ingredients.includes(ingIdx)
+                        return (
+                          <button
+                            key={ingIdx}
+                            type="button"
+                            onClick={() => toggleIngredientForStep(stepIdx, ingIdx)}
+                            className={
+                              `text-xs px-2 py-0.5 rounded-full border transition-colors ` +
+                              (checked
+                                ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                                : 'bg-muted/50 border-border text-muted-foreground hover:border-primary/30')
+                            }
+                          >
+                            {`${ing.amount} ${ing.name}`.trim() || `Ingredient ${ingIdx + 1}`}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
+          {/* Note */}
           <div className="bg-white rounded-xl border border-border p-5 space-y-1.5">
             <Label htmlFor="note">Note</Label>
             <Textarea

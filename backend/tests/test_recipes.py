@@ -1,7 +1,7 @@
-"""Integration tests for the recipe endpoints (parse, fetch, list).
+"""Integration tests for the recipe endpoints (parse, fetch, list, edit, delete).
 
 All tests are marked ``@pytest.mark.integration``. They go through the
-``TestClient`` and use the ``mocked_openai`` fixture for the parse endpoint.
+``TestClient`` and use the ``mocked_openai`` fixture to avoid real OpenAI calls.
 """
 
 import json
@@ -11,7 +11,6 @@ import uuid as uuid_mod
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import responses as responses_lib
 
 # ---------------------------------------------------------------------------
 # POST /recipes/parse
@@ -33,10 +32,9 @@ def test_parse_recipe_with_valid_auth_stores_recipe(
     # The uuid is a valid UUID4 string.
     parsed_uuid = uuid_mod.UUID(body["uuid"], version=4)
     assert str(parsed_uuid) == body["uuid"]
-    # The url points at the json endpoint with the same uuid.
     assert body["url"] == f"/recipes/{body['uuid']}.json"
 
-    # The row exists in the db with the right user_id and a parseable JSON blob.
+    # The row exists in the db with a parseable JSON blob in the new format.
     conn = sqlite3.connect(str(tmp_db_path))
     conn.row_factory = sqlite3.Row
     try:
@@ -48,9 +46,12 @@ def test_parse_recipe_with_valid_auth_stores_recipe(
         conn.close()
     assert row is not None
     assert row["title"] == "Test Pancakes"
-    parsed_blob = json.loads(row["recipe_json"])
-    assert parsed_blob["name"] == "Test Pancakes"
-    assert "1 cup flour" in parsed_blob["recipeIngredient"]
+    blob = json.loads(row["recipe_json"])
+    assert blob["name"] == "Test Pancakes"
+    # New format: structured ingredients list
+    assert "ingredients" in blob
+    ingredient_names = [ing["name"] for ing in blob["ingredients"]]
+    assert "flour" in ingredient_names
 
 
 @pytest.mark.integration
@@ -60,29 +61,26 @@ def test_parse_recipe_without_auth_returns_401(client, mocked_openai):
 
 
 @pytest.mark.integration
-def test_parse_recipe_with_openai_500_surfaces_error(client, auth_headers, mocked_openai):
-    """If OpenAI returns a non-200, the endpoint must surface a 500 mentioning OpenAI."""
-    # Replace the default 200 mock with a 500 mock on the same URL.
-    mocked_openai.replace(
-        responses_lib.POST,
-        "https://api.openai.com/v1/chat/completions",
-        body="upstream is sad",
-        status=500,
-    )
-    resp = client.post(
-        "/recipes/parse",
-        headers=auth_headers,
-        data={"image": "aGVsbG8="},
-    )
+def test_parse_recipe_with_openai_error_surfaces_500(client, auth_headers):
+    """If the extraction function raises, the endpoint must surface a 500."""
+    from fastapi import HTTPException
+
+    with patch(
+        "api.routers.recipes.parse_recipe_with_openai",
+        side_effect=HTTPException(status_code=500, detail="OpenAI API error: upstream sad"),
+    ):
+        resp = client.post(
+            "/recipes/parse",
+            headers=auth_headers,
+            data={"image": "aGVsbG8="},
+        )
     assert resp.status_code == 500
     assert "OpenAI" in resp.json()["detail"]
 
 
 @pytest.mark.integration
-def test_parse_recipe_strips_data_url_base64_prefix(
-    client, auth_headers, mocked_openai, tmp_db_path
-):
-    """A `data:image/jpeg;base64,<...>` prefix should be stripped before sending to OpenAI."""
+def test_parse_recipe_strips_data_url_base64_prefix(client, auth_headers, mocked_openai):
+    """A `data:image/jpeg;base64,<...>` prefix is accepted without errors."""
     resp = client.post(
         "/recipes/parse",
         headers=auth_headers,
@@ -109,7 +107,9 @@ def test_get_recipe_json_returns_stored_payload(client, auth_headers, mocked_ope
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "Test Pancakes"
-    assert "1 cup flour" in body["recipeIngredient"]
+    # New format — structured ingredients
+    assert "ingredients" in body
+    assert any(ing["name"] == "flour" for ing in body["ingredients"])
 
 
 @pytest.mark.integration
@@ -124,7 +124,7 @@ def test_get_recipe_json_unknown_uuid_returns_404(client):
 
 
 @pytest.mark.integration
-def test_get_recipe_html_returns_stored_html(client, auth_headers, mocked_openai):
+def test_get_recipe_html_returns_html_page(client, auth_headers, mocked_openai):
     create = client.post(
         "/recipes/parse",
         headers=auth_headers,
@@ -134,17 +134,15 @@ def test_get_recipe_html_returns_stored_html(client, auth_headers, mocked_openai
 
     resp = client.get(f"/recipes/{recipe_uuid}.html")
     assert resp.status_code == 200
-    # FastAPI's HTMLResponse sets text/html content-type.
     assert resp.headers["content-type"].startswith("text/html")
-    # The body contains the recipe title.
     assert "Test Pancakes" in resp.text
 
 
 @pytest.mark.integration
-def test_get_recipe_html_returns_jsonld_page(client, auth_headers, mocked_openai, tmp_db_path):
-    """The .html endpoint returns a valid HTML page with embedded JSON-LD
-    regardless of whether html_content is present, so Bring can always
-    parse recipe ingredients."""
+def test_get_recipe_html_embeds_jsonld_with_flat_ingredient_strings(
+    client, auth_headers, mocked_openai
+):
+    """The .html endpoint converts structured ingredients to flat strings for Bring."""
     create = client.post(
         "/recipes/parse",
         headers=auth_headers,
@@ -154,9 +152,16 @@ def test_get_recipe_html_returns_jsonld_page(client, auth_headers, mocked_openai
 
     resp = client.get(f"/recipes/{recipe_uuid}.html")
     assert resp.status_code == 200
-    assert "text/html" in resp.headers["content-type"]
     assert "application/ld+json" in resp.text
     assert '"@type": "Recipe"' in resp.text
+    # Flat string ingredient must appear in the JSON-LD
+    assert "1 cup flour" in resp.text
+
+
+@pytest.mark.integration
+def test_get_recipe_html_unknown_uuid_returns_404(client):
+    resp = client.get("/recipes/00000000-0000-4000-8000-000000000000.html")
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -186,23 +191,16 @@ def test_list_recipes_returns_recipes_ordered_desc(client, auth_headers, mocked_
     assert resp.status_code == 200
     recipes = resp.json()
     assert len(recipes) == 2
-    # Newest first.
     assert recipes[0]["uuid"] == r2.json()["uuid"]
     assert recipes[1]["uuid"] == r1.json()["uuid"]
-    # Both have title and (optionally) datePublished.
     assert all(r["title"] == "Test Pancakes" for r in recipes)
-    # Step 3: list rows now expose `source`. Image imports tag themselves.
     assert all(r["source"]["kind"] == "image" for r in recipes)
 
 
 # ---------------------------------------------------------------------------
-# POST /recipes/import-url (step 6)
+# POST /recipes/import-url
 # ---------------------------------------------------------------------------
 
-# A self-contained recipe page with a clean JSON-LD block, used by both
-# the JSON-LD happy-path and the OpenAI-fallback test. The fallback test
-# uses a copy with the JSON-LD script stripped so the extractor has to
-# route through gpt-4o-mini.
 CANONICAL_URL_HTML_WITH_JSONLD = """\
 <html>
 <head>
@@ -231,8 +229,7 @@ CANONICAL_URL_HTML_NO_JSONLD = """\
 """
 
 
-def _fake_httpx_response(html: str, url: str = "https://example.test/recipe"):
-    """Build an ``httpx.Response``-shaped mock for the URL import flow."""
+def _fake_httpx_response(html: str):
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.text = html
@@ -243,7 +240,7 @@ def _fake_httpx_response(html: str, url: str = "https://example.test/recipe"):
 
 @pytest.mark.integration
 def test_import_url_with_jsonld_happy_path(client, auth_headers, mocked_openai, tmp_db_path):
-    """A page with a clean JSON-LD block imports without hitting OpenAI."""
+    """A page with a clean JSON-LD block imports via the JSON-LD path."""
     fake = _fake_httpx_response(CANONICAL_URL_HTML_WITH_JSONLD)
 
     with patch("api.routers.recipes.httpx.AsyncClient") as ClientCls:
@@ -264,19 +261,18 @@ def test_import_url_with_jsonld_happy_path(client, auth_headers, mocked_openai, 
     assert "uuid" in body
     assert body["url"].endswith(".json")
 
-    # OpenAI was NOT called: JSON-LD was the only path used.
-    assert len(mocked_openai.calls) == 0
+    # JSON-LD path was used (extract_recipe_from_jsonld was called)
+    assert mocked_openai["jsonld"].call_count == 1
+    # HTML text fallback was NOT triggered
+    assert mocked_openai["html_text"].call_count == 0
 
-    # Verify the row's source tag and the note are stored.
+    # Source is tagged correctly
     conn = sqlite3.connect(str(tmp_db_path))
     conn.row_factory = sqlite3.Row
     try:
-        row = conn.execute(
-            "SELECT source, note FROM recipes WHERE uuid = ?", (body["uuid"],)
-        ).fetchone()
+        row = conn.execute("SELECT source FROM recipes WHERE uuid = ?", (body["uuid"],)).fetchone()
     finally:
         conn.close()
-    assert row is not None
     source = json.loads(row["source"])
     assert source["kind"] == "url"
     assert source["value"] == "https://example.test/recipe"
@@ -303,8 +299,10 @@ def test_import_url_falls_back_to_openai_when_no_jsonld(
         )
 
     assert resp.status_code == 200
-    # OpenAI WAS called for the text fallback.
-    assert len(mocked_openai.calls) == 1
+    # HTML text fallback was called
+    assert mocked_openai["html_text"].call_count == 1
+    # JSON-LD extractor was not called (no JSON-LD block found)
+    assert mocked_openai["jsonld"].call_count == 0
 
 
 @pytest.mark.integration
@@ -337,7 +335,7 @@ def test_import_url_fetch_failure_returns_422(client, auth_headers, mocked_opena
 
 
 # ---------------------------------------------------------------------------
-# PUT /recipes/{uuid} (step 6)
+# PUT /recipes/{uuid}
 # ---------------------------------------------------------------------------
 
 
@@ -347,27 +345,40 @@ def test_update_recipe_round_trip(client, auth_headers, mocked_openai, tmp_db_pa
     assert create.status_code == 200
     recipe_uuid = create.json()["uuid"]
 
+    new_ingredients = [
+        {"amount": "1.5 cups", "name": "flour"},
+        {"amount": "2", "name": "eggs"},
+    ]
+    new_instructions = [
+        {"text": "Mix flour and eggs.", "ingredients": [0, 1]},
+    ]
+
     resp = client.put(
         f"/recipes/{recipe_uuid}",
         headers=auth_headers,
         json={
             "title": "Updated Pancakes",
-            "note": "Used the 3.5 cup flour trick.",
-            "recipeIngredient": ["1.5 cup flour", "2 eggs"],
+            "note": "Used the 1.5 cup flour trick.",
+            "ingredients": new_ingredients,
+            "instructions": new_instructions,
         },
     )
     assert resp.status_code == 200
     body = resp.json()
-    # The stored JSON uses Schema.org "name" — not "title" — as the title key.
     assert body["name"] == "Updated Pancakes"
-    assert body["note"] == "Used the 3.5 cup flour trick."
-    assert body["recipeIngredient"] == ["1.5 cup flour", "2 eggs"]
+    assert body["note"] == "Used the 1.5 cup flour trick."
+    assert body["ingredients"] == new_ingredients
+    assert body["instructions"] == new_instructions
 
     # The public JSON endpoint reflects the update.
     pub = client.get(f"/recipes/{recipe_uuid}.json")
     assert pub.json()["name"] == "Updated Pancakes"
 
-    # The note column is also persisted at the row level.
+    # The Bring HTML uses the updated ingredients as flat strings.
+    html = client.get(f"/recipes/{recipe_uuid}.html")
+    assert "1.5 cups flour" in html.text
+
+    # Note column is persisted at the row level.
     conn = sqlite3.connect(str(tmp_db_path))
     conn.row_factory = sqlite3.Row
     try:
@@ -376,14 +387,13 @@ def test_update_recipe_round_trip(client, auth_headers, mocked_openai, tmp_db_pa
         ).fetchone()
     finally:
         conn.close()
-    assert row["note"] == "Used the 3.5 cup flour trick."
+    assert row["note"] == "Used the 1.5 cup flour trick."
     assert row["updated_at"] is not None
 
 
 @pytest.mark.integration
 def test_update_recipe_foreign_uuid_returns_404(client, auth_headers, mocked_openai, tmp_db_path):
-    """Updating a recipe you don't own returns 404 (not 403) so attackers
-    can't probe for valid UUIDs."""
+    """Updating a recipe you don't own returns 404 (not 403)."""
     from passlib.context import CryptContext
 
     from api.auth import create_access_token
@@ -391,7 +401,6 @@ def test_update_recipe_foreign_uuid_returns_404(client, auth_headers, mocked_ope
     create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
     recipe_uuid = create.json()["uuid"]
 
-    # Insert a real second user so the token is valid (else 401, not 404).
     pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
     conn = sqlite3.connect(str(tmp_db_path))
     try:
@@ -415,7 +424,7 @@ def test_update_recipe_foreign_uuid_returns_404(client, auth_headers, mocked_ope
 
 
 # ---------------------------------------------------------------------------
-# DELETE /recipes/{uuid} (step 6)
+# DELETE /recipes/{uuid}
 # ---------------------------------------------------------------------------
 
 
@@ -424,15 +433,12 @@ def test_delete_recipe_then_public_endpoints_404(client, auth_headers, mocked_op
     create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
     recipe_uuid = create.json()["uuid"]
 
-    # Sanity: the public endpoints work before delete.
     assert client.get(f"/recipes/{recipe_uuid}.json").status_code == 200
 
-    # Delete.
     resp = client.delete(f"/recipes/{recipe_uuid}", headers=auth_headers)
     assert resp.status_code == 204
     assert resp.content == b""
 
-    # Public endpoints now 404.
     assert client.get(f"/recipes/{recipe_uuid}.json").status_code == 404
     assert client.get(f"/recipes/{recipe_uuid}.html").status_code == 404
 
@@ -446,7 +452,6 @@ def test_delete_recipe_foreign_uuid_returns_404(client, auth_headers, mocked_ope
     create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
     recipe_uuid = create.json()["uuid"]
 
-    # Insert a real second user.
     pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
     conn = sqlite3.connect(str(tmp_db_path))
     try:
@@ -463,12 +468,11 @@ def test_delete_recipe_foreign_uuid_returns_404(client, auth_headers, mocked_ope
 
     resp = client.delete(f"/recipes/{recipe_uuid}", headers=other_headers)
     assert resp.status_code == 404
-    # Recipe still exists.
     assert client.get(f"/recipes/{recipe_uuid}.json").status_code == 200
 
 
 # ---------------------------------------------------------------------------
-# Auth-scoping (step 6: regression test for the pre-step-3 cross-user leak)
+# Auth scoping
 # ---------------------------------------------------------------------------
 
 
@@ -477,14 +481,12 @@ def test_list_recipes_does_not_leak_other_users_recipes(
     client, auth_headers, mocked_openai, tmp_db_path
 ):
     """User A imports a recipe; User B's list is empty."""
-    # User A imports.
-    create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
-    a_uuid = create.json()["uuid"]
-
-    # User B's list is empty. Need a real second user.
     from passlib.context import CryptContext
 
     from api.auth import create_access_token
+
+    create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+    a_uuid = create.json()["uuid"]
 
     pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
     conn = sqlite3.connect(str(tmp_db_path))
@@ -503,11 +505,8 @@ def test_list_recipes_does_not_leak_other_users_recipes(
     assert resp.status_code == 200
     assert resp.json() == []
 
-    # User B's token cannot fetch A's uuid directly either (the public
-    # endpoints are unauthenticated, so they DO return the recipe by
-    # design — this is the chosen security model).
-    pub = client.get(f"/recipes/{a_uuid}.json")
-    assert pub.status_code == 200
+    # Public endpoints are unauthenticated by design.
+    assert client.get(f"/recipes/{a_uuid}.json").status_code == 200
 
     # But the listing is correctly scoped.
     resp = client.get("/recipes", headers=auth_headers)
