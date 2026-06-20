@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronDown, ExternalLink, Pencil, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ExternalLink, Pencil, Share2, Trash2 } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -66,6 +66,13 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [ingredientsOpen, setIngredientsOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  function handleShare() {
+    navigator.clipboard.writeText(`${window.location.origin}/share/${uuid}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const baseServings = parseServings(recipe.recipeYield)
   const unit = servingsUnit(recipe.recipeYield)
@@ -97,6 +104,11 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           <ArrowLeft className="w-5 h-5" /> Recipes
         </button>
         <span className="flex-1" />
+        {recipe.is_public && (
+          <Button variant="outline" size="sm" onClick={handleShare}>
+            <Share2 className="w-4 h-4" />
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => navigate(`/recipes/${uuid}/edit`)}>
           <Pencil className="w-4 h-4" />
         </Button>
@@ -159,6 +171,12 @@ export function RecipeDetail({ uuid, recipe }: Props) {
             >
               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
             </Button>
+            {recipe.is_public && (
+              <Button variant="outline" size="sm" onClick={handleShare} className="hidden md:flex">
+                <Share2 className="w-3.5 h-3.5 mr-1" />
+                {copied ? 'Copied!' : 'Share'}
+              </Button>
+            )}
             {confirmDelete ? (
               <>
                 <Button

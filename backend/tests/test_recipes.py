@@ -103,13 +103,49 @@ def test_get_recipe_json_returns_stored_payload(client, auth_headers, mocked_ope
     )
     recipe_uuid = create.json()["uuid"]
 
-    resp = client.get(f"/recipes/{recipe_uuid}.json")
+    # Owner can always fetch their own recipe (even private).
+    resp = client.get(f"/recipes/{recipe_uuid}.json", headers=auth_headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["name"] == "Test Pancakes"
     # New format — structured ingredients
     assert "ingredients" in body
     assert any(ing["name"] == "flour" for ing in body["ingredients"])
+    assert body["is_public"] is False
+
+
+@pytest.mark.integration
+def test_get_recipe_json_private_recipe_returns_404_for_unauthenticated(
+    client, auth_headers, mocked_openai
+):
+    create = client.post(
+        "/recipes/parse",
+        headers=auth_headers,
+        data={"image": "aGVsbG8="},
+    )
+    recipe_uuid = create.json()["uuid"]
+    # No auth — private recipe must not be exposed.
+    resp = client.get(f"/recipes/{recipe_uuid}.json")
+    assert resp.status_code == 404
+
+
+@pytest.mark.integration
+def test_get_recipe_json_public_recipe_accessible_without_auth(client, auth_headers, mocked_openai):
+    create = client.post(
+        "/recipes/parse",
+        headers=auth_headers,
+        data={"image": "aGVsbG8="},
+    )
+    recipe_uuid = create.json()["uuid"]
+    # Make it public.
+    client.put(
+        f"/recipes/{recipe_uuid}",
+        headers=auth_headers,
+        json={"is_public": True},
+    )
+    resp = client.get(f"/recipes/{recipe_uuid}.json")
+    assert resp.status_code == 200
+    assert resp.json()["is_public"] is True
 
 
 @pytest.mark.integration
@@ -370,8 +406,8 @@ def test_update_recipe_round_trip(client, auth_headers, mocked_openai, tmp_db_pa
     assert body["ingredients"] == new_ingredients
     assert body["instructions"] == new_instructions
 
-    # The public JSON endpoint reflects the update.
-    pub = client.get(f"/recipes/{recipe_uuid}.json")
+    # The JSON endpoint reflects the update (owner auth required for private recipes).
+    pub = client.get(f"/recipes/{recipe_uuid}.json", headers=auth_headers)
     assert pub.json()["name"] == "Updated Pancakes"
 
     # The Bring HTML uses the updated ingredients as flat strings.
@@ -433,7 +469,7 @@ def test_delete_recipe_then_public_endpoints_404(client, auth_headers, mocked_op
     create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
     recipe_uuid = create.json()["uuid"]
 
-    assert client.get(f"/recipes/{recipe_uuid}.json").status_code == 200
+    assert client.get(f"/recipes/{recipe_uuid}.json", headers=auth_headers).status_code == 200
 
     resp = client.delete(f"/recipes/{recipe_uuid}", headers=auth_headers)
     assert resp.status_code == 204
@@ -468,7 +504,8 @@ def test_delete_recipe_foreign_uuid_returns_404(client, auth_headers, mocked_ope
 
     resp = client.delete(f"/recipes/{recipe_uuid}", headers=other_headers)
     assert resp.status_code == 404
-    assert client.get(f"/recipes/{recipe_uuid}.json").status_code == 200
+    # Recipe still exists and owner can still access it.
+    assert client.get(f"/recipes/{recipe_uuid}.json", headers=auth_headers).status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -505,11 +542,101 @@ def test_list_recipes_does_not_leak_other_users_recipes(
     assert resp.status_code == 200
     assert resp.json() == []
 
-    # Public endpoints are unauthenticated by design.
-    assert client.get(f"/recipes/{a_uuid}.json").status_code == 200
+    # Owner can always access their own recipe.
+    assert client.get(f"/recipes/{a_uuid}.json", headers=auth_headers).status_code == 200
 
     # But the listing is correctly scoped.
     resp = client.get("/recipes", headers=auth_headers)
     recipes = resp.json()
     assert len(recipes) == 1
     assert recipes[0]["uuid"] == a_uuid
+
+
+# ---------------------------------------------------------------------------
+# POST /recipes/{uuid}/clone
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_clone_public_recipe_creates_new_recipe(client, auth_headers, mocked_openai, tmp_db_path):
+    """A logged-in user can clone a public recipe; the clone appears in their list."""
+    from passlib.context import CryptContext
+
+    from api.auth import create_access_token
+
+    # User A creates and publishes a recipe.
+    create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+    original_uuid = create.json()["uuid"]
+    client.put(f"/recipes/{original_uuid}", headers=auth_headers, json={"is_public": True})
+
+    # User B clones it.
+    pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    conn = sqlite3.connect(str(tmp_db_path))
+    try:
+        conn.execute(
+            "INSERT INTO users (email, hashed_password) VALUES (?, ?)",
+            ("b@example.com", pwd.hash("bpassword")),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    b_token = create_access_token(data={"sub": "b@example.com"})
+    b_headers = {"Authorization": f"Bearer {b_token}"}
+
+    resp = client.post(f"/recipes/{original_uuid}/clone", headers=b_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "uuid" in body
+    # Clone gets a different uuid.
+    assert body["uuid"] != original_uuid
+
+    # Clone appears in B's recipe list.
+    list_resp = client.get("/recipes", headers=b_headers)
+    assert list_resp.status_code == 200
+    uuids = [r["uuid"] for r in list_resp.json()]
+    assert body["uuid"] in uuids
+
+    # Original still belongs to A only.
+    a_list = client.get("/recipes", headers=auth_headers).json()
+    assert any(r["uuid"] == original_uuid for r in a_list)
+    assert not any(r["uuid"] == body["uuid"] for r in a_list)
+
+
+@pytest.mark.integration
+def test_clone_private_recipe_returns_404(client, auth_headers, mocked_openai, tmp_db_path):
+    """Cloning a private recipe returns 404 even if the caller is authenticated."""
+    from passlib.context import CryptContext
+
+    from api.auth import create_access_token
+
+    create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+    recipe_uuid = create.json()["uuid"]
+    # Recipe is private by default; do NOT make it public.
+
+    pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    conn = sqlite3.connect(str(tmp_db_path))
+    try:
+        conn.execute(
+            "INSERT INTO users (email, hashed_password) VALUES (?, ?)",
+            ("b@example.com", pwd.hash("bpassword")),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    b_token = create_access_token(data={"sub": "b@example.com"})
+    b_headers = {"Authorization": f"Bearer {b_token}"}
+
+    resp = client.post(f"/recipes/{recipe_uuid}/clone", headers=b_headers)
+    assert resp.status_code == 404
+
+
+@pytest.mark.integration
+def test_clone_nonexistent_recipe_returns_404(client, auth_headers):
+    """Cloning a UUID that doesn't exist returns 404."""
+    resp = client.post(
+        "/recipes/00000000-0000-4000-8000-000000000000/clone",
+        headers=auth_headers,
+    )
+    assert resp.status_code == 404

@@ -25,6 +25,7 @@ export function EditRecipePage() {
   const [ingredients, setIngredients] = useState<Ingredient[]>([])
   const [instructions, setInstructions] = useState<InstructionStep[]>([])
   const [note, setNote] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
 
   useEffect(() => {
     if (!recipe) return
@@ -34,6 +35,7 @@ export function EditRecipePage() {
     setIngredients(recipe.ingredients ?? [])
     setInstructions(recipe.instructions ?? [])
     setNote(recipe.note ?? '')
+    setIsPublic(recipe.is_public ?? false)
   }, [recipe])
 
   const saveMutation = useMutation({
@@ -45,6 +47,7 @@ export function EditRecipePage() {
         ingredients,
         instructions,
         note,
+        is_public: isPublic,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipe', uuid] })
@@ -297,6 +300,29 @@ export function EditRecipePage() {
               placeholder="Personal notes about this recipe…"
               rows={3}
             />
+          </div>
+
+          {/* Sharing */}
+          <div className="bg-white rounded-xl border border-border p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Sharing</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {isPublic ? 'Anyone with the link can view this recipe.' : 'Only you can see this recipe.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isPublic}
+                onClick={() => setIsPublic((v) => !v)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPublic ? 'bg-primary' : 'bg-input'}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${isPublic ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </div>
           </div>
         </div>
       </div>

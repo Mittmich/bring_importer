@@ -70,28 +70,29 @@ docker compose down            # stop everything
 Bare backend (no Docker, rapid iteration):
 
 ```bash
-cd backend && source .venv/bin/activate && python3 run.py   # http://localhost:8001
-cd frontend && python3 -m http.server 8000                  # http://localhost:8000
+cd backend && uv run python run.py      # http://localhost:8001
+cd frontend && python3 -m http.server 8000  # http://localhost:8000
 ```
 
 ## Build / test / lint commands
 
-There is **no formal test suite in this repo.** When making changes, verify with:
+**Always use `uv` to run Python tools — never activate the venv manually or call `python`/`pip` directly.**
 
 ```bash
 # Backend syntax / import sanity
-cd backend && source .venv/bin/activate && python3 -c "import api"
+cd backend && uv run python -c "import api"
+
+# Tests
+cd backend && uv run pytest tests/ -x -q
 
 # Lint / format (matches dev container settings)
-cd backend && ruff check .
-cd backend && black --check .
-cd backend && isort --check-only .
+cd backend && uv run ruff check .
+cd backend && uv run black --check .
+cd backend && uv run isort --check-only .
 
 # Smoke test the running API
 curl -s http://localhost:8001/health   # or whichever health endpoint exists
 ```
-
-If you add tests, follow FastAPI's `TestClient` convention and put them under `backend/tests/`.
 
 ## Conventions agents must follow
 
@@ -137,7 +138,7 @@ If you add tests, follow FastAPI's `TestClient` convention and put them under `b
 - **Add a new frontend page:** create `frontend/<page>.html`, add `frontend/js/<page>.js`, link it from the sidebar in `index.html`. Bump `service-worker.js` cache version.
 - **Change the OpenAI prompt:** edit the prompt string in `api.py`, keep JSON-mode / structured-output parsing intact, and test with at least one real recipe image.
 - **Change a port or URL:** update `.env.example` and the matching `nginx.conf.template` placeholder. Do not hand-edit the rendered `nginx.conf`.
-- **Add a Python dependency:** add to `backend/pyproject.toml` → `uv pip install -e .` → commit `uv.lock`.
+- **Add a Python dependency:** add to `backend/pyproject.toml` → `uv sync` → commit `uv.lock`.
 
 ## Plans workflow (read this before non-trivial work)
 

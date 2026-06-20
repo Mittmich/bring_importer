@@ -8,6 +8,7 @@ import { HomePage } from '@/pages/HomePage'
 import { RecipesPage } from '@/pages/RecipesPage'
 import { EditRecipePage } from '@/pages/EditRecipePage'
 import { AccountPage } from '@/pages/AccountPage'
+import { PublicRecipePage } from '@/pages/PublicRecipePage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -33,6 +34,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/share/:uuid" element={<PublicRecipePage />} />
           <Route
             path="/"
             element={

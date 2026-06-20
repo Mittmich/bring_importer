@@ -16,7 +16,9 @@
       "Write(.claude/plans/*)",
       "Bash(uv run *)",
       "Skill(run)",
-      "Skill(run:*)"
+      "Skill(run:*)",
+      "Bash(uv sync *)",
+      "Bash(npm install *)"
     ]
   }
 }

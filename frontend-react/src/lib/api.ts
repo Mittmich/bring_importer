@@ -41,6 +41,7 @@ export interface RecipeListItem {
   datePublished?: string
   createdAt?: string
   source: { kind: string; value: string }
+  is_public: boolean
 }
 
 export interface Ingredient {
@@ -60,6 +61,7 @@ export interface RecipeUpdate {
   recipeYield?: string
   description?: string
   note?: string
+  is_public?: boolean
 }
 
 export interface Recipe {
@@ -71,6 +73,7 @@ export interface Recipe {
   source?: { kind: string; value: string }
   note?: string
   datePublished?: string
+  is_public?: boolean
 }
 
 export const api = {
@@ -116,5 +119,9 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ url, note }),
     })
+  },
+
+  cloneRecipe(uuid: string) {
+    return request<{ uuid: string; url: string }>(`/recipes/${uuid}/clone`, { method: 'POST' })
   },
 }

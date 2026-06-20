@@ -12,6 +12,7 @@
 import json
 import re
 import uuid as uuid_mod
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -19,9 +20,9 @@ from fastapi import APIRouter, Depends, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
-from api.auth import get_current_user, get_user_id
+from api.auth import get_current_user, get_current_user_optional, get_user_id
 from api.db import get_db_connection
-from api.models import RecipeResponse, RecipeUpdate, User
+from api.models import Ingredient, InstructionStep, Recipe, RecipeResponse, RecipeUpdate, User
 from api.recipe_extraction import (
     USER_AGENT,
     extract_recipe_from_html_text,
@@ -196,18 +197,34 @@ async def import_url(
 
 
 @router.get("/{recipe_uuid}.json", include_in_schema=False)
-async def get_recipe(recipe_uuid: str):
-    # Public endpoint — no auth — so Bring and the React frontend can fetch by UUID.
+async def get_recipe(
+    recipe_uuid: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),  # noqa: B008
+):
+    """Return recipe JSON if the recipe is public or the requester is the owner."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT recipe_json FROM recipes WHERE uuid = ?", (recipe_uuid,))
-    recipe = cursor.fetchone()
+    cursor.execute(
+        "SELECT recipe_json, is_public, user_id FROM recipes WHERE uuid = ?",
+        (recipe_uuid,),
+    )
+    row = cursor.fetchone()
     conn.close()
 
-    if not recipe:
+    if not row:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    return JSONResponse(content=json.loads(recipe["recipe_json"]))
+    is_public = bool(row["is_public"])
+    if not is_public:
+        if current_user is None:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        owner_id = get_user_id(current_user.email)
+        if owner_id != row["user_id"]:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+
+    data = json.loads(row["recipe_json"])
+    data["is_public"] = is_public
+    return JSONResponse(content=data)
 
 
 def _ingredient_string(ing: Dict[str, Any]) -> str:
@@ -289,7 +306,7 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT uuid, title, recipe_json, created_at FROM recipes "
+        "SELECT uuid, title, recipe_json, created_at, is_public FROM recipes "
         "WHERE user_id = ? ORDER BY created_at DESC",
         (user_id,),
     )
@@ -309,6 +326,7 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
                 "datePublished": recipe_json.get("datePublished"),
                 "createdAt": row["created_at"],
                 "source": source,
+                "is_public": bool(row["is_public"]),
             }
         )
     return recipes
@@ -337,7 +355,7 @@ async def update_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT user_id, recipe_json, note, source FROM recipes WHERE uuid = ?",
+        "SELECT user_id, recipe_json, note, source, is_public FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     ).fetchone()
     if row is None or row["user_id"] != user_id:
@@ -367,16 +385,59 @@ async def update_recipe(
 
     new_title = stored.get("name", "")
     new_note = stored.get("note", "")
+    new_is_public = int(body.is_public) if body.is_public is not None else int(row["is_public"])
 
     cursor.execute(
         "UPDATE recipes SET title = ?, recipe_json = ?, note = ?, "
-        "updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
-        (new_title, json.dumps(stored), new_note, recipe_uuid),
+        "is_public = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
+        (new_title, json.dumps(stored), new_note, new_is_public, recipe_uuid),
     )
     conn.commit()
     conn.close()
 
+    stored["is_public"] = bool(new_is_public)
     return JSONResponse(content=stored)
+
+
+@router.post("/{recipe_uuid}/clone", response_model=RecipeResponse)
+async def clone_recipe(
+    recipe_uuid: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Clone a public recipe into the current user's collection.
+
+    Returns 404 if the recipe doesn't exist or is not public.
+    """
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT recipe_json, source, is_public FROM recipes WHERE uuid = ?",
+        (recipe_uuid,),
+    )
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row or not row["is_public"]:
+        raise HTTPException(status_code=404, detail="Recipe not found or not public")
+
+    data = json.loads(row["recipe_json"])
+    source = json.loads(row["source"]) if row["source"] else {"kind": "shared", "value": ""}
+
+    recipe = Recipe(
+        title=data.get("name", "Untitled"),
+        ingredients=[Ingredient(**ing) for ing in data.get("ingredients", [])],
+        instructions=[InstructionStep(**step) for step in data.get("instructions", [])],
+        recipeYield=data.get("recipeYield", "4 servings"),
+        description=data.get("description"),
+        datePublished=datetime.now().strftime("%Y-%m-%d"),
+    )
+    new_uuid = str(uuid_mod.uuid4())
+    _store_recipe(recipe_uuid=new_uuid, user_id=user_id, recipe=recipe, source=source)
+    return RecipeResponse(uuid=new_uuid, url=f"/recipes/{new_uuid}.json")
 
 
 @router.delete("/{recipe_uuid}", status_code=204)

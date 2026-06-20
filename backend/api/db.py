@@ -69,6 +69,8 @@ def init_db():
         # rows that pre-date the column.
         cursor.execute("ALTER TABLE recipes ADD COLUMN updated_at TIMESTAMP")
         cursor.execute("UPDATE recipes SET updated_at = created_at WHERE updated_at IS NULL")
+    if "is_public" not in _existing_cols:
+        cursor.execute("ALTER TABLE recipes ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
 
     conn.commit()
     conn.close()
