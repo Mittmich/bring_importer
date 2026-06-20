@@ -60,3 +60,4 @@ class RecipeUpdate(BaseModel):
     recipeYield: Optional[str] = None
     description: Optional[str] = None
     note: Optional[str] = None
+    is_public: Optional[bool] = None
