@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Pencil, Trash2, ExternalLink } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ExternalLink, Pencil, Trash2 } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -65,6 +65,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [ingredientsOpen, setIngredientsOpen] = useState(false)
 
   const baseServings = parseServings(recipe.recipeYield)
   const unit = servingsUnit(recipe.recipeYield)
@@ -190,20 +191,36 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           {recipe.ingredients && recipe.ingredients.length > 0 && (
             <div className="bg-white rounded-lg border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                {/* Mobile: tap to expand */}
+                <button
+                  className="md:hidden w-full flex items-center justify-between"
+                  onClick={() => setIngredientsOpen((o) => !o)}
+                  aria-expanded={ingredientsOpen}
+                >
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Ingredients
+                  </h2>
+                  <ChevronDown
+                    className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${ingredientsOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {/* Desktop: always visible, non-interactive */}
+                <h2 className="hidden md:block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Ingredients
                 </h2>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-0">
-                {recipe.ingredients.map((ing, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 last:border-0"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-primary/40 flex-shrink-0" />
-                    <span className="text-base text-foreground">{formatIngredient(ing, scale)}</span>
-                  </div>
-                ))}
+              <div className={`${ingredientsOpen ? '' : 'hidden'} md:block`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-0">
+                  {recipe.ingredients.map((ing, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 last:border-0"
+                    >
+                      <span className="w-2 h-2 rounded-full bg-primary/40 flex-shrink-0" />
+                      <span className="text-base text-foreground">{formatIngredient(ing, scale)}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
