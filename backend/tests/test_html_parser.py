@@ -21,7 +21,6 @@ from api.recipe_extraction import (
     parse_recipe_with_openai,
 )
 
-
 # ---------------------------------------------------------------------------
 # _flatten_instruction_texts — handles strings, HowToStep, HowToSection nesting
 # ---------------------------------------------------------------------------
@@ -55,6 +54,7 @@ def test_flatten_instructions_single_string():
 def test_flatten_instructions_empty():
     assert _flatten_instruction_texts(None) == []
     assert _flatten_instruction_texts([]) == []
+
 
 # ---------------------------------------------------------------------------
 # _find_recipe_in_jsonld — pure function, no LLM required
