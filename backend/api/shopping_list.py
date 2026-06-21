@@ -37,19 +37,25 @@ def merge_ingredients(items: List[Ingredient]) -> List[Ingredient]:
     numbered = "\n".join(f"{i}. {ing.amount} {ing.name}".strip() for i, ing in enumerate(items))
     try:
         completion = _get_client().beta.chat.completions.parse(
-            model="gpt-5.4-nano",
+            model="gpt-5.4-mini",
             messages=[
                 {
                     "role": "system",
                     "content": (
                         "You consolidate a combined grocery list assembled from several recipes. "
-                        "Merge entries that refer to the same ingredient. Sum quantities when the "
-                        "units are the same or convert cleanly (e.g. '2 cups'+'1 cup'='3 cups'). "
-                        "Keep entries as separate line items when their units are incompatible or "
-                        "the amount is non-numeric (e.g. 'to taste'). Normalize each name to a "
-                        "readable singular form. Never invent ingredients that were not provided. "
-                        "amount is the quantity + unit (empty string if there is none); name is "
-                        "the ingredient."
+                        "Reduce each entry to its ELEMENTARY ingredient — the thing you actually "
+                        "buy — and strip away any preparation or state. Drop descriptors like "
+                        "'chopped', 'finely diced', 'sifted', 'minced', 'softened', 'melted', "
+                        "'fresh', 'beaten', 'cooked', 'peeled', 'at room temperature', 'roughly', "
+                        "etc. Examples: '2 cups sifted flour' -> 'flour'; '1 finely chopped onion' "
+                        "-> 'onion'; '3 cloves garlic, minced' -> 'garlic'; 'a handful of fresh "
+                        "chopped parsley' -> 'parsley'. Then merge entries that refer to the same "
+                        "elementary ingredient and sum quantities when units are the same or "
+                        "convert cleanly (e.g. '2 cups'+'1 cup'='3 cups'). Keep entries separate "
+                        "line items when their units are incompatible or the amount is non-numeric "
+                        "(e.g. 'to taste'). Normalize each name to a readable singular form. Never "
+                        "invent ingredients that were not provided. amount is the quantity + unit "
+                        "(empty string if there is none); name is the elementary ingredient."
                     ),
                 },
                 {

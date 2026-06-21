@@ -70,7 +70,7 @@ export function WeeklyPlanPage() {
   const rangeLabel = `${weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${addDays(weekStart, 6).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
 
   return (
-    <div className="flex flex-col h-[100svh] bg-[#F8FAFC]">
+    <div className="flex flex-col h-full bg-[#F8FAFC]">
       {/* Header */}
       <div className="bg-white border-b border-border px-4 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
