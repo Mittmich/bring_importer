@@ -1,12 +1,88 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, GripVertical, Plus, Trash2 } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { api, type Ingredient, type InstructionStep } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+
+// Local rows carry a stable client-side id so drag-and-drop has a key that
+// follows the item (not its position). Stripped before saving.
+type IngredientRow = Ingredient & { _id: string }
+type StepRow = InstructionStep & { _id: string }
+
+const uid = () => crypto.randomUUID()
+
+// Build an old-index -> new-index map for a single move within a list of
+// length `len`, so instruction→ingredient references can be remapped after an
+// ingredient is dragged to a new position.
+function remapIndices(len: number, oldIndex: number, newIndex: number): number[] {
+  const positions = Array.from({ length: len }, (_, i) => i)
+  const moved = arrayMove(positions, oldIndex, newIndex) // moved[newPos] = oldPos
+  const map = new Array<number>(len)
+  moved.forEach((oldPos, newPos) => {
+    map[oldPos] = newPos
+  })
+  return map
+}
+
+function SortableRow({
+  id,
+  align = 'start',
+  children,
+}: {
+  id: string
+  align?: 'start' | 'center'
+  children: ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
+    useSortable({ id })
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    zIndex: isDragging ? 10 : undefined,
+    position: 'relative',
+  }
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex gap-2 ${align === 'center' ? 'items-center' : 'items-start'}`}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className={`shrink-0 touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground ${align === 'center' ? '' : 'mt-2.5'}`}
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="flex-1 min-w-0">{children}</div>
+    </div>
+  )
+}
 
 export function EditRecipePage() {
   const { uuid } = useParams<{ uuid: string }>()
@@ -22,18 +98,23 @@ export function EditRecipePage() {
   const [title, setTitle] = useState('')
   const [yield_, setYield] = useState('')
   const [description, setDescription] = useState('')
-  const [ingredients, setIngredients] = useState<Ingredient[]>([])
-  const [instructions, setInstructions] = useState<InstructionStep[]>([])
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([])
+  const [instructions, setInstructions] = useState<StepRow[]>([])
   const [note, setNote] = useState('')
   const [isPublic, setIsPublic] = useState(false)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   useEffect(() => {
     if (!recipe) return
     setTitle(recipe.name ?? '')
     setYield(recipe.recipeYield ?? '')
     setDescription(recipe.description ?? '')
-    setIngredients(recipe.ingredients ?? [])
-    setInstructions(recipe.instructions ?? [])
+    setIngredients((recipe.ingredients ?? []).map((ing) => ({ ...ing, _id: uid() })))
+    setInstructions((recipe.instructions ?? []).map((step) => ({ ...step, _id: uid() })))
     setNote(recipe.note ?? '')
     setIsPublic(recipe.is_public ?? false)
   }, [recipe])
@@ -44,8 +125,9 @@ export function EditRecipePage() {
         title,
         recipeYield: yield_,
         description,
-        ingredients,
-        instructions,
+        // Strip the client-side _id before sending.
+        ingredients: ingredients.map((ing) => ({ amount: ing.amount, name: ing.name })),
+        instructions: instructions.map((step) => ({ text: step.text, ingredients: step.ingredients })),
         note,
         is_public: isPublic,
       }),
@@ -63,7 +145,25 @@ export function EditRecipePage() {
   }
 
   function addIngredient() {
-    setIngredients((prev) => [...prev, { amount: '', name: '' }])
+    setIngredients((prev) => [...prev, { amount: '', name: '', _id: uid() }])
+  }
+
+  function handleIngredientDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = ingredients.findIndex((x) => x._id === active.id)
+    const newIndex = ingredients.findIndex((x) => x._id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    // Reorder the ingredients, then remap every instruction's ingredient-index
+    // references so they keep pointing at the same ingredients.
+    const map = remapIndices(ingredients.length, oldIndex, newIndex)
+    setIngredients((prev) => arrayMove(prev, oldIndex, newIndex))
+    setInstructions((prev) =>
+      prev.map((step) => ({
+        ...step,
+        ingredients: step.ingredients.map((idx) => map[idx]).sort((a, b) => a - b),
+      })),
+    )
   }
 
   function removeIngredient(index: number) {
@@ -101,11 +201,20 @@ export function EditRecipePage() {
   }
 
   function addInstruction() {
-    setInstructions((prev) => [...prev, { text: '', ingredients: [] }])
+    setInstructions((prev) => [...prev, { text: '', ingredients: [], _id: uid() }])
   }
 
   function removeInstruction(index: number) {
     setInstructions((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function handleInstructionDragEnd(e: DragEndEvent) {
+    const { active, over } = e
+    if (!over || active.id === over.id) return
+    const oldIndex = instructions.findIndex((x) => x._id === active.id)
+    const newIndex = instructions.findIndex((x) => x._id === over.id)
+    if (oldIndex < 0 || newIndex < 0) return
+    setInstructions((prev) => arrayMove(prev, oldIndex, newIndex))
   }
 
   if (isLoading) {
@@ -183,7 +292,9 @@ export function EditRecipePage() {
             <div className="flex items-center justify-between">
               <div>
                 <Label>Ingredients</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">Amount and name separately</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Amount and name separately · drag <GripVertical className="w-3 h-3 inline -mt-0.5" /> to reorder
+                </p>
               </div>
               <Button variant="outline" size="sm" onClick={addIngredient}>
                 <Plus className="w-3.5 h-3.5 mr-1" /> Add
@@ -194,32 +305,44 @@ export function EditRecipePage() {
               <p className="text-sm text-muted-foreground italic">No ingredients yet.</p>
             )}
 
-            <div className="space-y-2">
-              {ingredients.map((ing, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-5 text-right shrink-0">{i + 1}.</span>
-                  <Input
-                    value={ing.amount}
-                    onChange={(e) => updateIngredient(i, 'amount', e.target.value)}
-                    placeholder="Amount (e.g. 2 cups)"
-                    className="w-32 shrink-0 text-sm"
-                  />
-                  <Input
-                    value={ing.name}
-                    onChange={(e) => updateIngredient(i, 'name', e.target.value)}
-                    placeholder="Ingredient name"
-                    className="flex-1 text-sm"
-                  />
-                  <button
-                    onClick={() => removeIngredient(i)}
-                    className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                    aria-label="Remove ingredient"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleIngredientDragEnd}
+            >
+              <SortableContext
+                items={ingredients.map((x) => x._id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-2">
+                  {ingredients.map((ing, i) => (
+                    <SortableRow key={ing._id} id={ing._id} align="center">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={ing.amount}
+                          onChange={(e) => updateIngredient(i, 'amount', e.target.value)}
+                          placeholder="Amount (e.g. 2 cups)"
+                          className="w-32 shrink-0 text-sm"
+                        />
+                        <Input
+                          value={ing.name}
+                          onChange={(e) => updateIngredient(i, 'name', e.target.value)}
+                          placeholder="Ingredient name"
+                          className="flex-1 text-sm"
+                        />
+                        <button
+                          onClick={() => removeIngredient(i)}
+                          className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                          aria-label="Remove ingredient"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </SortableRow>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           </div>
 
           {/* Instructions */}
@@ -228,7 +351,8 @@ export function EditRecipePage() {
               <div>
                 <Label>Instructions</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Check which ingredients each step uses
+                  Check which ingredients each step uses · drag{' '}
+                  <GripVertical className="w-3 h-3 inline -mt-0.5" /> to reorder
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={addInstruction}>
@@ -240,54 +364,67 @@ export function EditRecipePage() {
               <p className="text-sm text-muted-foreground italic">No steps yet.</p>
             )}
 
-            <div className="space-y-4">
-              {instructions.map((step, stepIdx) => (
-                <div key={stepIdx} className="space-y-2 border border-border/60 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <span className="text-xs font-bold text-primary min-w-[20px] pt-2.5 tabular-nums shrink-0">
-                      {String(stepIdx + 1).padStart(2, '0')}
-                    </span>
-                    <Textarea
-                      value={step.text}
-                      onChange={(e) => updateInstructionText(stepIdx, e.target.value)}
-                      placeholder="Describe this step…"
-                      rows={2}
-                      className="flex-1 text-sm"
-                    />
-                    <button
-                      onClick={() => removeInstruction(stepIdx)}
-                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-2"
-                      aria-label="Remove step"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {ingredients.length > 0 && (
-                    <div className="ml-7 flex flex-wrap gap-1.5">
-                      {ingredients.map((ing, ingIdx) => {
-                        const checked = step.ingredients.includes(ingIdx)
-                        return (
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleInstructionDragEnd}
+            >
+              <SortableContext
+                items={instructions.map((x) => x._id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-4">
+                  {instructions.map((step, stepIdx) => (
+                    <SortableRow key={step._id} id={step._id} align="start">
+                      <div className="space-y-2 border border-border/60 rounded-lg p-3">
+                        <div className="flex items-start gap-2">
+                          <span className="text-xs font-bold text-primary min-w-[20px] pt-2.5 tabular-nums shrink-0">
+                            {String(stepIdx + 1).padStart(2, '0')}
+                          </span>
+                          <Textarea
+                            value={step.text}
+                            onChange={(e) => updateInstructionText(stepIdx, e.target.value)}
+                            placeholder="Describe this step…"
+                            rows={2}
+                            className="flex-1 text-sm"
+                          />
                           <button
-                            key={ingIdx}
-                            type="button"
-                            onClick={() => toggleIngredientForStep(stepIdx, ingIdx)}
-                            className={
-                              `text-xs px-2 py-0.5 rounded-full border transition-colors ` +
-                              (checked
-                                ? 'bg-primary/10 border-primary/40 text-primary font-medium'
-                                : 'bg-muted/50 border-border text-muted-foreground hover:border-primary/30')
-                            }
+                            onClick={() => removeInstruction(stepIdx)}
+                            className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-2"
+                            aria-label="Remove step"
                           >
-                            {`${ing.amount} ${ing.name}`.trim() || `Ingredient ${ingIdx + 1}`}
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                        )
-                      })}
-                    </div>
-                  )}
+                        </div>
+
+                        {ingredients.length > 0 && (
+                          <div className="ml-7 flex flex-wrap gap-1.5">
+                            {ingredients.map((ing, ingIdx) => {
+                              const checked = step.ingredients.includes(ingIdx)
+                              return (
+                                <button
+                                  key={ing._id}
+                                  type="button"
+                                  onClick={() => toggleIngredientForStep(stepIdx, ingIdx)}
+                                  className={
+                                    `text-xs px-2 py-0.5 rounded-full border transition-colors ` +
+                                    (checked
+                                      ? 'bg-primary/10 border-primary/40 text-primary font-medium'
+                                      : 'bg-muted/50 border-border text-muted-foreground hover:border-primary/30')
+                                  }
+                                >
+                                  {`${ing.amount} ${ing.name}`.trim() || `Ingredient ${ingIdx + 1}`}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </SortableRow>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           </div>
 
           {/* Note */}
