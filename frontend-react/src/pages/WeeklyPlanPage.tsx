@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Plus, ShoppingCart, CalendarPlus, X, Search } from 'lucide-react'
-import { api, type MealPlanEntry } from '@/lib/api'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  ShoppingCart,
+  CalendarPlus,
+  RefreshCw,
+  Settings2,
+  X,
+  Search,
+} from 'lucide-react'
+import { api, type MealPlanEntry, type EntrySyncState } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { useGoogleCalendar, loadGis, type GoogleCalendar } from '@/hooks/useGoogleCalendar'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -37,16 +46,37 @@ export function WeeklyPlanPage() {
   const endISO = toISO(addDays(weekStart, 6))
   const todayISO = toISO(new Date())
 
-  // Preload the Google script so the consent popup isn't blocked at export time.
-  const { supported: googleSupported } = useGoogleCalendar()
+  // Pick up the OAuth callback redirect (?google=connected|error), then clean the URL.
+  const [connectError, setConnectError] = useState(false)
   useEffect(() => {
-    if (googleSupported) loadGis().catch(() => {})
-  }, [googleSupported])
+    const params = new URLSearchParams(window.location.search)
+    const g = params.get('google')
+    if (!g) return
+    if (g === 'connected') queryClient.invalidateQueries({ queryKey: ['google-status'] })
+    if (g === 'error') setConnectError(true)
+    params.delete('google')
+    const qs = params.toString()
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+  }, [queryClient])
+
+  const { data: gStatus } = useQuery({
+    queryKey: ['google-status'],
+    queryFn: api.googleStatus,
+  })
+  const connected = gStatus?.connected ?? false
 
   const { data: entries = [] } = useQuery({
     queryKey: ['meal-plan', startISO, endISO],
     queryFn: () => api.getMealPlan(startISO, endISO),
   })
+
+  // On load / week change (when connected), check which meals are still synced.
+  const { data: syncStatus } = useQuery({
+    queryKey: ['sync-status', startISO, endISO],
+    queryFn: () => api.weekSyncStatus(startISO, endISO),
+    enabled: connected,
+  })
+  const statuses = syncStatus?.statuses ?? {}
 
   const entriesByDate = useMemo(() => {
     const map: Record<string, MealPlanEntry[]> = {}
@@ -54,7 +84,10 @@ export function WeeklyPlanPage() {
     return map
   }, [entries])
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['meal-plan'] })
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['meal-plan'] })
+    queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+  }
 
   const addMutation = useMutation({
     mutationFn: ({ date, recipeUuid }: { date: string; recipeUuid: string }) =>
@@ -95,9 +128,14 @@ export function WeeklyPlanPage() {
       {/* Action bar */}
       <div className="bg-white border-b border-border px-4 py-2.5 flex flex-wrap items-center gap-2">
         <ShoppingListButton startISO={startISO} endISO={endISO} disabled={entries.length === 0} />
-        {googleSupported && (
-          <ExportToCalendarButton entries={entries} disabled={entries.length === 0} />
-        )}
+        <GoogleSyncControls
+          startISO={startISO}
+          endISO={endISO}
+          status={gStatus}
+          statuses={statuses}
+          entryCount={entries.length}
+          connectError={connectError}
+        />
       </div>
 
       {/* Week grid */}
@@ -123,6 +161,7 @@ export function WeeklyPlanPage() {
                       key={entry.id}
                       className="group flex items-center gap-1.5 px-2 py-1.5 rounded bg-primary/5 border border-primary/10"
                     >
+                      {connected && <SyncDot state={statuses[String(entry.id)]} />}
                       <span className="flex-1 text-sm text-foreground leading-snug">{entry.recipe_title}</span>
                       <button
                         onClick={() => deleteMutation.mutate(entry.id)}
@@ -160,6 +199,19 @@ export function WeeklyPlanPage() {
   )
 }
 
+// Small per-meal sync indicator: amber when it needs a (re)sync, green when synced.
+function SyncDot({ state }: { state?: EntrySyncState }) {
+  const color =
+    state === 'synced' ? 'bg-green-500' : state === 'missing' ? 'bg-amber-500' : 'bg-muted-foreground/40'
+  const title =
+    state === 'synced'
+      ? 'Synced to calendar'
+      : state === 'missing'
+        ? 'Was deleted in Google — Sync now to recreate'
+        : 'Not synced yet'
+  return <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`} title={title} />
+}
+
 function ShoppingListButton({
   startISO,
   endISO,
@@ -186,87 +238,159 @@ function ShoppingListButton({
   )
 }
 
-function ExportToCalendarButton({
-  entries,
-  disabled,
+function GoogleSyncControls({
+  startISO,
+  endISO,
+  status,
+  statuses,
+  entryCount,
+  connectError,
 }: {
-  entries: MealPlanEntry[]
-  disabled: boolean
+  startISO: string
+  endISO: string
+  status?: { configured: boolean; connected: boolean; calendar_id: string | null }
+  statuses: Record<string, EntrySyncState>
+  entryCount: number
+  connectError: boolean
 }) {
-  const { requestAccess, listCalendars, insertEvent } = useGoogleCalendar()
-  const [token, setToken] = useState<string | null>(null)
-  const [calendars, setCalendars] = useState<GoogleCalendar[] | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const queryClient = useQueryClient()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [connecting, setConnecting] = useState(false)
 
-  async function handleClick() {
-    setStatus(null)
-    setBusy(true)
+  const syncMutation = useMutation({
+    mutationFn: () => api.syncWeek(startISO, endISO),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sync-status'] }),
+  })
+
+  if (!status?.configured) return null
+
+  async function connect() {
+    setConnecting(true)
     try {
-      const t = await requestAccess()
-      setToken(t)
-      const cals = await listCalendars(t)
-      setCalendars(cals)
-    } catch (e) {
-      setStatus(e instanceof Error ? e.message : 'Authorization failed')
-    } finally {
-      setBusy(false)
+      const { url } = await api.googleConnectUrl()
+      window.location.href = url
+    } catch {
+      setConnecting(false)
     }
   }
 
-  async function handlePick(calendarId: string) {
-    if (!token) return
-    setBusy(true)
-    setStatus(null)
-    let created = 0
-    try {
-      for (const entry of entries) {
-        await insertEvent(token, calendarId, entry.recipe_title, entry.date)
-        created++
-      }
-      setStatus(`Created ${created} event${created === 1 ? '' : 's'}.`)
-    } catch (e) {
-      setStatus(
-        `${e instanceof Error ? e.message : 'Export failed'} (created ${created} of ${entries.length}).`,
-      )
-    } finally {
-      setBusy(false)
-      setCalendars(null)
-    }
+  if (!status.connected) {
+    return (
+      <>
+        <Button variant="outline" size="sm" onClick={connect} disabled={connecting}>
+          <CalendarPlus className="w-4 h-4 mr-1.5" />
+          {connecting ? 'Connecting…' : 'Connect Google Calendar'}
+        </Button>
+        {connectError && <span className="text-xs text-destructive">Couldn't connect. Try again.</span>}
+      </>
+    )
   }
+
+  const pending = Object.values(statuses).filter((s) => s !== 'synced').length
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={handleClick} disabled={disabled || busy}>
-        <CalendarPlus className="w-4 h-4 mr-1.5" />
-        {busy && !calendars ? 'Connecting…' : 'Export to calendar'}
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => syncMutation.mutate()}
+        disabled={entryCount === 0 || syncMutation.isPending}
+      >
+        <RefreshCw className={`w-4 h-4 mr-1.5 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+        {syncMutation.isPending ? 'Syncing…' : 'Sync now'}
       </Button>
-      {status && <span className="text-xs text-muted-foreground">{status}</span>}
+      <span className="text-xs text-muted-foreground">
+        {syncMutation.isSuccess && pending === 0
+          ? 'All synced'
+          : pending > 0
+            ? `${pending} not synced`
+            : 'All synced'}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setSettingsOpen(true)}
+        aria-label="Calendar settings"
+      >
+        <Settings2 className="w-4 h-4" />
+      </Button>
 
-      <Dialog open={!!calendars} onOpenChange={(o) => !o && setCalendars(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Choose a calendar</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground mb-3">
-            Creates one all-day event per meal this week. Re-exporting adds duplicates.
-          </p>
-          <div className="space-y-1 max-h-[50dvh] overflow-y-auto">
-            {(calendars ?? []).map((cal) => (
-              <button
-                key={cal.id}
-                onClick={() => handlePick(cal.id)}
-                disabled={busy}
-                className="w-full text-left px-3 py-2.5 rounded-md hover:bg-accent transition-colors text-sm flex items-center justify-between"
-              >
-                <span>{cal.summary}</span>
-                {cal.primary && <span className="text-xs text-muted-foreground">primary</span>}
-              </button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CalendarSettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        calendarId={status.calendar_id}
+      />
     </>
+  )
+}
+
+function CalendarSettingsDialog({
+  open,
+  onClose,
+  calendarId,
+}: {
+  open: boolean
+  onClose: () => void
+  calendarId: string | null
+}) {
+  const queryClient = useQueryClient()
+  const { data: calendars = [], isLoading } = useQuery({
+    queryKey: ['google-calendars'],
+    queryFn: api.googleCalendars,
+    enabled: open,
+  })
+
+  const selectMutation = useMutation({
+    mutationFn: (id: string) => api.setGoogleCalendar(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['google-status'] }),
+  })
+
+  const disconnectMutation = useMutation({
+    mutationFn: () => api.googleDisconnect(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['google-status'] })
+      queryClient.invalidateQueries({ queryKey: ['sync-status'] })
+      onClose()
+    },
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Calendar settings</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground mb-2">Sync target calendar</p>
+        <div className="space-y-1 max-h-[40dvh] overflow-y-auto mb-4">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground py-2">Loading…</p>
+          ) : (
+            calendars.map((cal) => {
+              const active = cal.id === calendarId
+              return (
+                <button
+                  key={cal.id}
+                  onClick={() => selectMutation.mutate(cal.id)}
+                  disabled={selectMutation.isPending}
+                  className={`w-full text-left px-3 py-2.5 rounded-md text-sm flex items-center justify-between transition-colors ${active ? 'bg-primary/10 text-primary' : 'hover:bg-accent'}`}
+                >
+                  <span>{cal.summary}</span>
+                  {active && <span className="text-xs">selected</span>}
+                </button>
+              )
+            })
+          )}
+        </div>
+        <Button
+          variant="outline"
+          className="w-full text-destructive"
+          onClick={() => disconnectMutation.mutate()}
+          disabled={disconnectMutation.isPending}
+        >
+          {disconnectMutation.isPending ? 'Disconnecting…' : 'Disconnect Google Calendar'}
+        </Button>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -27,12 +27,18 @@ from passlib.context import CryptContext
 os.environ.setdefault("OPENAI_API_KEY", "test-openai-key-not-real")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-jwt-signing-only")
 os.environ.setdefault("USERS_FILE", "users.json")
+# Google OAuth: deterministic test values so google_oauth_configured() is True
+# and app_origin() resolves to a known host for recipe-link assertions.
+os.environ.setdefault("GOOGLE_CLIENT_ID", "test-google-client-id")
+os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-google-client-secret")
+os.environ.setdefault("GOOGLE_REDIRECT_URI", "https://app.test/api/integrations/google/callback")
 
 import api  # noqa: E402  (env vars must be set first)
 from api import auth as api_auth  # noqa: E402
 from api import create_access_token  # noqa: E402
 from api import db as api_db  # noqa: E402
 from api.models import Ingredient, InstructionStep, Recipe  # noqa: E402
+from api.routers import integrations as api_integrations_router  # noqa: E402
 from api.routers import meal_plan as api_meal_plan_router  # noqa: E402
 from api.routers import recipes as api_recipes_router  # noqa: E402
 
@@ -81,6 +87,7 @@ def app(tmp_db_path, monkeypatch):
     monkeypatch.setattr(api_auth, "get_db_connection", bound)
     monkeypatch.setattr(api_recipes_router, "get_db_connection", bound)
     monkeypatch.setattr(api_meal_plan_router, "get_db_connection", bound)
+    monkeypatch.setattr(api_integrations_router, "get_db_connection", bound)
     api.init_db()
     return api.app
 

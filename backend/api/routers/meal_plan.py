@@ -7,16 +7,20 @@
 - ``POST /meal-plan/shopping-list`` — auth; merge a week's ingredients, cache them,
   return a token + merged items for a Bring deeplink.
 - ``GET /meal-plan/shopping-list/{token}.html`` — public; schema.org/Recipe HTML for Bring.
+- ``POST /meal-plan/sync`` — auth; push the week's plan to Google Calendar (planner wins).
+- ``POST /meal-plan/sync-status`` — auth; read-only per-entry sync state for the week.
 """
 
 import json
 import uuid as uuid_mod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 
+from api import google_calendar as gcal
 from api.auth import get_current_user, get_user_id
+from api.config import app_origin
 from api.db import get_db_connection
 from api.models import (
     DateRange,
@@ -36,6 +40,24 @@ def _require_user_id(current_user: User) -> int:
     if user_id is None:
         raise HTTPException(status_code=401, detail="Unknown user")
     return user_id
+
+
+def _google_integration(user_id: int) -> Optional[Tuple[str, str]]:
+    """Return ``(refresh_token, calendar_id)`` if the user has connected Google."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT refresh_token, calendar_id FROM google_integrations WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return row["refresh_token"], row["calendar_id"]
+
+
+def _recipe_link(recipe_uuid: str) -> str:
+    return f"{app_origin()}/recipes/{recipe_uuid}"
 
 
 @router.get("", response_model=List[MealPlanEntry])
@@ -146,12 +168,16 @@ async def delete_meal_plan_entry(
     entry_id: int,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Remove a meal-plan entry. 404 if it doesn't belong to the current user."""
+    """Remove a meal-plan entry. 404 if it doesn't belong to the current user.
+
+    If the entry was synced to Google Calendar, its event is deleted too so the
+    calendar reflects the removal (best effort — failures don't block deletion).
+    """
     user_id = _require_user_id(current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT user_id FROM meal_plan_entries WHERE id = ?",
+        "SELECT user_id, google_event_id FROM meal_plan_entries WHERE id = ?",
         (entry_id,),
     ).fetchone()
     if row is None or row["user_id"] != user_id:
@@ -160,6 +186,17 @@ async def delete_meal_plan_entry(
     cursor.execute("DELETE FROM meal_plan_entries WHERE id = ?", (entry_id,))
     conn.commit()
     conn.close()
+
+    event_id = row["google_event_id"]
+    if event_id:
+        integration = _google_integration(user_id)
+        if integration is not None:
+            refresh_token, calendar_id = integration
+            try:
+                token = await gcal.refresh_access_token(refresh_token)
+                await gcal.delete_event(token, calendar_id, event_id)
+            except Exception:
+                pass  # cleanup is best-effort; the entry is already gone
     return None
 
 
@@ -246,3 +283,103 @@ async def shopping_list_html(token: str):
         "</html>"
     )
     return HTMLResponse(content=html)
+
+
+def _week_entries(cursor, user_id: int, start: str, end: str):
+    """Entries (joined to recipe title) in ``[start, end]`` for a user."""
+    return cursor.execute(
+        "SELECT m.id, m.date, m.recipe_uuid, m.google_event_id, r.title AS recipe_title "
+        "FROM meal_plan_entries m JOIN recipes r ON r.uuid = m.recipe_uuid "
+        "WHERE m.user_id = ? AND m.date >= ? AND m.date <= ? "
+        "ORDER BY m.date, m.position, m.id",
+        (user_id, start, end),
+    ).fetchall()
+
+
+@router.post("/sync")
+async def sync_to_calendar(
+    body: DateRange,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Push the week's plan to Google Calendar — planner wins.
+
+    For each entry in range: create an event if it has none, or recreate it if
+    its stored event no longer exists in Google. Each event is all-day, titled
+    with the recipe name, and links back to the recipe. Returns counts.
+    """
+    user_id = _require_user_id(current_user)
+    integration = _google_integration(user_id)
+    if integration is None:
+        raise HTTPException(status_code=400, detail="Google Calendar not connected")
+    refresh_token, calendar_id = integration
+    token = await gcal.refresh_access_token(refresh_token)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    rows = _week_entries(cursor, user_id, body.start, body.end)
+
+    created = 0
+    recreated = 0
+    for row in rows:
+        event_id = row["google_event_id"]
+        needs_create = event_id is None
+        if not needs_create:
+            if not await gcal.event_exists(token, calendar_id, event_id):
+                needs_create = True
+                recreated += 1
+        if needs_create:
+            new_id = await gcal.insert_event(
+                token,
+                calendar_id,
+                row["recipe_title"],
+                row["date"],
+                f"Recipe: {_recipe_link(row['recipe_uuid'])}",
+            )
+            cursor.execute(
+                "UPDATE meal_plan_entries SET google_event_id = ? WHERE id = ?",
+                (new_id, row["id"]),
+            )
+            if event_id is None:
+                created += 1
+    conn.commit()
+    conn.close()
+    return {"created": created, "recreated": recreated, "total": len(rows)}
+
+
+@router.post("/sync-status")
+async def sync_status(
+    body: DateRange,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Read-only per-entry sync state for the week (no writes).
+
+    Each entry is classified ``synced`` (event exists), ``missing`` (was synced
+    but the event is gone), or ``unsynced`` (never synced). When Google isn't
+    connected, every entry is ``unsynced``.
+    """
+    user_id = _require_user_id(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    rows = _week_entries(cursor, user_id, body.start, body.end)
+    conn.close()
+
+    integration = _google_integration(user_id)
+    if integration is None:
+        return {
+            "connected": False,
+            "statuses": {str(row["id"]): "unsynced" for row in rows},
+        }
+
+    refresh_token, calendar_id = integration
+    token = await gcal.refresh_access_token(refresh_token)
+
+    statuses: Dict[str, str] = {}
+    for row in rows:
+        event_id = row["google_event_id"]
+        if event_id is None:
+            statuses[str(row["id"])] = "unsynced"
+        elif await gcal.event_exists(token, calendar_id, event_id):
+            statuses[str(row["id"])] = "synced"
+        else:
+            statuses[str(row["id"])] = "missing"
+    return {"connected": True, "statuses": statuses}
