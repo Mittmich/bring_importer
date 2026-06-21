@@ -409,12 +409,17 @@ function RecipePickerDialog({
   onPick: (recipeUuid: string) => void
 }) {
   const [search, setSearch] = useState('')
-  const { data: recipes = [], isLoading } = useQuery({
-    queryKey: ['recipes'],
-    queryFn: api.listRecipes,
-  })
+  const [debounced, setDebounced] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 250)
+    return () => clearTimeout(t)
+  }, [search])
 
-  const filtered = recipes.filter((r) => r.title.toLowerCase().includes(search.toLowerCase()))
+  const { data, isLoading } = useQuery({
+    queryKey: ['recipes', 'picker', debounced],
+    queryFn: () => api.listRecipes({ q: debounced || undefined, limit: 50 }),
+  })
+  const filtered = data?.items ?? []
   const dayLabel = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'short',

@@ -215,15 +215,16 @@ async def get_recipe(
         raise HTTPException(status_code=404, detail="Recipe not found")
 
     is_public = bool(row["is_public"])
-    if not is_public:
-        if current_user is None:
-            raise HTTPException(status_code=404, detail="Recipe not found")
-        owner_id = get_user_id(current_user.email)
-        if owner_id != row["user_id"]:
-            raise HTTPException(status_code=404, detail="Recipe not found")
+    owner_id = get_user_id(current_user.email) if current_user else None
+    owned = owner_id is not None and owner_id == row["user_id"]
+    if not is_public and not owned:
+        raise HTTPException(status_code=404, detail="Recipe not found")
 
     data = json.loads(row["recipe_json"])
     data["is_public"] = is_public
+    # Lets the public share page tell whether the viewer owns this recipe
+    # without fetching their whole recipe list.
+    data["owned"] = owned
     return JSONResponse(content=data)
 
 
@@ -296,30 +297,49 @@ async def get_recipe_html(recipe_uuid: str):
     return HTMLResponse(content=html)
 
 
-@router.get("", response_model=List[Dict[str, Any]])
-async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa: B008
-    """Return the current user's recipes (uuid, title, datePublished, source, createdAt)."""
+@router.get("")
+async def list_recipes(
+    limit: int = 30,
+    offset: int = 0,
+    q: Optional[str] = None,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Return a page of the current user's recipes, newest first.
+
+    Response envelope: ``{items, total, limit, offset}``. ``q`` filters by title
+    (case-insensitive substring). ``limit`` is clamped to 1..100.
+    """
     user_id = get_user_id(current_user.email)
     if user_id is None:
-        return []
+        return {"items": [], "total": 0, "limit": limit, "offset": offset}
+
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    where = "WHERE user_id = ?"
+    params: List[Any] = [user_id]
+    if q:
+        where += " AND LOWER(title) LIKE ?"
+        params.append(f"%{q.lower()}%")
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT uuid, title, recipe_json, created_at, is_public FROM recipes "
-        "WHERE user_id = ? ORDER BY created_at DESC",
-        (user_id,),
-    )
-    rows = cursor.fetchall()
+    total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes {where}", params).fetchone()["c"]
+    rows = cursor.execute(
+        f"SELECT uuid, title, recipe_json, created_at, is_public FROM recipes {where} "
+        "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        (*params, limit, offset),
+    ).fetchall()
     conn.close()
-    recipes: List[Dict[str, Any]] = []
+
+    items: List[Dict[str, Any]] = []
     for row in rows:
         try:
             recipe_json = json.loads(row["recipe_json"])
         except Exception:
             recipe_json = {}
         source = recipe_json.get("source") or {"kind": "unknown", "value": ""}
-        recipes.append(
+        items.append(
             {
                 "uuid": row["uuid"],
                 "title": row["title"],
@@ -329,7 +349,7 @@ async def list_recipes(current_user: User = Depends(get_current_user)):  # noqa:
                 "is_public": bool(row["is_public"]),
             }
         )
-    return recipes
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @router.put("/{recipe_uuid}")

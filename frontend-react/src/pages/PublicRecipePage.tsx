@@ -21,14 +21,8 @@ export function PublicRecipePage() {
     retry: false,
   })
 
-  // Only check ownership if the user is authenticated (avoids a 401 redirect).
-  const { data: myRecipes } = useQuery({
-    queryKey: ['recipes'],
-    queryFn: () => api.listRecipes(),
-    enabled: loggedIn,
-  })
-
-  const isOwner = myRecipes?.some((r) => r.uuid === uuid) ?? false
+  // The recipe payload tells us whether the viewer owns it (no extra fetch).
+  const isOwner = (loggedIn && recipe?.owned) ?? false
 
   const cloneMutation = useMutation({
     mutationFn: () => api.cloneRecipe(uuid!),

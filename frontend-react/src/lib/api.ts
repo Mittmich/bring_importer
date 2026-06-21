@@ -44,6 +44,19 @@ export interface RecipeListItem {
   is_public: boolean
 }
 
+export interface RecipeListPage {
+  items: RecipeListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ListRecipesParams {
+  limit?: number
+  offset?: number
+  q?: string
+}
+
 export interface Ingredient {
   amount: string  // "2 cups", "200 g", "" for "to taste"
   name: string
@@ -106,6 +119,7 @@ export interface Recipe {
   note?: string
   datePublished?: string
   is_public?: boolean
+  owned?: boolean
 }
 
 export const api = {
@@ -118,8 +132,13 @@ export const api = {
     })
   },
 
-  listRecipes() {
-    return request<RecipeListItem[]>('/recipes')
+  listRecipes(params: ListRecipesParams = {}) {
+    const qs = new URLSearchParams()
+    if (params.limit != null) qs.set('limit', String(params.limit))
+    if (params.offset != null) qs.set('offset', String(params.offset))
+    if (params.q) qs.set('q', params.q)
+    const suffix = qs.toString() ? `?${qs}` : ''
+    return request<RecipeListPage>(`/recipes${suffix}`)
   },
 
   getRecipe(uuid: string) {
