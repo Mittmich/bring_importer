@@ -25,6 +25,7 @@ server {
         sub_filter '{{API_URL}}' '${API_URL}';
         sub_filter '{{FRONTEND_URL}}' '${FRONTEND_URL}';
         sub_filter '{{APP_VERSION}}' '${APP_VERSION}';
+        sub_filter '{{GOOGLE_CLIENT_ID}}' '${GOOGLE_CLIENT_ID}';
         sub_filter_once off;
         sub_filter_types application/javascript text/plain;
         add_header Cache-Control no-store;
