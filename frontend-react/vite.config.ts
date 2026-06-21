@@ -12,6 +12,10 @@ export default defineConfig({
       manifest: false,
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // The SW's navigation fallback serves index.html for navigations. Exclude
+        // /api/* so server-side routes — e.g. the Google OAuth callback — hit the
+        // network/backend instead of being swallowed by the app shell.
+        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],
