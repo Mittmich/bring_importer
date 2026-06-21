@@ -4,6 +4,7 @@ declare global {
       API_URL?: string
       FRONTEND_URL?: string
       APP_VERSION?: string
+      GOOGLE_CLIENT_ID?: string
     }
   }
 }
@@ -18,4 +19,7 @@ export const config = {
   apiUrl: readEnv('API_URL', 'http://localhost:8001'),
   frontendUrl: readEnv('FRONTEND_URL', window.location.origin),
   version: readEnv('APP_VERSION', '1.0.0'),
+  // Public OAuth Client ID for the on-demand Google Calendar export. Not a
+  // secret; empty by default — the export button hides itself when unset.
+  googleClientId: readEnv('GOOGLE_CLIENT_ID', ''),
 }

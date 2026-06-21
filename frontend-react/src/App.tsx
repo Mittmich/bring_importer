@@ -9,6 +9,7 @@ import { RecipesPage } from '@/pages/RecipesPage'
 import { EditRecipePage } from '@/pages/EditRecipePage'
 import { AccountPage } from '@/pages/AccountPage'
 import { PublicRecipePage } from '@/pages/PublicRecipePage'
+import { WeeklyPlanPage } from '@/pages/WeeklyPlanPage'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -44,6 +45,7 @@ export default function App() {
             }
           >
             <Route index element={<HomePage />} />
+            <Route path="plan" element={<WeeklyPlanPage />} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:uuid" element={<RecipesPage />} />
             <Route path="recipes/:uuid/edit" element={<EditRecipePage />} />
