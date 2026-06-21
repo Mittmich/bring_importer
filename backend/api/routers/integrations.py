@@ -69,24 +69,41 @@ async def callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
 ):
-    """OAuth redirect target: store the refresh token and bounce back to the app."""
+    """OAuth redirect target: store the refresh token and bounce back to the app.
+
+    On any failure we redirect to ``/plan?google=error&reason=<why>`` so the
+    cause is visible client-side instead of a dead end.
+    """
     origin = app_origin()
-    if error or not code or not state:
-        return RedirectResponse(url=f"{origin}/plan?google=error")
+
+    def fail(reason: str) -> RedirectResponse:
+        return RedirectResponse(url=f"{origin}/plan?google=error&reason={reason}")
+
+    if error:
+        return fail(error)
+    if not code:
+        # Google returned without an authorization code (and without an error).
+        return fail("missing_code")
+    if not state:
+        return fail("missing_state")
 
     email = _decode_state(state)
     if email is None:
-        return RedirectResponse(url=f"{origin}/plan?google=error")
+        return fail("bad_state")
 
     user_id = get_user_id(email)
     if user_id is None:
-        return RedirectResponse(url=f"{origin}/plan?google=error")
+        return fail("unknown_user")
 
-    tokens = await gcal.exchange_code(code)
+    try:
+        tokens = await gcal.exchange_code(code)
+    except Exception:
+        return fail("token_exchange_failed")
     refresh_token = tokens.get("refresh_token")
     if not refresh_token:
-        # No refresh token (e.g. user previously consented without revoking).
-        return RedirectResponse(url=f"{origin}/plan?google=error")
+        # Google only returns a refresh token with access_type=offline +
+        # prompt=consent; a prior grant without revoke can omit it.
+        return fail("no_refresh_token")
 
     conn = get_db_connection()
     cursor = conn.cursor()

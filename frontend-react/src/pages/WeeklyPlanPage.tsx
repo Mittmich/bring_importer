@@ -46,15 +46,16 @@ export function WeeklyPlanPage() {
   const endISO = toISO(addDays(weekStart, 6))
   const todayISO = toISO(new Date())
 
-  // Pick up the OAuth callback redirect (?google=connected|error), then clean the URL.
-  const [connectError, setConnectError] = useState(false)
+  // Pick up the OAuth callback redirect (?google=connected|error&reason=…), then clean the URL.
+  const [connectError, setConnectError] = useState<string | null>(null)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const g = params.get('google')
     if (!g) return
     if (g === 'connected') queryClient.invalidateQueries({ queryKey: ['google-status'] })
-    if (g === 'error') setConnectError(true)
+    if (g === 'error') setConnectError(params.get('reason') || 'unknown')
     params.delete('google')
+    params.delete('reason')
     const qs = params.toString()
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
   }, [queryClient])
@@ -251,7 +252,7 @@ function GoogleSyncControls({
   status?: { configured: boolean; connected: boolean; calendar_id: string | null }
   statuses: Record<string, EntrySyncState>
   entryCount: number
-  connectError: boolean
+  connectError: string | null
 }) {
   const queryClient = useQueryClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -279,9 +280,13 @@ function GoogleSyncControls({
       <>
         <Button variant="outline" size="sm" onClick={connect} disabled={connecting}>
           <CalendarPlus className="w-4 h-4 mr-1.5" />
-          {connecting ? 'Connecting…' : 'Connect Google Calendar'}
+          {connecting ? 'Connecting…' : 'Connect calendar'}
         </Button>
-        {connectError && <span className="text-xs text-destructive">Couldn't connect. Try again.</span>}
+        {connectError && (
+          <span className="text-xs text-destructive">
+            Couldn&apos;t connect{connectError !== 'unknown' ? ` (${connectError})` : ''}. Try again.
+          </span>
+        )}
       </>
     )
   }
