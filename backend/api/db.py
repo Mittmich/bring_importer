@@ -54,6 +54,36 @@ def init_db():
     """
     )
 
+    # Create meal_plan_entries table — one row per recipe assigned to a day.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS meal_plan_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        date TEXT NOT NULL,  -- ISO 'YYYY-MM-DD'
+        recipe_uuid TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+
+    # Create shopping_lists table — caches a merged ingredient list under an
+    # unguessable token so the public Bring HTML endpoint can serve it without
+    # auth (Bring fetches the URL from its own servers).
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS shopping_lists (
+        token TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        items_json TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+
     # ---- in-place migrations for pre-existing recipes.db (step 3) ----
     # Each migration is guarded: skip if the column already exists.
     _existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recipes)").fetchall()}

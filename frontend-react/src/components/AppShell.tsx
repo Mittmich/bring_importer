@@ -28,7 +28,7 @@ export function AppShell() {
           <Outlet context={{ onImport: openImport }} />
         </main>
       </div>
-      <BottomNav onImport={openImport} />
+      <BottomNav />
 
       <ImportPhotoModal
         open={importMode === 'photo'}

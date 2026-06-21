@@ -49,6 +49,19 @@ export interface Ingredient {
   name: string
 }
 
+export interface MealPlanEntry {
+  id: number
+  date: string  // ISO 'YYYY-MM-DD'
+  recipe_uuid: string
+  recipe_title: string
+  position: number
+}
+
+export interface ShoppingListResult {
+  token: string
+  items: Ingredient[]
+}
+
 export interface InstructionStep {
   text: string
   ingredients: number[]  // zero-based indices into Recipe.ingredients
@@ -123,5 +136,28 @@ export const api = {
 
   cloneRecipe(uuid: string) {
     return request<{ uuid: string; url: string }>(`/recipes/${uuid}/clone`, { method: 'POST' })
+  },
+
+  getMealPlan(start: string, end: string) {
+    const qs = new URLSearchParams({ start, end })
+    return request<MealPlanEntry[]>(`/meal-plan?${qs}`)
+  },
+
+  addMealPlanEntry(date: string, recipeUuid: string) {
+    return request<MealPlanEntry>('/meal-plan', {
+      method: 'POST',
+      body: JSON.stringify({ date, recipe_uuid: recipeUuid }),
+    })
+  },
+
+  deleteMealPlanEntry(entryId: number) {
+    return request<void>(`/meal-plan/${entryId}`, { method: 'DELETE' })
+  },
+
+  buildShoppingList(start: string, end: string) {
+    return request<ShoppingListResult>('/meal-plan/shopping-list', {
+      method: 'POST',
+      body: JSON.stringify({ start, end }),
+    })
   },
 }

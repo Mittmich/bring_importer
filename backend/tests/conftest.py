@@ -33,6 +33,7 @@ from api import auth as api_auth  # noqa: E402
 from api import create_access_token  # noqa: E402
 from api import db as api_db  # noqa: E402
 from api.models import Ingredient, InstructionStep, Recipe  # noqa: E402
+from api.routers import meal_plan as api_meal_plan_router  # noqa: E402
 from api.routers import recipes as api_recipes_router  # noqa: E402
 
 
@@ -79,6 +80,7 @@ def app(tmp_db_path, monkeypatch):
     monkeypatch.setattr(api, "get_db_connection", bound)
     monkeypatch.setattr(api_auth, "get_db_connection", bound)
     monkeypatch.setattr(api_recipes_router, "get_db_connection", bound)
+    monkeypatch.setattr(api_meal_plan_router, "get_db_connection", bound)
     api.init_db()
     return api.app
 

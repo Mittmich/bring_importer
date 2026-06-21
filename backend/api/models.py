@@ -61,3 +61,34 @@ class RecipeUpdate(BaseModel):
     description: Optional[str] = None
     note: Optional[str] = None
     is_public: Optional[bool] = None
+
+
+class MealPlanEntryCreate(BaseModel):
+    """Body for ``POST /meal-plan`` — assign a recipe to a day."""
+
+    date: str  # ISO 'YYYY-MM-DD'
+    recipe_uuid: str
+
+
+class MealPlanEntryUpdate(BaseModel):
+    """Body for ``PATCH /meal-plan/{id}`` — move/reorder an entry."""
+
+    date: Optional[str] = None
+    position: Optional[int] = None
+
+
+class MealPlanEntry(BaseModel):
+    """A recipe assigned to a day, returned with its recipe title."""
+
+    id: int
+    date: str
+    recipe_uuid: str
+    recipe_title: str
+    position: int
+
+
+class DateRange(BaseModel):
+    """A start/end date window (inclusive), ISO 'YYYY-MM-DD'."""
+
+    start: str
+    end: str
