@@ -81,3 +81,29 @@ post-connect redirect and recipe links) from `GOOGLE_REDIRECT_URI`, so there's a
 ## Tests
 Mock `api.routers.*` Google helpers (like the `merge_ingredients` pattern). Cover: connect URL, callback
 stores token, status, sync creates/recreates, sync-status classification, delete cleanup. Keep ≥80%.
+
+## Outcome
+
+Implemented. `/ci` green locally: ruff/black/isort/ty clean, **114 backend tests pass, 85.05% coverage**,
+frontend `tsc + vite build` clean.
+
+- Backend (httpx, no Google SDK): `config.py` (GOOGLE_* + `app_origin`), `db.py`
+  (`google_integrations` table + `meal_plan_entries.google_event_id`), `api/google_calendar.py`,
+  `api/routers/integrations.py`, and meal-plan `POST /sync`, `POST /sync-status`, plus delete-time event
+  cleanup. `tests/test_calendar_sync.py` (12 tests).
+- Frontend: removed the GIS browser hook; `WeeklyPlanPage` now connects via the backend, shows a
+  **Sync now** button, per-meal sync dots, a calendar-settings dialog (pick calendar / disconnect), and a
+  read-only sync-status check on load/week-change.
+- Deployment: `deploy-lightsail.yml` writes `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (from GitHub
+  secrets) + literal `GOOGLE_REDIRECT_URI`; backend already loads them via `env_file: .env`.
+
+### User prerequisites (one-time)
+1. Add GitHub repo secrets **`GOOGLE_CLIENT_ID`** and **`GOOGLE_CLIENT_SECRET`**.
+2. In the Google Cloud OAuth client, add **Authorized redirect URI**
+   `https://bring.vimi.run/api/integrations/google/callback`.
+
+### Notes / follow-ups
+- Refresh token stored plaintext in SQLite (same trust model as other secrets here).
+- The old frontend `GOOGLE_CLIENT_ID` plumbing (env-config.js / nginx sub_filter / `config.googleClientId`)
+  is now unused but left in place; safe to remove later.
+- `google_calendar.py` is only ~35% covered (network layer is mocked); overall coverage stays ≥80%.
