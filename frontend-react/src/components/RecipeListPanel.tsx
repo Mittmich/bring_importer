@@ -1,9 +1,11 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useEffect, useRef, useState } from 'react'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { NavLink, useOutletContext } from 'react-router-dom'
 import { Search, ChevronRight, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
+
+const PAGE_SIZE = 30
 
 function relativeDate(dateStr?: string): string {
   if (!dateStr) return ''
@@ -24,16 +26,49 @@ interface Props {
 
 export function RecipeListPanel({ activeUuid }: Props) {
   const [search, setSearch] = useState('')
+  const [debounced, setDebounced] = useState('')
   const { onImport } = useOutletContext<{ onImport: () => void }>()
 
-  const { data: recipes = [], isLoading, error } = useQuery({
-    queryKey: ['recipes'],
-    queryFn: api.listRecipes,
+  // Debounce the search term so each keystroke doesn't hit the server.
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 250)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['recipes', 'list', debounced],
+    queryFn: ({ pageParam }) =>
+      api.listRecipes({ limit: PAGE_SIZE, offset: pageParam, q: debounced || undefined }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0)
+      return loaded < lastPage.total ? loaded : undefined
+    },
   })
 
-  const filtered = recipes.filter((r) =>
-    r.title.toLowerCase().includes(search.toLowerCase()),
-  )
+  const recipes = data?.pages.flatMap((p) => p.items) ?? []
+
+  // Auto-load the next page when the sentinel scrolls into view.
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el || !hasNextPage) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage()
+      },
+      { rootMargin: '200px' },
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
   return (
     <div className="flex flex-col w-full md:w-[300px] md:min-w-[300px] border-r border-border bg-white h-full">
@@ -69,14 +104,18 @@ export function RecipeListPanel({ activeUuid }: Props) {
         {error && (
           <div className="p-4 text-sm text-destructive text-center">Could not load recipes.</div>
         )}
-        {!isLoading && !error && filtered.length === 0 && (
+        {!isLoading && !error && recipes.length === 0 && (
           <div className="p-6 text-sm text-muted-foreground text-center">
-            {search ? 'No recipes match your search.' : 'No recipes yet. Import one to get started.'}
+            {debounced ? 'No recipes match your search.' : 'No recipes yet. Import one to get started.'}
           </div>
         )}
-        {filtered.map((recipe) => (
+        {recipes.map((recipe) => (
           <RecipeRow key={recipe.uuid} recipe={recipe} isActive={recipe.uuid === activeUuid} />
         ))}
+        <div ref={sentinelRef} />
+        {isFetchingNextPage && (
+          <div className="p-3 text-xs text-muted-foreground text-center">Loading more…</div>
+        )}
       </div>
     </div>
   )

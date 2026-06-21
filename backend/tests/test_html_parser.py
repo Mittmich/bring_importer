@@ -13,12 +13,48 @@ import pytest
 from api.models import Ingredient, InstructionStep
 from api.recipe_extraction import (
     _find_recipe_in_jsonld,
+    _flatten_instruction_texts,
     _map_ingredients_to_instructions,
     _parse_ingredient_strings,
     extract_recipe_from_html_text,
     extract_recipe_from_jsonld,
     parse_recipe_with_openai,
 )
+
+
+# ---------------------------------------------------------------------------
+# _flatten_instruction_texts — handles strings, HowToStep, HowToSection nesting
+# ---------------------------------------------------------------------------
+
+
+def test_flatten_instructions_howto_section_nesting():
+    """HowToSection wrappers (e.g. chefkoch.de) nest the real steps under
+    itemListElement; the section name must not leak in as a step."""
+    raw = [
+        {
+            "@type": "HowToSection",
+            "name": "Zubereitung",
+            "itemListElement": [
+                {"@type": "HowToStep", "text": "Step one.", "name": "Step one."},
+                {"@type": "HowToStep", "text": "Step two.", "name": "Step two."},
+            ],
+        }
+    ]
+    assert _flatten_instruction_texts(raw) == ["Step one.", "Step two."]
+
+
+def test_flatten_instructions_mixed_strings_and_steps():
+    raw = ["Plain step.", {"@type": "HowToStep", "text": "Dict step."}]
+    assert _flatten_instruction_texts(raw) == ["Plain step.", "Dict step."]
+
+
+def test_flatten_instructions_single_string():
+    assert _flatten_instruction_texts("Just mix.") == ["Just mix."]
+
+
+def test_flatten_instructions_empty():
+    assert _flatten_instruction_texts(None) == []
+    assert _flatten_instruction_texts([]) == []
 
 # ---------------------------------------------------------------------------
 # _find_recipe_in_jsonld — pure function, no LLM required

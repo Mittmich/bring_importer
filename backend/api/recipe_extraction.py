@@ -270,6 +270,41 @@ def _find_recipe_in_jsonld(obj: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _flatten_instruction_texts(raw: Any) -> List[str]:
+    """Flatten a schema.org ``recipeInstructions`` value into step text strings.
+
+    Handles the real-world shapes:
+      - a single string, or a list of strings;
+      - ``HowToStep`` dicts (``text``/``name``);
+      - ``HowToSection`` / ``ItemList`` wrappers that nest the actual steps under
+        ``itemListElement`` (e.g. chefkoch.de groups all steps in one section).
+    """
+    texts: List[str] = []
+
+    def walk(node: Any) -> None:
+        if node is None:
+            return
+        if isinstance(node, str):
+            s = node.strip()
+            if s:
+                texts.append(s)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+        elif isinstance(node, dict):
+            # Section/list wrappers nest steps; recurse rather than using the
+            # wrapper's own name (e.g. "Zubereitung").
+            if node.get("itemListElement") is not None:
+                walk(node["itemListElement"])
+            else:
+                text = node.get("text") or node.get("name") or ""
+                if isinstance(text, str) and text.strip():
+                    texts.append(text.strip())
+
+    walk(raw)
+    return texts
+
+
 def extract_recipe_from_jsonld(jsonld_obj: Any) -> Optional[Recipe]:
     """Convert a parsed JSON-LD object into a ``Recipe``, or ``None``.
 
@@ -297,21 +332,8 @@ def extract_recipe_from_jsonld(jsonld_obj: Any) -> Optional[Recipe]:
     if isinstance(raw_ingredients, str):
         raw_ingredients = [raw_ingredients]
 
-    # Flat instruction strings from JSON-LD
-    raw_instr = found.get("recipeInstructions") or []
-    instruction_texts: List[str] = []
-    if isinstance(raw_instr, str):
-        if raw_instr:
-            instruction_texts = [raw_instr]
-    elif isinstance(raw_instr, list):
-        for step in raw_instr:
-            if isinstance(step, str):
-                if step:
-                    instruction_texts.append(step)
-            elif isinstance(step, dict):
-                text = step.get("text") or step.get("name") or ""
-                if text:
-                    instruction_texts.append(text)
+    # Flat instruction strings from JSON-LD (handles HowToSection/ItemList nesting).
+    instruction_texts = _flatten_instruction_texts(found.get("recipeInstructions"))
 
     # LLM calls to produce structured data
     ingredients = _parse_ingredient_strings(raw_ingredients)
@@ -365,7 +387,7 @@ def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
             },
         ],
         response_format=_RecipeOutput,
-        max_tokens=2000,
+        max_completion_tokens=2000,
     )
 
     out = completion.choices[0].message.parsed

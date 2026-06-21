@@ -12,6 +12,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from api.models import Ingredient, InstructionStep, Recipe
+
+
+def _recipe_named(title: str) -> Recipe:
+    """A minimal Recipe with a given title, for search/pagination tests."""
+    return Recipe(
+        title=title,
+        ingredients=[Ingredient(amount="1 cup", name="flour")],
+        instructions=[InstructionStep(text="Mix.", ingredients=[0])],
+        recipeYield="2 servings",
+        description="",
+    )
+
+
 # ---------------------------------------------------------------------------
 # POST /recipes/parse
 # ---------------------------------------------------------------------------
@@ -209,7 +223,9 @@ def test_get_recipe_html_unknown_uuid_returns_404(client):
 def test_list_recipes_returns_empty_when_db_is_empty(client, auth_headers):
     resp = client.get("/recipes", headers=auth_headers)
     assert resp.status_code == 200
-    assert resp.json() == []
+    body = resp.json()
+    assert body["items"] == []
+    assert body["total"] == 0
 
 
 @pytest.mark.integration
@@ -225,12 +241,63 @@ def test_list_recipes_returns_recipes_ordered_desc(client, auth_headers, mocked_
 
     resp = client.get("/recipes", headers=auth_headers)
     assert resp.status_code == 200
-    recipes = resp.json()
+    body = resp.json()
+    recipes = body["items"]
+    assert body["total"] == 2
     assert len(recipes) == 2
     assert recipes[0]["uuid"] == r2.json()["uuid"]
     assert recipes[1]["uuid"] == r1.json()["uuid"]
     assert all(r["title"] == "Test Pancakes" for r in recipes)
     assert all(r["source"]["kind"] == "image" for r in recipes)
+
+
+@pytest.mark.integration
+def test_list_recipes_pagination(client, auth_headers, mocked_openai):
+    """limit/offset page through the user's recipes and report the true total."""
+    for _ in range(5):
+        client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+
+    page1 = client.get("/recipes", headers=auth_headers, params={"limit": 2, "offset": 0}).json()
+    assert page1["total"] == 5
+    assert page1["limit"] == 2
+    assert len(page1["items"]) == 2
+
+    page3 = client.get("/recipes", headers=auth_headers, params={"limit": 2, "offset": 4}).json()
+    assert page3["total"] == 5
+    assert len(page3["items"]) == 1  # last page has the remainder
+
+    # limit is clamped to a sane maximum.
+    clamped = client.get("/recipes", headers=auth_headers, params={"limit": 9999}).json()
+    assert clamped["limit"] == 100
+
+
+@pytest.mark.integration
+def test_list_recipes_search_filters_by_title(client, auth_headers):
+    """The q parameter filters by case-insensitive title substring."""
+    with patch(
+        "api.routers.recipes.parse_recipe_with_openai",
+        return_value=_recipe_named("Banana Bread"),
+    ):
+        client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+    with patch(
+        "api.routers.recipes.parse_recipe_with_openai",
+        return_value=_recipe_named("Tomato Soup"),
+    ):
+        client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+
+    resp = client.get("/recipes", headers=auth_headers, params={"q": "banana"}).json()
+    assert resp["total"] == 1
+    assert resp["items"][0]["title"] == "Banana Bread"
+
+
+@pytest.mark.integration
+def test_get_recipe_includes_owned_flag(client, auth_headers, mocked_openai):
+    """owned is True for the owner; the field is present on the JSON payload."""
+    uuid = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="}).json()[
+        "uuid"
+    ]
+    body = client.get(f"/recipes/{uuid}.json", headers=auth_headers).json()
+    assert body["owned"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -540,14 +607,14 @@ def test_list_recipes_does_not_leak_other_users_recipes(
     b_headers = {"Authorization": f"Bearer {b_token}"}
     resp = client.get("/recipes", headers=b_headers)
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json()["items"] == []
 
     # Owner can always access their own recipe.
     assert client.get(f"/recipes/{a_uuid}.json", headers=auth_headers).status_code == 200
 
     # But the listing is correctly scoped.
     resp = client.get("/recipes", headers=auth_headers)
-    recipes = resp.json()
+    recipes = resp.json()["items"]
     assert len(recipes) == 1
     assert recipes[0]["uuid"] == a_uuid
 
@@ -594,11 +661,11 @@ def test_clone_public_recipe_creates_new_recipe(client, auth_headers, mocked_ope
     # Clone appears in B's recipe list.
     list_resp = client.get("/recipes", headers=b_headers)
     assert list_resp.status_code == 200
-    uuids = [r["uuid"] for r in list_resp.json()]
+    uuids = [r["uuid"] for r in list_resp.json()["items"]]
     assert body["uuid"] in uuids
 
     # Original still belongs to A only.
-    a_list = client.get("/recipes", headers=auth_headers).json()
+    a_list = client.get("/recipes", headers=auth_headers).json()["items"]
     assert any(r["uuid"] == original_uuid for r in a_list)
     assert not any(r["uuid"] == body["uuid"] for r in a_list)
 
