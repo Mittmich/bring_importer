@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from api.db import init_db  # noqa: E402
 from api.routers import auth as auth_router_module  # noqa: E402
 from api.routers import health as health_router_module  # noqa: E402
+from api.routers import integrations as integrations_router_module  # noqa: E402
 from api.routers import meal_plan as meal_plan_router_module  # noqa: E402
 from api.routers import recipes as recipes_router_module  # noqa: E402
 
@@ -49,4 +50,5 @@ async def startup_event():
 app.include_router(auth_router_module.router)
 app.include_router(recipes_router_module.router)
 app.include_router(meal_plan_router_module.router)
+app.include_router(integrations_router_module.router)
 app.include_router(health_router_module.router)

@@ -11,6 +11,8 @@
 #   LIGHTSAIL_APP_PATH    — absolute path to the repo on the instance (e.g. /home/ubuntu/bring_importer)
 #   OPENAI_API_KEY        — passed into the container via .env
 #   SECRET_KEY            — JWT signing secret; passed into the container via .env
+#   GOOGLE_CLIENT_ID      — Google OAuth client id (Calendar sync); via .env
+#   GOOGLE_CLIENT_SECRET  — Google OAuth client secret (Calendar sync); via .env
 
 name: Deploy to AWS Lightsail
 
@@ -63,6 +65,8 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           {
             echo "OPENAI_API_KEY=${OPENAI_API_KEY}"
@@ -73,6 +77,9 @@ jobs:
             echo "BACKEND_PORT=8001"
             echo "COMPOSE_PROJECT_NAME=bring_importer"
             echo "API_URL=/api"
+            echo "GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}"
+            echo "GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}"
+            echo "GOOGLE_REDIRECT_URI=https://bring.vimi.run/api/integrations/google/callback"
           } | ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
               "cat > ${{ secrets.LIGHTSAIL_APP_PATH }}/.env"
 

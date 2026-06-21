@@ -84,6 +84,20 @@ def init_db():
     """
     )
 
+    # Create google_integrations table — one row per user holding the Google
+    # OAuth refresh token and the chosen target calendar for meal-plan sync.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS google_integrations (
+        user_id INTEGER PRIMARY KEY,
+        refresh_token TEXT NOT NULL,
+        calendar_id TEXT NOT NULL DEFAULT 'primary',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+
     # ---- in-place migrations for pre-existing recipes.db (step 3) ----
     # Each migration is guarded: skip if the column already exists.
     _existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recipes)").fetchall()}
@@ -101,6 +115,13 @@ def init_db():
         cursor.execute("UPDATE recipes SET updated_at = created_at WHERE updated_at IS NULL")
     if "is_public" not in _existing_cols:
         cursor.execute("ALTER TABLE recipes ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
+
+    # meal_plan_entries.google_event_id — the synced Google Calendar event id
+    # (NULL until the entry is synced). Guarded; the table may not exist yet on
+    # a brand-new db, but CREATE TABLE above runs first so it always does here.
+    _mp_cols = {row[1] for row in cursor.execute("PRAGMA table_info(meal_plan_entries)").fetchall()}
+    if "google_event_id" not in _mp_cols:
+        cursor.execute("ALTER TABLE meal_plan_entries ADD COLUMN google_event_id TEXT")
 
     conn.commit()
     conn.close()

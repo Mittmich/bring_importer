@@ -62,6 +62,25 @@ export interface ShoppingListResult {
   items: Ingredient[]
 }
 
+export interface GoogleStatus {
+  configured: boolean
+  connected: boolean
+  calendar_id: string | null
+}
+
+export interface GoogleCalendar {
+  id: string
+  summary: string
+  primary?: boolean
+}
+
+export type EntrySyncState = 'synced' | 'missing' | 'unsynced'
+
+export interface WeekSyncStatus {
+  connected: boolean
+  statuses: Record<string, EntrySyncState>
+}
+
 export interface InstructionStep {
   text: string
   ingredients: number[]  // zero-based indices into Recipe.ingredients
@@ -156,6 +175,45 @@ export const api = {
 
   buildShoppingList(start: string, end: string) {
     return request<ShoppingListResult>('/meal-plan/shopping-list', {
+      method: 'POST',
+      body: JSON.stringify({ start, end }),
+    })
+  },
+
+  // --- Google Calendar (server-side) ---
+
+  googleStatus() {
+    return request<GoogleStatus>('/integrations/google/status')
+  },
+
+  googleConnectUrl() {
+    return request<{ url: string }>('/integrations/google/connect')
+  },
+
+  googleCalendars() {
+    return request<GoogleCalendar[]>('/integrations/google/calendars')
+  },
+
+  setGoogleCalendar(calendarId: string) {
+    return request<void>('/integrations/google/calendar', {
+      method: 'PUT',
+      body: JSON.stringify({ calendar_id: calendarId }),
+    })
+  },
+
+  googleDisconnect() {
+    return request<void>('/integrations/google/connect', { method: 'DELETE' })
+  },
+
+  syncWeek(start: string, end: string) {
+    return request<{ created: number; recreated: number; total: number }>('/meal-plan/sync', {
+      method: 'POST',
+      body: JSON.stringify({ start, end }),
+    })
+  },
+
+  weekSyncStatus(start: string, end: string) {
+    return request<WeekSyncStatus>('/meal-plan/sync-status', {
       method: 'POST',
       body: JSON.stringify({ start, end }),
     })
