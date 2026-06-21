@@ -1,6 +1,6 @@
 ---
 name: recipe-tags
-status: draft
+status: active
 ---
 
 # Recipe Tags (user-defined) + Filtering

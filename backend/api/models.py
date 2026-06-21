@@ -61,6 +61,7 @@ class RecipeUpdate(BaseModel):
     description: Optional[str] = None
     note: Optional[str] = None
     is_public: Optional[bool] = None
+    tags: Optional[List[str]] = None
 
 
 class MealPlanEntryCreate(BaseModel):

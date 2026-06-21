@@ -42,6 +42,12 @@ export interface RecipeListItem {
   createdAt?: string
   source: { kind: string; value: string }
   is_public: boolean
+  tags?: string[]
+}
+
+export interface TagInfo {
+  name: string
+  count: number
 }
 
 export interface RecipeListPage {
@@ -55,6 +61,7 @@ export interface ListRecipesParams {
   limit?: number
   offset?: number
   q?: string
+  tags?: string[]
 }
 
 export interface Ingredient {
@@ -107,6 +114,7 @@ export interface RecipeUpdate {
   description?: string
   note?: string
   is_public?: boolean
+  tags?: string[]
 }
 
 export interface Recipe {
@@ -120,6 +128,7 @@ export interface Recipe {
   datePublished?: string
   is_public?: boolean
   owned?: boolean
+  tags?: string[]
 }
 
 export const api = {
@@ -137,8 +146,13 @@ export const api = {
     if (params.limit != null) qs.set('limit', String(params.limit))
     if (params.offset != null) qs.set('offset', String(params.offset))
     if (params.q) qs.set('q', params.q)
+    for (const t of params.tags ?? []) qs.append('tag', t)
     const suffix = qs.toString() ? `?${qs}` : ''
     return request<RecipeListPage>(`/recipes${suffix}`)
+  },
+
+  getTags() {
+    return request<TagInfo[]>('/recipes/tags')
   },
 
   getRecipe(uuid: string) {

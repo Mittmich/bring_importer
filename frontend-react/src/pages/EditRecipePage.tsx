@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, GripVertical, Plus, Trash2, X } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -102,6 +102,13 @@ export function EditRecipePage() {
   const [instructions, setInstructions] = useState<StepRow[]>([])
   const [note, setNote] = useState('')
   const [isPublic, setIsPublic] = useState(false)
+  const [tags, setTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
+
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['tags'],
+    queryFn: api.getTags,
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -117,7 +124,19 @@ export function EditRecipePage() {
     setInstructions((recipe.instructions ?? []).map((step) => ({ ...step, _id: uid() })))
     setNote(recipe.note ?? '')
     setIsPublic(recipe.is_public ?? false)
+    setTags(recipe.tags ?? [])
   }, [recipe])
+
+  function addTag(raw: string) {
+    const name = raw.trim().replace(/\s+/g, ' ')
+    setTagInput('')
+    if (!name) return
+    setTags((prev) => (prev.some((t) => t.toLowerCase() === name.toLowerCase()) ? prev : [...prev, name]))
+  }
+
+  function removeTag(name: string) {
+    setTags((prev) => prev.filter((t) => t !== name))
+  }
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -130,10 +149,12 @@ export function EditRecipePage() {
         instructions: instructions.map((step) => ({ text: step.text, ingredients: step.ingredients })),
         note,
         is_public: isPublic,
+        tags,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipe', uuid] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
+      queryClient.invalidateQueries({ queryKey: ['tags'] })
       navigate(`/recipes/${uuid}`)
     },
   })
@@ -284,6 +305,51 @@ export function EditRecipePage() {
                 placeholder="Brief description…"
                 rows={2}
               />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="tags">Tags</Label>
+              {tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-1">
+                  {tags.map((t) => (
+                    <span
+                      key={t}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium"
+                    >
+                      {t}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(t)}
+                        aria-label={`Remove tag ${t}`}
+                        className="hover:text-destructive"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <Input
+                id="tags"
+                list="tag-suggestions"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault()
+                    addTag(tagInput)
+                  }
+                }}
+                onBlur={() => addTag(tagInput)}
+                placeholder="Add a tag and press Enter"
+              />
+              <datalist id="tag-suggestions">
+                {allTags
+                  .filter((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase()))
+                  .map((t) => (
+                    <option key={t.name} value={t.name} />
+                  ))}
+              </datalist>
             </div>
           </div>
 

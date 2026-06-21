@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { NavLink, useOutletContext } from 'react-router-dom'
 import { Search, ChevronRight, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
@@ -27,6 +27,7 @@ interface Props {
 export function RecipeListPanel({ activeUuid }: Props) {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const { onImport } = useOutletContext<{ onImport: () => void }>()
 
   // Debounce the search term so each keystroke doesn't hit the server.
@@ -34,6 +35,14 @@ export function RecipeListPanel({ activeUuid }: Props) {
     const t = setTimeout(() => setDebounced(search.trim()), 250)
     return () => clearTimeout(t)
   }, [search])
+
+  const { data: tags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags })
+
+  function toggleTag(name: string) {
+    setSelectedTags((prev) =>
+      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name],
+    )
+  }
 
   const {
     data,
@@ -43,9 +52,14 @@ export function RecipeListPanel({ activeUuid }: Props) {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: ['recipes', 'list', debounced],
+    queryKey: ['recipes', 'list', debounced, selectedTags],
     queryFn: ({ pageParam }) =>
-      api.listRecipes({ limit: PAGE_SIZE, offset: pageParam, q: debounced || undefined }),
+      api.listRecipes({
+        limit: PAGE_SIZE,
+        offset: pageParam,
+        q: debounced || undefined,
+        tags: selectedTags.length ? selectedTags : undefined,
+      }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
       const loaded = pages.reduce((n, p) => n + p.items.length, 0)
@@ -96,6 +110,37 @@ export function RecipeListPanel({ activeUuid }: Props) {
         </div>
       </div>
 
+      {/* Tag filter */}
+      {(tags.length > 0 || selectedTags.length > 0) && (
+        <div className="px-3 py-2 border-b border-border/50 flex flex-wrap gap-1.5">
+          {tags.map((t) => {
+            const active = selectedTags.includes(t.name)
+            return (
+              <button
+                key={t.name}
+                onClick={() => toggleTag(t.name)}
+                className={cn(
+                  'text-xs px-2 py-1 rounded-full border transition-colors',
+                  active
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted/50 border-border text-muted-foreground hover:border-primary/40',
+                )}
+              >
+                {t.name}
+              </button>
+            )
+          })}
+          {selectedTags.length > 0 && (
+            <button
+              onClick={() => setSelectedTags([])}
+              className="text-xs px-2 py-1 rounded-full text-primary hover:underline"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading && (
@@ -106,7 +151,9 @@ export function RecipeListPanel({ activeUuid }: Props) {
         )}
         {!isLoading && !error && recipes.length === 0 && (
           <div className="p-6 text-sm text-muted-foreground text-center">
-            {debounced ? 'No recipes match your search.' : 'No recipes yet. Import one to get started.'}
+            {debounced || selectedTags.length
+              ? 'No recipes match your filters.'
+              : 'No recipes yet. Import one to get started.'}
           </div>
         )}
         {recipes.map((recipe) => (

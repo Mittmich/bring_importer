@@ -84,6 +84,34 @@ def init_db():
     """
     )
 
+    # Create tags + recipe_tags tables — user-defined tags, many-to-many with
+    # recipes. Tag names are unique per user, case-insensitively.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name "
+        "ON tags(user_id, name COLLATE NOCASE)"
+    )
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS recipe_tags (
+        recipe_uuid TEXT NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (recipe_uuid, tag_id),
+        FOREIGN KEY (tag_id) REFERENCES tags (id)
+    )
+    """
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_tags_tag ON recipe_tags(tag_id)")
+
     # Create google_integrations table — one row per user holding the Google
     # OAuth refresh token and the chosen target calendar for meal-plan sync.
     cursor.execute(

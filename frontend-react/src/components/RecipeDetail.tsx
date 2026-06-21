@@ -156,6 +156,19 @@ export function RecipeDetail({ uuid, recipe }: Props) {
               </Button>
             )}
           </div>
+
+          {recipe.tags && recipe.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-4">
+              {recipe.tags.map((t) => (
+                <span
+                  key={t}
+                  className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground font-medium"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="p-4 md:p-6 space-y-4">
