@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -209,15 +209,16 @@ async def get_recipe(
         (recipe_uuid,),
     )
     row = cursor.fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
 
     is_public = bool(row["is_public"])
     owner_id = get_user_id(current_user.email) if current_user else None
     owned = owner_id is not None and owner_id == row["user_id"]
     if not is_public and not owned:
+        conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
 
     data = json.loads(row["recipe_json"])
@@ -225,6 +226,8 @@ async def get_recipe(
     # Lets the public share page tell whether the viewer owns this recipe
     # without fetching their whole recipe list.
     data["owned"] = owned
+    data["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
+    conn.close()
     return JSONResponse(content=data)
 
 
@@ -297,11 +300,79 @@ async def get_recipe_html(recipe_uuid: str):
     return HTMLResponse(content=html)
 
 
+def _normalize_tag(name: str) -> str:
+    """Trim and collapse internal whitespace; preserves the display casing."""
+    return " ".join(name.split())
+
+
+def _set_recipe_tags(cursor, user_id: int, recipe_uuid: str, names: List[str]) -> None:
+    """Replace a recipe's tag set, creating any new tags for the user.
+
+    De-dupes case-insensitively, keeping the first-seen display form.
+    """
+    seen: Dict[str, str] = {}
+    for raw in names:
+        n = _normalize_tag(raw)
+        if n and n.lower() not in seen:
+            seen[n.lower()] = n
+
+    cursor.execute("DELETE FROM recipe_tags WHERE recipe_uuid = ?", (recipe_uuid,))
+    for display in seen.values():
+        cursor.execute(
+            "INSERT INTO tags (user_id, name) VALUES (?, ?) ON CONFLICT DO NOTHING",
+            (user_id, display),
+        )
+        tag_id = cursor.execute(
+            "SELECT id FROM tags WHERE user_id = ? AND name = ? COLLATE NOCASE",
+            (user_id, display),
+        ).fetchone()["id"]
+        cursor.execute(
+            "INSERT OR IGNORE INTO recipe_tags (recipe_uuid, tag_id) VALUES (?, ?)",
+            (recipe_uuid, tag_id),
+        )
+
+
+def _tags_for(cursor, recipe_uuids: List[str]) -> Dict[str, List[str]]:
+    """Map each recipe uuid to its sorted list of tag names."""
+    if not recipe_uuids:
+        return {}
+    placeholders = ",".join("?" * len(recipe_uuids))
+    rows = cursor.execute(
+        f"SELECT rt.recipe_uuid AS uuid, t.name AS name FROM recipe_tags rt "
+        f"JOIN tags t ON t.id = rt.tag_id WHERE rt.recipe_uuid IN ({placeholders}) "
+        "ORDER BY t.name COLLATE NOCASE",
+        recipe_uuids,
+    ).fetchall()
+    out: Dict[str, List[str]] = {}
+    for r in rows:
+        out.setdefault(r["uuid"], []).append(r["name"])
+    return out
+
+
+@router.get("/tags", include_in_schema=False)
+async def list_tags(current_user: User = Depends(get_current_user)):  # noqa: B008
+    """Return the current user's in-use tags with usage counts, name-sorted."""
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        return []
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        "SELECT t.name AS name, COUNT(rt.recipe_uuid) AS count FROM tags t "
+        "JOIN recipe_tags rt ON rt.tag_id = t.id WHERE t.user_id = ? "
+        "GROUP BY t.id HAVING count > 0 ORDER BY t.name COLLATE NOCASE",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return [{"name": r["name"], "count": r["count"]} for r in rows]
+
+
 @router.get("")
 async def list_recipes(
     limit: int = 30,
     offset: int = 0,
     q: Optional[str] = None,
+    tag: Optional[List[str]] = Query(default=None),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
     """Return a page of the current user's recipes, newest first.
@@ -322,6 +393,17 @@ async def list_recipes(
         where += " AND LOWER(title) LIKE ?"
         params.append(f"%{q.lower()}%")
 
+    # Tag filter (AND): the recipe must carry every named tag.
+    tags_norm = sorted({t.strip().lower() for t in (tag or []) if t.strip()})
+    if tags_norm:
+        placeholders = ",".join("?" * len(tags_norm))
+        where += (
+            f" AND uuid IN (SELECT rt.recipe_uuid FROM recipe_tags rt "
+            f"JOIN tags t ON t.id = rt.tag_id WHERE LOWER(t.name) IN ({placeholders}) "
+            f"GROUP BY rt.recipe_uuid HAVING COUNT(DISTINCT LOWER(t.name)) = ?)"
+        )
+        params.extend([*tags_norm, len(tags_norm)])
+
     conn = get_db_connection()
     cursor = conn.cursor()
     total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes {where}", params).fetchone()["c"]
@@ -330,6 +412,8 @@ async def list_recipes(
         "ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
     ).fetchall()
+
+    tag_map = _tags_for(cursor, [row["uuid"] for row in rows])
     conn.close()
 
     items: List[Dict[str, Any]] = []
@@ -347,6 +431,7 @@ async def list_recipes(
                 "createdAt": row["created_at"],
                 "source": source,
                 "is_public": bool(row["is_public"]),
+                "tags": tag_map.get(row["uuid"], []),
             }
         )
     return {"items": items, "total": total, "limit": limit, "offset": offset}
@@ -412,10 +497,13 @@ async def update_recipe(
         "is_public = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
         (new_title, json.dumps(stored), new_note, new_is_public, recipe_uuid),
     )
+    if body.tags is not None:
+        _set_recipe_tags(cursor, user_id, recipe_uuid, body.tags)
     conn.commit()
-    conn.close()
 
     stored["is_public"] = bool(new_is_public)
+    stored["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
+    conn.close()
     return JSONResponse(content=stored)
 
 
@@ -482,6 +570,7 @@ async def delete_recipe(
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
 
+    cursor.execute("DELETE FROM recipe_tags WHERE recipe_uuid = ?", (recipe_uuid,))
     cursor.execute("DELETE FROM recipes WHERE uuid = ?", (recipe_uuid,))
     conn.commit()
     conn.close()
