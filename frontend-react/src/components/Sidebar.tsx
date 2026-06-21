@@ -1,11 +1,12 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { Home, BookOpen, Plus, User, LogOut, Download } from 'lucide-react'
+import { Home, BookOpen, CalendarDays, Plus, User, LogOut, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getUserEmail, logout } from '@/hooks/useAuth'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 
 const navItems = [
   { to: '/', icon: Home, label: 'Home', end: true },
+  { to: '/plan', icon: CalendarDays, label: 'Plan' },
   { to: '/recipes', icon: BookOpen, label: 'Recipes' },
   { to: '/import', icon: Plus, label: 'Import' },
 ]

@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Home, BookOpen, Plus, User, Download, Share, X } from 'lucide-react'
+import { Home, BookOpen, CalendarDays, User, Download, Share, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 
 const tabs = [
   { to: '/', icon: Home, label: 'Home', end: true },
+  { to: '/plan', icon: CalendarDays, label: 'Plan' },
   { to: '/recipes', icon: BookOpen, label: 'Recipes' },
-  { to: '/import', icon: Plus, label: 'Import' },
   { to: '/account', icon: User, label: 'Account' },
 ]
 
-export function BottomNav({ onImport }: { onImport: () => void }) {
+export function BottomNav() {
   const { canInstall, triggerInstall, showIosInstructions } = useInstallPrompt()
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false)
 
@@ -29,33 +29,22 @@ export function BottomNav({ onImport }: { onImport: () => void }) {
         </div>
       )}
       <nav className="md:hidden flex border-t border-border bg-white safe-area-bottom">
-        {tabs.map(({ to, icon: Icon, label, end }) =>
-          to === '/import' ? (
-            <button
-              key={to}
-              onClick={onImport}
-              className="flex-1 flex flex-col items-center justify-center gap-1 py-3.5 text-muted-foreground"
-            >
-              <Icon className="w-6 h-6" />
-              <span className="text-xs font-medium">{label}</span>
-            </button>
-          ) : (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  'flex-1 flex flex-col items-center justify-center gap-1 py-3.5 transition-colors',
-                  isActive ? 'text-primary' : 'text-muted-foreground',
-                )
-              }
-            >
-              <Icon className="w-6 h-6" />
-              <span className="text-xs font-medium">{label}</span>
-            </NavLink>
-          ),
-        )}
+        {tabs.map(({ to, icon: Icon, label, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            className={({ isActive }) =>
+              cn(
+                'flex-1 flex flex-col items-center justify-center gap-1 py-3.5 transition-colors',
+                isActive ? 'text-primary' : 'text-muted-foreground',
+              )
+            }
+          >
+            <Icon className="w-6 h-6" />
+            <span className="text-xs font-medium">{label}</span>
+          </NavLink>
+        ))}
         {canInstall && (
           <button
             onClick={triggerInstall}
