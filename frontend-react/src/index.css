@@ -38,12 +38,19 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     margin: 0;
+    /* Suppress pull-to-refresh overscroll, which reflows the dynamic viewport
+       and pushes the fixed bottom nav below the fold on mobile. */
+    overscroll-behavior-y: none;
   }
 
   #root {
-    height: 100dvh;
+    /* Use the small viewport height so the layout always reserves room for the
+       browser chrome (address bar). With 100dvh the bottom nav could drop below
+       the fold while the chrome animates in (e.g. on pull-to-refresh). */
+    height: 100svh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    overscroll-behavior-y: none;
   }
 }

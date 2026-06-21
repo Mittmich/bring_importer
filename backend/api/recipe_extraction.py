@@ -190,7 +190,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         image_base64 = image_base64.split("base64,")[1]
 
     completion = _get_client().beta.chat.completions.parse(
-        model="gpt-5.4-nano",
+        model="gpt-5.4-mini",
         messages=[
             {
                 "role": "system",
