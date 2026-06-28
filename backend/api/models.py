@@ -62,6 +62,7 @@ class RecipeUpdate(BaseModel):
     note: Optional[str] = None
     is_public: Optional[bool] = None
     tags: Optional[List[str]] = None
+    training_verified: Optional[bool] = None
 
 
 class Tag(BaseModel):

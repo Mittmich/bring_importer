@@ -228,7 +228,7 @@ async def get_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT recipe_json, is_public, user_id FROM recipes WHERE uuid = ?",
+        "SELECT recipe_json, is_public, user_id, training_verified FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     )
     row = cursor.fetchone()
@@ -249,6 +249,7 @@ async def get_recipe(
     # Lets the public share page tell whether the viewer owns this recipe
     # without fetching their whole recipe list.
     data["owned"] = owned
+    data["training_verified"] = bool(row["training_verified"])
     data["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
     conn.close()
     return JSONResponse(content=data)
@@ -565,7 +566,8 @@ async def update_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT user_id, recipe_json, note, source, is_public FROM recipes WHERE uuid = ?",
+        "SELECT user_id, recipe_json, note, source, is_public, training_verified "
+        "FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     ).fetchone()
     if row is None or row["user_id"] != user_id:
@@ -596,17 +598,23 @@ async def update_recipe(
     new_title = stored.get("name", "")
     new_note = stored.get("note", "")
     new_is_public = int(body.is_public) if body.is_public is not None else int(row["is_public"])
+    new_verified = (
+        int(body.training_verified)
+        if body.training_verified is not None
+        else int(row["training_verified"])
+    )
 
     cursor.execute(
         "UPDATE recipes SET title = ?, recipe_json = ?, note = ?, "
-        "is_public = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
-        (new_title, json.dumps(stored), new_note, new_is_public, recipe_uuid),
+        "is_public = ?, training_verified = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
+        (new_title, json.dumps(stored), new_note, new_is_public, new_verified, recipe_uuid),
     )
     if body.tags is not None:
         _set_recipe_tags(cursor, user_id, recipe_uuid, body.tags)
     conn.commit()
 
     stored["is_public"] = bool(new_is_public)
+    stored["training_verified"] = bool(new_verified)
     stored["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
     conn.close()
     return JSONResponse(content=stored)

@@ -126,6 +126,27 @@ def test_get_recipe_json_returns_stored_payload(client, auth_headers, mocked_ope
     assert "ingredients" in body
     assert any(ing["name"] == "flour" for ing in body["ingredients"])
     assert body["is_public"] is False
+    # Defaults to unverified for the image-ingestion eval set.
+    assert body["training_verified"] is False
+
+
+def test_training_verified_toggle_roundtrip(client, auth_headers, mocked_openai):
+    create = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="})
+    recipe_uuid = create.json()["uuid"]
+
+    upd = client.put(
+        f"/recipes/{recipe_uuid}", headers=auth_headers, json={"training_verified": True}
+    )
+    assert upd.status_code == 200
+    assert upd.json()["training_verified"] is True
+
+    fetched = client.get(f"/recipes/{recipe_uuid}.json", headers=auth_headers).json()
+    assert fetched["training_verified"] is True
+
+    # Editing other fields doesn't silently clear the flag.
+    client.put(f"/recipes/{recipe_uuid}", headers=auth_headers, json={"title": "Renamed"})
+    again = client.get(f"/recipes/{recipe_uuid}.json", headers=auth_headers).json()
+    assert again["training_verified"] is True
 
 
 @pytest.mark.integration

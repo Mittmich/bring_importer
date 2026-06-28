@@ -149,6 +149,12 @@ def init_db():
         cursor.execute("UPDATE recipes SET updated_at = created_at WHERE updated_at IS NULL")
     if "is_public" not in _existing_cols:
         cursor.execute("ALTER TABLE recipes ADD COLUMN is_public INTEGER NOT NULL DEFAULT 0")
+    # training_verified — user-confirmed that this recipe is a correct extraction,
+    # so its (image, recipe) pair is eligible for the image-ingestion eval set.
+    if "training_verified" not in _existing_cols:
+        cursor.execute(
+            "ALTER TABLE recipes ADD COLUMN training_verified INTEGER NOT NULL DEFAULT 0"
+        )
 
     # meal_plan_entries.google_event_id — the synced Google Calendar event id
     # (NULL until the entry is synced). Guarded; the table may not exist yet on
