@@ -5,6 +5,7 @@ import { Search, ChevronRight, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { TagChip } from '@/components/ui/tag-chip'
+import { tagColor, tagChipStyle } from '@/lib/tagColors'
 
 const MAX_ROW_TAGS = 3
 
@@ -118,16 +119,17 @@ export function RecipeListPanel({ activeUuid }: Props) {
         <div className="px-3 py-2 border-b border-border/50 flex flex-wrap gap-1.5">
           {tags.map((t) => {
             const active = selectedTags.includes(t.name)
+            const resolved = tagColor(t.name, t.color)
             return (
               <button
                 key={t.name}
                 onClick={() => toggleTag(t.name)}
-                className={cn(
-                  'text-xs px-2 py-1 rounded-full border transition-colors',
+                className="text-xs px-2 py-1 rounded-full border font-medium transition-colors"
+                style={
                   active
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'bg-muted/50 border-border text-muted-foreground hover:border-primary/40',
-                )}
+                    ? { backgroundColor: resolved, color: '#fff', borderColor: resolved }
+                    : tagChipStyle(resolved)
+                }
               >
                 {t.name}
               </button>

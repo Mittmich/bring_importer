@@ -12,8 +12,8 @@ export function TagsPage() {
   const { data: tags = [], isLoading } = useQuery({ queryKey: ['tags'], queryFn: api.getTags })
 
   return (
-    <div className="flex flex-col h-full bg-[#F8FAFC]">
-      <div className="max-w-xl mx-auto w-full p-4 md:p-6 space-y-4 pt-6">
+    <div className="flex flex-col h-full overflow-y-auto bg-[#F8FAFC]">
+      <div className="max-w-xl mx-auto w-full p-4 md:p-6 space-y-4 pt-6 pb-8">
         <Link
           to="/account"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
