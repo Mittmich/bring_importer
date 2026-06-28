@@ -515,8 +515,8 @@ export function EditRecipePage() {
 
           {/* Sharing */}
           <div className="bg-white rounded-xl border border-border p-5">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <Label>Sharing</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {isPublic ? 'Anyone with the link can view this recipe.' : 'Only you can see this recipe.'}
@@ -527,7 +527,7 @@ export function EditRecipePage() {
                 role="switch"
                 aria-checked={isPublic}
                 onClick={() => setIsPublic((v) => !v)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPublic ? 'bg-primary' : 'bg-input'}`}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPublic ? 'bg-primary' : 'bg-input'}`}
               >
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${isPublic ? 'translate-x-6' : 'translate-x-1'}`}
@@ -540,8 +540,8 @@ export function EditRecipePage() {
               (image, recipe) pair feeds the image-ingestion eval set. */}
           {recipe?.source?.kind === 'image' && (
             <div className="bg-white rounded-xl border border-border p-5">
-              <div className="flex items-center justify-between">
-                <div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
                   <Label>Verified extraction</Label>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Mark once the recipe matches the photo. Verified recipes become ground truth for
@@ -553,7 +553,7 @@ export function EditRecipePage() {
                   role="switch"
                   aria-checked={verified}
                   onClick={() => setVerified((v) => !v)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${verified ? 'bg-primary' : 'bg-input'}`}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${verified ? 'bg-primary' : 'bg-input'}`}
                 >
                   <span
                     className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${verified ? 'translate-x-6' : 'translate-x-1'}`}
