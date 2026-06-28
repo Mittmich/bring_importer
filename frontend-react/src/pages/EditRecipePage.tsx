@@ -103,6 +103,7 @@ export function EditRecipePage() {
   const [instructions, setInstructions] = useState<StepRow[]>([])
   const [note, setNote] = useState('')
   const [isPublic, setIsPublic] = useState(false)
+  const [verified, setVerified] = useState(false)
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
 
@@ -125,6 +126,7 @@ export function EditRecipePage() {
     setInstructions((recipe.instructions ?? []).map((step) => ({ ...step, _id: uid() })))
     setNote(recipe.note ?? '')
     setIsPublic(recipe.is_public ?? false)
+    setVerified(recipe.training_verified ?? false)
     setTags((recipe.tags ?? []).map((t) => t.name))
   }, [recipe])
 
@@ -150,6 +152,7 @@ export function EditRecipePage() {
         instructions: instructions.map((step) => ({ text: step.text, ingredients: step.ingredients })),
         note,
         is_public: isPublic,
+        training_verified: verified,
         tags,
       }),
     onSuccess: () => {
@@ -532,6 +535,33 @@ export function EditRecipePage() {
               </button>
             </div>
           </div>
+
+          {/* Verified extraction — only meaningful for photo imports, whose
+              (image, recipe) pair feeds the image-ingestion eval set. */}
+          {recipe?.source?.kind === 'image' && (
+            <div className="bg-white rounded-xl border border-border p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Verified extraction</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Mark once the recipe matches the photo. Verified recipes become ground truth for
+                    improving extraction.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={verified}
+                  onClick={() => setVerified((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${verified ? 'bg-primary' : 'bg-input'}`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${verified ? 'translate-x-6' : 'translate-x-1'}`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

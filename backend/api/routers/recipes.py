@@ -16,11 +16,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user, get_current_user_optional, get_user_id
+from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
 from api.models import (
     Ingredient,
@@ -33,6 +34,8 @@ from api.models import (
     User,
 )
 from api.recipe_extraction import (
+    IMAGE_MODEL,
+    IMAGE_PROMPT_VERSION,
     USER_AGENT,
     extract_recipe_from_html_text,
     extract_recipe_from_jsonld,
@@ -87,6 +90,7 @@ def _store_recipe(
 
 @router.post("/parse", response_model=RecipeResponse)
 async def parse_recipe(
+    background_tasks: BackgroundTasks,
     image: str = Form(...),
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
@@ -101,6 +105,16 @@ async def parse_recipe(
             user_id=user_id,
             recipe=recipe,
             source={"kind": "image", "value": ""},
+        )
+        # Opt-in: stash the image + raw extraction for the eval dataset. Runs
+        # after the response so it never adds latency to the import.
+        background_tasks.add_task(
+            collect_image_extraction,
+            recipe_uuid,
+            image,
+            recipe,
+            IMAGE_MODEL,
+            IMAGE_PROMPT_VERSION,
         )
         return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
     except Exception as e:
@@ -214,7 +228,7 @@ async def get_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT recipe_json, is_public, user_id FROM recipes WHERE uuid = ?",
+        "SELECT recipe_json, is_public, user_id, training_verified FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     )
     row = cursor.fetchone()
@@ -235,6 +249,7 @@ async def get_recipe(
     # Lets the public share page tell whether the viewer owns this recipe
     # without fetching their whole recipe list.
     data["owned"] = owned
+    data["training_verified"] = bool(row["training_verified"])
     data["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
     conn.close()
     return JSONResponse(content=data)
@@ -551,7 +566,8 @@ async def update_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT user_id, recipe_json, note, source, is_public FROM recipes WHERE uuid = ?",
+        "SELECT user_id, recipe_json, note, source, is_public, training_verified "
+        "FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     ).fetchone()
     if row is None or row["user_id"] != user_id:
@@ -582,17 +598,23 @@ async def update_recipe(
     new_title = stored.get("name", "")
     new_note = stored.get("note", "")
     new_is_public = int(body.is_public) if body.is_public is not None else int(row["is_public"])
+    new_verified = (
+        int(body.training_verified)
+        if body.training_verified is not None
+        else int(row["training_verified"])
+    )
 
     cursor.execute(
         "UPDATE recipes SET title = ?, recipe_json = ?, note = ?, "
-        "is_public = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
-        (new_title, json.dumps(stored), new_note, new_is_public, recipe_uuid),
+        "is_public = ?, training_verified = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
+        (new_title, json.dumps(stored), new_note, new_is_public, new_verified, recipe_uuid),
     )
     if body.tags is not None:
         _set_recipe_tags(cursor, user_id, recipe_uuid, body.tags)
     conn.commit()
 
     stored["is_public"] = bool(new_is_public)
+    stored["training_verified"] = bool(new_verified)
     stored["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
     conn.close()
     return JSONResponse(content=stored)

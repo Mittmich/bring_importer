@@ -45,6 +45,12 @@ USER_AGENT = (
 # 30K chars is ~7.5K tokens; enough to cover ~99% of real recipe pages.
 MAX_HTML_CHARS_FOR_OPENAI = 30_000
 
+# Model + prompt version used for image extraction. Named constants (rather
+# than inline literals) so the training-data collector can record exactly which
+# model/prompt produced a snapshot, and so the eval harness has one seam to swap.
+IMAGE_MODEL = "gpt-5.4-mini"
+IMAGE_PROMPT_VERSION = "v1"
+
 # Lazy singleton — avoids crashing at import time when OPENAI_API_KEY is absent
 # (e.g. during the health-check startup path or in tests).
 _client: Optional[OpenAI] = None
@@ -190,7 +196,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         image_base64 = image_base64.split("base64,")[1]
 
     completion = _get_client().beta.chat.completions.parse(
-        model="gpt-5.4-mini",
+        model=IMAGE_MODEL,
         messages=[
             {
                 "role": "system",

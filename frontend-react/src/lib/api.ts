@@ -125,6 +125,7 @@ export interface RecipeUpdate {
   note?: string
   is_public?: boolean
   tags?: string[]
+  training_verified?: boolean
 }
 
 export interface Recipe {
@@ -139,6 +140,7 @@ export interface Recipe {
   is_public?: boolean
   owned?: boolean
   tags?: RecipeTag[]
+  training_verified?: boolean
 }
 
 export const api = {
