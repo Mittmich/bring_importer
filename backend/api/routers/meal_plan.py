@@ -371,7 +371,19 @@ async def sync_status(
         }
 
     refresh_token, calendar_id = integration
-    token = await gcal.refresh_access_token(refresh_token)
+    try:
+        token = await gcal.refresh_access_token(refresh_token)
+    except HTTPException as err:
+        # This is a passive, background poll. If the Google authorization has
+        # lapsed, degrade gracefully (entries shown as unsynced) and flag that a
+        # reconnect is needed — never let it bubble up and error the page.
+        if err.status_code == 409:
+            return {
+                "connected": True,
+                "needs_reconnect": True,
+                "statuses": {str(row["id"]): "unsynced" for row in rows},
+            }
+        raise
 
     statuses: Dict[str, str] = {}
     for row in rows:

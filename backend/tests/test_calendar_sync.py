@@ -8,6 +8,8 @@ integrations router and the meal-plan router, which call them via the module.
 import sqlite3
 from unittest.mock import AsyncMock, patch
 
+from fastapi import HTTPException
+
 from api.routers.integrations import _encode_state
 
 
@@ -221,6 +223,49 @@ def test_sync_status_classifies_entries(client, auth_headers, mocked_openai, tmp
     assert body["statuses"][str(synced)] == "synced"
     assert body["statuses"][str(missing)] == "missing"
     assert body["statuses"][str(unsynced)] == "unsynced"
+
+
+def test_sync_status_expired_google_token_degrades_gracefully(
+    client, auth_headers, mocked_openai, tmp_db_path
+):
+    """A lapsed Google authorization must NOT 401 (which logs the user out of
+    the whole app). The read-only poll degrades to unsynced + needs_reconnect."""
+    uuid = _make_recipe(client, auth_headers)
+    entry_id = _add_entry(client, auth_headers, "2026-06-22", uuid)
+    _connect_google(tmp_db_path)
+
+    expired = AsyncMock(
+        side_effect=HTTPException(status_code=409, detail="Google authorization expired")
+    )
+    with patch("api.google_calendar.refresh_access_token", new=expired):
+        resp = client.post(
+            "/meal-plan/sync-status",
+            headers=auth_headers,
+            json={"start": "2026-06-22", "end": "2026-06-28"},
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["connected"] is True
+    assert body["needs_reconnect"] is True
+    assert body["statuses"][str(entry_id)] == "unsynced"
+
+
+def test_sync_expired_google_token_is_not_401(client, auth_headers, mocked_openai, tmp_db_path):
+    """Interactive sync surfaces a reconnect (409), never a session-killing 401."""
+    uuid = _make_recipe(client, auth_headers)
+    _add_entry(client, auth_headers, "2026-06-22", uuid)
+    _connect_google(tmp_db_path)
+
+    expired = AsyncMock(
+        side_effect=HTTPException(status_code=409, detail="Google authorization expired")
+    )
+    with patch("api.google_calendar.refresh_access_token", new=expired):
+        resp = client.post(
+            "/meal-plan/sync",
+            headers=auth_headers,
+            json={"start": "2026-06-22", "end": "2026-06-28"},
+        )
+    assert resp.status_code == 409
 
 
 def test_sync_status_not_connected_all_unsynced(client, auth_headers, mocked_openai):

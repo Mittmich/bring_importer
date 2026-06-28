@@ -69,9 +69,12 @@ async def refresh_access_token(refresh_token: str) -> str:
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.post(TOKEN_URL, data=data)
     if resp.status_code != 200:
-        # 400 here usually means the refresh token was revoked.
+        # 400 here usually means the refresh token was revoked. Deliberately
+        # NOT 401: that status is reserved for the app's own session, and the
+        # SPA logs the user out on any 401. A lapsed *Google* authorization
+        # must not nuke the app session — surface it as 409 (reconnect needed).
         raise HTTPException(
-            status_code=401, detail="Google authorization expired; reconnect needed"
+            status_code=409, detail="Google authorization expired; reconnect needed"
         )
     token = resp.json().get("access_token")
     if not token:

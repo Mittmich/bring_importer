@@ -136,6 +136,7 @@ export function WeeklyPlanPage() {
           statuses={statuses}
           entryCount={entries.length}
           connectError={connectError}
+          needsReconnect={syncStatus?.needs_reconnect ?? false}
         />
       </div>
 
@@ -246,6 +247,7 @@ function GoogleSyncControls({
   statuses,
   entryCount,
   connectError,
+  needsReconnect,
 }: {
   startISO: string
   endISO: string
@@ -253,6 +255,7 @@ function GoogleSyncControls({
   statuses: Record<string, EntrySyncState>
   entryCount: number
   connectError: string | null
+  needsReconnect: boolean
 }) {
   const queryClient = useQueryClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -287,6 +290,20 @@ function GoogleSyncControls({
             Couldn&apos;t connect{connectError !== 'unknown' ? ` (${connectError})` : ''}. Try again.
           </span>
         )}
+      </>
+    )
+  }
+
+  if (needsReconnect) {
+    return (
+      <>
+        <Button variant="outline" size="sm" onClick={connect} disabled={connecting}>
+          <CalendarPlus className="w-4 h-4 mr-1.5" />
+          {connecting ? 'Connecting…' : 'Reconnect calendar'}
+        </Button>
+        <span className="text-xs text-destructive">
+          Google access expired. Reconnect to keep syncing.
+        </span>
       </>
     )
   }
