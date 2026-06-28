@@ -16,11 +16,12 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from api.auth import get_current_user, get_current_user_optional, get_user_id
+from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
 from api.models import (
     Ingredient,
@@ -33,6 +34,8 @@ from api.models import (
     User,
 )
 from api.recipe_extraction import (
+    IMAGE_MODEL,
+    IMAGE_PROMPT_VERSION,
     USER_AGENT,
     extract_recipe_from_html_text,
     extract_recipe_from_jsonld,
@@ -87,6 +90,7 @@ def _store_recipe(
 
 @router.post("/parse", response_model=RecipeResponse)
 async def parse_recipe(
+    background_tasks: BackgroundTasks,
     image: str = Form(...),
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
@@ -101,6 +105,16 @@ async def parse_recipe(
             user_id=user_id,
             recipe=recipe,
             source={"kind": "image", "value": ""},
+        )
+        # Opt-in: stash the image + raw extraction for the eval dataset. Runs
+        # after the response so it never adds latency to the import.
+        background_tasks.add_task(
+            collect_image_extraction,
+            recipe_uuid,
+            image,
+            recipe,
+            IMAGE_MODEL,
+            IMAGE_PROMPT_VERSION,
         )
         return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
     except Exception as e:

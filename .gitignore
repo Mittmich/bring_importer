@@ -1,5 +1,6 @@
 recipes.db
 users.json
+training_data/
 .env
 .DS_Store
 logs/*

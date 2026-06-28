@@ -16,6 +16,12 @@ SECRET_KEY = os.getenv("SECRET_KEY", "please_change_this_to_a_random_key_in_prod
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30000
 
+# --- Training-data collection (opt-in, for the image-ingestion eval) ---
+# When on, each image import persists the uploaded image + a snapshot of the
+# raw model extraction so the user's later edits become ground-truth labels.
+COLLECT_TRAINING_DATA = os.getenv("COLLECT_TRAINING_DATA", "").lower() in ("1", "true", "yes", "on")
+TRAINING_DATA_DIR = os.getenv("TRAINING_DATA_DIR", "training_data")
+
 # --- Google Calendar (server-side OAuth) ---
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
