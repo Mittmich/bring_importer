@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { NavLink, useOutletContext } from 'react-router-dom'
-import { Search, ChevronRight, Plus } from 'lucide-react'
+import { Search, ChevronRight, ChevronDown, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { TagChip } from '@/components/ui/tag-chip'
-import { tagColor, tagChipStyle } from '@/lib/tagColors'
+import { tagColor } from '@/lib/tagColors'
 
 const MAX_ROW_TAGS = 3
 
@@ -32,6 +32,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [tagsExpanded, setTagsExpanded] = useState(false)
   const { onImport } = useOutletContext<{ onImport: () => void }>()
 
   // Debounce the search term so each keystroke doesn't hit the server.
@@ -114,10 +115,22 @@ export function RecipeListPanel({ activeUuid }: Props) {
         </div>
       </div>
 
-      {/* Tag filter */}
-      {(tags.length > 0 || selectedTags.length > 0) && (
-        <div className="px-3 py-2 border-b border-border/50 flex flex-wrap gap-1.5">
-          {tags.map((t) => {
+      {/* Tag filter — collapsed by default; only selected tags stay visible
+          until expanded via the toggle. */}
+      {tags.length > 0 && (
+        <div className="px-3 py-2 border-b border-border/50 flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setTagsExpanded((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-border text-muted-foreground hover:border-primary/40 transition-colors"
+            aria-expanded={tagsExpanded}
+          >
+            Tags
+            <ChevronDown
+              className={cn('w-3.5 h-3.5 transition-transform', tagsExpanded && 'rotate-180')}
+            />
+          </button>
+
+          {(tagsExpanded ? tags : tags.filter((t) => selectedTags.includes(t.name))).map((t) => {
             const active = selectedTags.includes(t.name)
             const resolved = tagColor(t.name, t.color)
             return (
@@ -128,13 +141,14 @@ export function RecipeListPanel({ activeUuid }: Props) {
                 style={
                   active
                     ? { backgroundColor: resolved, color: '#fff', borderColor: resolved }
-                    : tagChipStyle(resolved)
+                    : { backgroundColor: '#fff', color: resolved, borderColor: resolved }
                 }
               >
                 {t.name}
               </button>
             )
           })}
+
           {selectedTags.length > 0 && (
             <button
               onClick={() => setSelectedTags([])}
