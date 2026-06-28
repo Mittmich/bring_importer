@@ -106,6 +106,8 @@ export type EntrySyncState = 'synced' | 'missing' | 'unsynced'
 
 export interface WeekSyncStatus {
   connected: boolean
+  /** True when the stored Google authorization has lapsed and needs reconnecting. */
+  needs_reconnect?: boolean
   statuses: Record<string, EntrySyncState>
 }
 
