@@ -64,6 +64,26 @@ class RecipeUpdate(BaseModel):
     tags: Optional[List[str]] = None
 
 
+class Tag(BaseModel):
+    """A user-defined tag, with usage count and optional explicit colour.
+
+    ``color`` is ``None`` when the user hasn't picked one; the frontend then
+    derives a stable default from the name against its theme palette.
+    """
+
+    id: int
+    name: str
+    count: int
+    color: Optional[str] = None
+
+
+class TagUpdate(BaseModel):
+    """Body for ``PATCH /recipes/tags/{id}`` — rename and/or recolour."""
+
+    name: Optional[str] = None
+    color: Optional[str] = None
+
+
 class MealPlanEntryCreate(BaseModel):
     """Body for ``POST /meal-plan`` — assign a recipe to a day."""
 

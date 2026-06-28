@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronDown, ExternalLink, Pencil, Share2, Trash2 } from 'lu
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { TagChip } from '@/components/ui/tag-chip'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
 import { parseServings, servingsUnit, formatIngredient } from '@/lib/scaling'
 
@@ -160,12 +161,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           {recipe.tags && recipe.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-4">
               {recipe.tags.map((t) => (
-                <span
-                  key={t}
-                  className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground font-medium"
-                >
-                  {t}
-                </span>
+                <TagChip key={t.name} name={t.name} color={t.color} />
               ))}
             </div>
           )}
