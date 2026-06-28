@@ -8,6 +8,7 @@ import { HomePage } from '@/pages/HomePage'
 import { RecipesPage } from '@/pages/RecipesPage'
 import { EditRecipePage } from '@/pages/EditRecipePage'
 import { AccountPage } from '@/pages/AccountPage'
+import { TagsPage } from '@/pages/TagsPage'
 import { PublicRecipePage } from '@/pages/PublicRecipePage'
 import { WeeklyPlanPage } from '@/pages/WeeklyPlanPage'
 
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="recipes/:uuid" element={<RecipesPage />} />
             <Route path="recipes/:uuid/edit" element={<EditRecipePage />} />
             <Route path="account" element={<AccountPage />} />
+            <Route path="account/tags" element={<TagsPage />} />
             <Route path="import" element={<Navigate to="/" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

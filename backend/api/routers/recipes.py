@@ -22,7 +22,16 @@ from pydantic import BaseModel
 
 from api.auth import get_current_user, get_current_user_optional, get_user_id
 from api.db import get_db_connection
-from api.models import Ingredient, InstructionStep, Recipe, RecipeResponse, RecipeUpdate, User
+from api.models import (
+    Ingredient,
+    InstructionStep,
+    Recipe,
+    RecipeResponse,
+    RecipeUpdate,
+    Tag,
+    TagUpdate,
+    User,
+)
 from api.recipe_extraction import (
     USER_AGENT,
     extract_recipe_from_html_text,
@@ -332,39 +341,121 @@ def _set_recipe_tags(cursor, user_id: int, recipe_uuid: str, names: List[str]) -
         )
 
 
-def _tags_for(cursor, recipe_uuids: List[str]) -> Dict[str, List[str]]:
-    """Map each recipe uuid to its sorted list of tag names."""
+def _tags_for(cursor, recipe_uuids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
+    """Map each recipe uuid to its sorted list of ``{name, color}`` tags."""
     if not recipe_uuids:
         return {}
     placeholders = ",".join("?" * len(recipe_uuids))
     rows = cursor.execute(
-        f"SELECT rt.recipe_uuid AS uuid, t.name AS name FROM recipe_tags rt "
+        f"SELECT rt.recipe_uuid AS uuid, t.name AS name, t.color AS color FROM recipe_tags rt "
         f"JOIN tags t ON t.id = rt.tag_id WHERE rt.recipe_uuid IN ({placeholders}) "
         "ORDER BY t.name COLLATE NOCASE",
         recipe_uuids,
     ).fetchall()
-    out: Dict[str, List[str]] = {}
+    out: Dict[str, List[Dict[str, Any]]] = {}
     for r in rows:
-        out.setdefault(r["uuid"], []).append(r["name"])
+        out.setdefault(r["uuid"], []).append({"name": r["name"], "color": r["color"]})
     return out
 
 
-@router.get("/tags", include_in_schema=False)
+@router.get("/tags", include_in_schema=False, response_model=List[Tag])
 async def list_tags(current_user: User = Depends(get_current_user)):  # noqa: B008
-    """Return the current user's in-use tags with usage counts, name-sorted."""
+    """Return all of the current user's tags with usage counts, name-sorted.
+
+    Uses a LEFT JOIN so orphaned (zero-use) tags still appear — the tag
+    management page needs to see and clean those up.
+    """
     user_id = get_user_id(current_user.email)
     if user_id is None:
         return []
     conn = get_db_connection()
     cursor = conn.cursor()
     rows = cursor.execute(
-        "SELECT t.name AS name, COUNT(rt.recipe_uuid) AS count FROM tags t "
-        "JOIN recipe_tags rt ON rt.tag_id = t.id WHERE t.user_id = ? "
-        "GROUP BY t.id HAVING count > 0 ORDER BY t.name COLLATE NOCASE",
+        "SELECT t.id AS id, t.name AS name, t.color AS color, "
+        "COUNT(rt.recipe_uuid) AS count FROM tags t "
+        "LEFT JOIN recipe_tags rt ON rt.tag_id = t.id WHERE t.user_id = ? "
+        "GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
         (user_id,),
     ).fetchall()
     conn.close()
-    return [{"name": r["name"], "count": r["count"]} for r in rows]
+    return [
+        {"id": r["id"], "name": r["name"], "count": r["count"], "color": r["color"]} for r in rows
+    ]
+
+
+@router.patch("/tags/{tag_id}", include_in_schema=False, response_model=Tag)
+async def update_tag(
+    tag_id: int,
+    body: TagUpdate,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Rename and/or recolour one of the current user's tags.
+
+    Returns 404 if the tag isn't owned by the user, 409 if a rename would
+    collide (case-insensitively) with another of the user's tags.
+    """
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT id, user_id, name, color FROM tags WHERE id = ?", (tag_id,)
+    ).fetchone()
+    if row is None or row["user_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    new_name = row["name"]
+    if body.name is not None:
+        new_name = _normalize_tag(body.name)
+        if not new_name:
+            conn.close()
+            raise HTTPException(status_code=422, detail="Tag name cannot be empty")
+        clash = cursor.execute(
+            "SELECT id FROM tags WHERE user_id = ? AND name = ? COLLATE NOCASE AND id != ?",
+            (user_id, new_name, tag_id),
+        ).fetchone()
+        if clash is not None:
+            conn.close()
+            raise HTTPException(status_code=409, detail="A tag with that name already exists")
+
+    new_color = body.color if body.color is not None else row["color"]
+    cursor.execute(
+        "UPDATE tags SET name = ?, color = ? WHERE id = ?",
+        (new_name, new_color, tag_id),
+    )
+    count = cursor.execute(
+        "SELECT COUNT(*) AS c FROM recipe_tags WHERE tag_id = ?", (tag_id,)
+    ).fetchone()["c"]
+    conn.commit()
+    conn.close()
+    return {"id": tag_id, "name": new_name, "count": count, "color": new_color}
+
+
+@router.delete("/tags/{tag_id}", include_in_schema=False, status_code=204)
+async def delete_tag(
+    tag_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Delete one of the current user's tags and detach it from all recipes."""
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute("SELECT user_id FROM tags WHERE id = ?", (tag_id,)).fetchone()
+    if row is None or row["user_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    cursor.execute("DELETE FROM recipe_tags WHERE tag_id = ?", (tag_id,))
+    cursor.execute("DELETE FROM tags WHERE id = ?", (tag_id,))
+    conn.commit()
+    conn.close()
+    return None
 
 
 @router.get("")

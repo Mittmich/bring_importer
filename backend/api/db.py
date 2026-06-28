@@ -92,6 +92,7 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         name TEXT NOT NULL,
+        color TEXT,
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
     """
@@ -100,6 +101,11 @@ def init_db():
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_user_name "
         "ON tags(user_id, name COLLATE NOCASE)"
     )
+    # Migrate older DBs created before tags carried a colour. CREATE TABLE
+    # IF NOT EXISTS won't add the column, so add it idempotently here.
+    existing_tag_cols = {r["name"] for r in cursor.execute("PRAGMA table_info(tags)").fetchall()}
+    if "color" not in existing_tag_cols:
+        cursor.execute("ALTER TABLE tags ADD COLUMN color TEXT")
     cursor.execute(
         """
     CREATE TABLE IF NOT EXISTS recipe_tags (

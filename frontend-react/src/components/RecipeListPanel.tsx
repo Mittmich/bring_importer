@@ -4,6 +4,9 @@ import { NavLink, useOutletContext } from 'react-router-dom'
 import { Search, ChevronRight, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { TagChip } from '@/components/ui/tag-chip'
+
+const MAX_ROW_TAGS = 3
 
 const PAGE_SIZE = 30
 
@@ -192,6 +195,18 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
             <> · {new URL(recipe.source.value).hostname.replace('www.', '')}</>
           )}
         </p>
+        {recipe.tags && recipe.tags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 mt-1.5">
+            {recipe.tags.slice(0, MAX_ROW_TAGS).map((t) => (
+              <TagChip key={t.name} name={t.name} color={t.color} />
+            ))}
+            {recipe.tags.length > MAX_ROW_TAGS && (
+              <span className="text-xs text-muted-foreground">
+                +{recipe.tags.length - MAX_ROW_TAGS}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       <ChevronRight className={cn('w-5 h-5 flex-shrink-0 ml-2', isActive ? 'text-primary' : 'text-muted-foreground/50')} />
     </NavLink>

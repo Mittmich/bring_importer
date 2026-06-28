@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, GripVertical, Plus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, GripVertical, Plus, Trash2 } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { TagChip } from '@/components/ui/tag-chip'
 
 // Local rows carry a stable client-side id so drag-and-drop has a key that
 // follows the item (not its position). Stripped before saving.
@@ -124,7 +125,7 @@ export function EditRecipePage() {
     setInstructions((recipe.instructions ?? []).map((step) => ({ ...step, _id: uid() })))
     setNote(recipe.note ?? '')
     setIsPublic(recipe.is_public ?? false)
-    setTags(recipe.tags ?? [])
+    setTags((recipe.tags ?? []).map((t) => t.name))
   }, [recipe])
 
   function addTag(raw: string) {
@@ -308,30 +309,27 @@ export function EditRecipePage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="tags">Tags</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="tags">Tags</Label>
+                <Link to="/account/tags" className="text-xs font-medium text-primary hover:underline">
+                  Manage tags →
+                </Link>
+              </div>
+
+              {/* Selected tags */}
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-1">
-                  {tags.map((t) => (
-                    <span
-                      key={t}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-primary/10 text-primary font-medium"
-                    >
-                      {t}
-                      <button
-                        type="button"
-                        onClick={() => removeTag(t)}
-                        aria-label={`Remove tag ${t}`}
-                        className="hover:text-destructive"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </span>
-                  ))}
+                  {tags.map((t) => {
+                    const info = allTags.find((a) => a.name.toLowerCase() === t.toLowerCase())
+                    return (
+                      <TagChip key={t} name={t} color={info?.color} onRemove={() => removeTag(t)} />
+                    )
+                  })}
                 </div>
               )}
+
               <Input
                 id="tags"
-                list="tag-suggestions"
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -343,13 +341,20 @@ export function EditRecipePage() {
                 onBlur={() => addTag(tagInput)}
                 placeholder="Add a tag and press Enter"
               />
-              <datalist id="tag-suggestions">
-                {allTags
-                  .filter((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase()))
-                  .map((t) => (
-                    <option key={t.name} value={t.name} />
-                  ))}
-              </datalist>
+
+              {/* Quick-select from existing tags */}
+              {allTags.some((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase())) && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  <span className="text-xs text-muted-foreground self-center mr-0.5">Existing:</span>
+                  {allTags
+                    .filter((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase()))
+                    .map((t) => (
+                      <button key={t.id} type="button" onClick={() => addTag(t.name)}>
+                        <TagChip name={t.name} color={t.color} muted />
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
 

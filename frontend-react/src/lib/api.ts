@@ -35,6 +35,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json()
 }
 
+/** A tag as it appears embedded on a recipe — name plus optional explicit colour. */
+export interface RecipeTag {
+  name: string
+  color: string | null
+}
+
 export interface RecipeListItem {
   uuid: string
   title: string
@@ -42,12 +48,14 @@ export interface RecipeListItem {
   createdAt?: string
   source: { kind: string; value: string }
   is_public: boolean
-  tags?: string[]
+  tags?: RecipeTag[]
 }
 
 export interface TagInfo {
+  id: number
   name: string
   count: number
+  color: string | null
 }
 
 export interface RecipeListPage {
@@ -128,7 +136,7 @@ export interface Recipe {
   datePublished?: string
   is_public?: boolean
   owned?: boolean
-  tags?: string[]
+  tags?: RecipeTag[]
 }
 
 export const api = {
@@ -153,6 +161,17 @@ export const api = {
 
   getTags() {
     return request<TagInfo[]>('/recipes/tags')
+  },
+
+  updateTag(id: number, body: { name?: string; color?: string | null }) {
+    return request<TagInfo>(`/recipes/tags/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    })
+  },
+
+  deleteTag(id: number) {
+    return request<void>(`/recipes/tags/${id}`, { method: 'DELETE' })
   },
 
   getRecipe(uuid: string) {
