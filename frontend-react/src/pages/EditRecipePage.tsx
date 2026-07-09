@@ -1,7 +1,7 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, GripVertical, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, GripVertical, ImagePlus, Plus, Trash2 } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -20,6 +20,8 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { api, type Ingredient, type InstructionStep } from '@/lib/api'
+import { cropToLandscape } from '@/lib/cropImage'
+import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -107,6 +109,18 @@ export function EditRecipePage() {
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
 
+  // Hero image editing. `newImage` holds a freshly cropped data URL to upload;
+  // `imageRemoved` marks the existing image for deletion. Both reset when the
+  // recipe (re)loads.
+  const [newImage, setNewImage] = useState<string | null>(null)
+  const [imageRemoved, setImageRemoved] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const existingImageSrc = useRecipeImage(recipe?.image_url)
+  // What to show in the editor: a new crop wins; otherwise the stored image
+  // unless the user just removed it.
+  const heroSrc = newImage ?? (imageRemoved ? undefined : existingImageSrc)
+
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
     queryFn: api.getTags,
@@ -128,7 +142,29 @@ export function EditRecipePage() {
     setIsPublic(recipe.is_public ?? false)
     setVerified(recipe.training_verified ?? false)
     setTags((recipe.tags ?? []).map((t) => t.name))
+    setNewImage(null)
+    setImageRemoved(false)
+    setImageError(null)
   }, [recipe])
+
+  async function handleImageFile(file: File) {
+    setImageError(null)
+    try {
+      const dataUrl = await cropToLandscape(file)
+      setNewImage(dataUrl)
+      setImageRemoved(false)
+    } catch {
+      setImageError('Could not read that image.')
+    }
+  }
+
+  function removeImage() {
+    setNewImage(null)
+    setImageError(null)
+    // Only flag a delete if there's a stored image to remove.
+    setImageRemoved(!!recipe?.has_image)
+    if (imageInputRef.current) imageInputRef.current.value = ''
+  }
 
   function addTag(raw: string) {
     const name = raw.trim().replace(/\s+/g, ' ')
@@ -142,8 +178,8 @@ export function EditRecipePage() {
   }
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      api.updateRecipe(uuid!, {
+    mutationFn: async () => {
+      await api.updateRecipe(uuid!, {
         title,
         recipeYield: yield_,
         description,
@@ -154,7 +190,14 @@ export function EditRecipePage() {
         is_public: isPublic,
         training_verified: verified,
         tags,
-      }),
+      })
+      // Persist the hero image change, if any, as a separate call.
+      if (newImage) {
+        await api.setRecipeImage(uuid!, newImage.split(',')[1])
+      } else if (imageRemoved && recipe?.has_image) {
+        await api.deleteRecipeImage(uuid!)
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recipe', uuid] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
@@ -286,6 +329,65 @@ export function EditRecipePage() {
               {(saveMutation.error as any)?.message ?? 'Save failed.'}
             </p>
           )}
+
+          {/* Hero image */}
+          <div className="bg-white rounded-xl border border-border p-5 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Photo</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Optional · shown at the top of the recipe · auto-cropped to landscape
+                </p>
+              </div>
+              {heroSrc && (
+                <button
+                  type="button"
+                  onClick={removeImage}
+                  className="text-muted-foreground hover:text-destructive transition-colors text-sm inline-flex items-center gap-1"
+                >
+                  <Trash2 className="w-4 h-4" /> Remove
+                </button>
+              )}
+            </div>
+
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleImageFile(file)
+              }}
+            />
+
+            {heroSrc ? (
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="block w-full aspect-video overflow-hidden rounded-lg border border-border group relative"
+                aria-label="Replace photo"
+              >
+                <img src={heroSrc} alt="Recipe" className="w-full h-full object-cover" />
+                <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center text-white opacity-0 group-hover:opacity-100 text-sm font-medium">
+                  Replace photo
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="flex w-full aspect-video items-center justify-center rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                <span className="flex flex-col items-center gap-1.5">
+                  <ImagePlus className="w-6 h-6" />
+                  <span className="text-sm font-medium">Add a photo</span>
+                </span>
+              </button>
+            )}
+
+            {imageError && <p className="text-sm text-destructive">{imageError}</p>}
+          </div>
 
           {/* Basic info */}
           <div className="bg-white rounded-xl border border-border p-5 space-y-4">

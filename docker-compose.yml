@@ -7,10 +7,12 @@ services:
       # ground-truth labels. Override by setting COLLECT_TRAINING_DATA in .env.
       COLLECT_TRAINING_DATA: ${COLLECT_TRAINING_DATA:-true}
       TRAINING_DATA_DIR: /app/training_data
+      RECIPE_IMAGES_DIR: /app/recipe_images
     volumes:
       - ./backend/recipes.db:/app/recipes.db
       - ./backend/users.json:/app/users.json
       - ./backend/training_data:/app/training_data
+      - ./backend/recipe_images:/app/recipe_images
     networks:
       - app
     restart: unless-stopped

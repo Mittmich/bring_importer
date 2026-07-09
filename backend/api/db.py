@@ -155,6 +155,10 @@ def init_db():
         cursor.execute(
             "ALTER TABLE recipes ADD COLUMN training_verified INTEGER NOT NULL DEFAULT 0"
         )
+    # has_image — 1 when the user has uploaded a hero photo for this recipe.
+    # The image bytes live on disk (config.RECIPE_IMAGES_DIR), not in the DB.
+    if "has_image" not in _existing_cols:
+        cursor.execute("ALTER TABLE recipes ADD COLUMN has_image INTEGER NOT NULL DEFAULT 0")
 
     # meal_plan_entries.google_event_id — the synced Google Calendar event id
     # (NULL until the entry is synced). Guarded; the table may not exist yet on

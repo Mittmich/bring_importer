@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ChevronDown, ExternalLink, Pencil, Share2, Trash2 } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
+import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TagChip } from '@/components/ui/tag-chip'
@@ -26,6 +27,8 @@ export function RecipeDetail({ uuid, recipe }: Props) {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  const heroSrc = useRecipeImage(recipe.image_url)
 
   const baseServings = parseServings(recipe.recipeYield)
   const unit = servingsUnit(recipe.recipeYield)
@@ -69,6 +72,13 @@ export function RecipeDetail({ uuid, recipe }: Props) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
+        {/* Hero image banner */}
+        {heroSrc && (
+          <div className="w-full aspect-video bg-muted overflow-hidden">
+            <img src={heroSrc} alt={recipe.name} className="w-full h-full object-cover" />
+          </div>
+        )}
+
         {/* Hero card */}
         <div className="bg-white border-b border-border px-6 py-6">
           <h1 className="text-xl font-bold text-foreground mb-3">{recipe.name}</h1>

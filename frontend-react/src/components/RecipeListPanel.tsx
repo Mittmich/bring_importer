@@ -4,6 +4,7 @@ import { NavLink, useOutletContext } from 'react-router-dom'
 import { Search, ChevronRight, ChevronDown, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { TagChip } from '@/components/ui/tag-chip'
 import { tagColor } from '@/lib/tagColors'
 
@@ -188,6 +189,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
 }
 
 function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boolean }) {
+  const thumbSrc = useRecipeImage(recipe.image_url)
   return (
     <NavLink
       to={`/recipes/${recipe.uuid}`}
@@ -196,7 +198,14 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
         isActive ? 'bg-primary/5' : 'hover:bg-muted/40',
       )}
     >
-      <div className="min-w-0">
+      {thumbSrc && (
+        <img
+          src={thumbSrc}
+          alt=""
+          className="w-14 h-14 rounded-lg object-cover flex-shrink-0 mr-3 border border-border/50"
+        />
+      )}
+      <div className="min-w-0 flex-1">
         <p
           className={cn(
             'text-base font-medium truncate',
