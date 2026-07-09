@@ -159,7 +159,9 @@ export function EditRecipePage() {
       queryClient.invalidateQueries({ queryKey: ['recipe', uuid] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
       queryClient.invalidateQueries({ queryKey: ['tags'] })
-      navigate(`/recipes/${uuid}`)
+      // Replace the edit entry so Back returns to the page before editing,
+      // not back into the editor.
+      navigate(`/recipes/${uuid}`, { replace: true })
     },
   })
 
