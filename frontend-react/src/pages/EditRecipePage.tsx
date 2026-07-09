@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, GripVertical, ImagePlus, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Camera, GripVertical, ImagePlus, Plus, Trash2, Upload } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -164,6 +164,17 @@ export function EditRecipePage() {
     // Only flag a delete if there's a stored image to remove.
     setImageRemoved(!!recipe?.has_image)
     if (imageInputRef.current) imageInputRef.current.value = ''
+  }
+
+  // Open the file picker, optionally asking the device to launch its camera.
+  // `capture` makes phones open the camera directly; without it they show the
+  // library/file chooser (which still offers the camera as one option).
+  function openImagePicker(useCamera: boolean) {
+    const input = imageInputRef.current
+    if (!input) return
+    if (useCamera) input.setAttribute('capture', 'environment')
+    else input.removeAttribute('capture')
+    input.click()
   }
 
   function addTag(raw: string) {
@@ -362,28 +373,31 @@ export function EditRecipePage() {
             />
 
             {heroSrc ? (
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                className="block w-full aspect-video overflow-hidden rounded-lg border border-border group relative"
-                aria-label="Replace photo"
-              >
-                <img src={heroSrc} alt="Recipe" className="w-full h-full object-cover" />
-                <span className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center text-white opacity-0 group-hover:opacity-100 text-sm font-medium">
-                  Replace photo
-                </span>
-              </button>
+              <div className="space-y-2">
+                <div className="block w-full aspect-video overflow-hidden rounded-lg border border-border">
+                  <img src={heroSrc} alt="Recipe" className="w-full h-full object-cover" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => openImagePicker(true)}>
+                    <Camera className="w-4 h-4 mr-1.5" /> Take photo
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => openImagePicker(false)}>
+                    <Upload className="w-4 h-4 mr-1.5" /> Choose photo
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                className="flex w-full aspect-video items-center justify-center rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
-              >
-                <span className="flex flex-col items-center gap-1.5">
-                  <ImagePlus className="w-6 h-6" />
-                  <span className="text-sm font-medium">Add a photo</span>
-                </span>
-              </button>
+              <div className="flex w-full aspect-video flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-border text-muted-foreground">
+                <ImagePlus className="w-6 h-6" />
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => openImagePicker(true)}>
+                    <Camera className="w-4 h-4 mr-1.5" /> Take photo
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => openImagePicker(false)}>
+                    <Upload className="w-4 h-4 mr-1.5" /> Choose photo
+                  </Button>
+                </div>
+              </div>
             )}
 
             {imageError && <p className="text-sm text-destructive">{imageError}</p>}
