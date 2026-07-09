@@ -14,12 +14,14 @@ import re
 import uuid as uuid_mod
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote_plus
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+from api import recipe_images
 from api.auth import get_current_user, get_current_user_optional, get_user_id
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
@@ -219,6 +221,19 @@ async def import_url(
     return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
 
 
+def _image_url(recipe_uuid: str, has_image: bool, version: Any) -> Optional[str]:
+    """Public URL for a recipe's hero image, or None when there isn't one.
+
+    A ``?v=`` cache-buster derived from the recipe's ``updated_at`` makes the
+    browser refetch after the image is replaced, while still allowing long
+    caching between edits.
+    """
+    if not has_image:
+        return None
+    suffix = f"?v={quote_plus(str(version))}" if version else ""
+    return f"/recipes/{recipe_uuid}/image{suffix}"
+
+
 @router.get("/{recipe_uuid}.json", include_in_schema=False)
 async def get_recipe(
     recipe_uuid: str,
@@ -228,7 +243,8 @@ async def get_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT recipe_json, is_public, user_id, training_verified FROM recipes WHERE uuid = ?",
+        "SELECT recipe_json, is_public, user_id, training_verified, has_image, updated_at "
+        "FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     )
     row = cursor.fetchone()
@@ -250,6 +266,8 @@ async def get_recipe(
     # without fetching their whole recipe list.
     data["owned"] = owned
     data["training_verified"] = bool(row["training_verified"])
+    data["has_image"] = bool(row["has_image"])
+    data["image_url"] = _image_url(recipe_uuid, bool(row["has_image"]), row["updated_at"])
     data["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
     conn.close()
     return JSONResponse(content=data)
@@ -514,7 +532,8 @@ async def list_recipes(
     cursor = conn.cursor()
     total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes {where}", params).fetchone()["c"]
     rows = cursor.execute(
-        f"SELECT uuid, title, recipe_json, created_at, is_public FROM recipes {where} "
+        f"SELECT uuid, title, recipe_json, created_at, updated_at, is_public, has_image "
+        f"FROM recipes {where} "
         "ORDER BY created_at DESC LIMIT ? OFFSET ?",
         (*params, limit, offset),
     ).fetchall()
@@ -529,6 +548,7 @@ async def list_recipes(
         except Exception:
             recipe_json = {}
         source = recipe_json.get("source") or {"kind": "unknown", "value": ""}
+        has_image = bool(row["has_image"])
         items.append(
             {
                 "uuid": row["uuid"],
@@ -537,6 +557,8 @@ async def list_recipes(
                 "createdAt": row["created_at"],
                 "source": source,
                 "is_public": bool(row["is_public"]),
+                "has_image": has_image,
+                "image_url": _image_url(row["uuid"], has_image, row["updated_at"]),
                 "tags": tag_map.get(row["uuid"], []),
             }
         )
@@ -620,6 +642,116 @@ async def update_recipe(
     return JSONResponse(content=stored)
 
 
+class RecipeImageBody(BaseModel):
+    image: str  # base64-encoded JPEG (optionally a data URL)
+
+
+@router.put("/{recipe_uuid}/image", include_in_schema=False)
+async def set_recipe_image(
+    recipe_uuid: str,
+    body: RecipeImageBody,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Store (or replace) the hero image for a recipe owned by the current user.
+
+    The client sends an already-cropped, downscaled JPEG. Bumps ``updated_at``
+    so the image URL's cache-buster changes and viewers refetch.
+    """
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute("SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)).fetchone()
+    if row is None or row["user_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    try:
+        raw = recipe_images.decode_image(body.image)
+    except ValueError as e:
+        conn.close()
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    recipe_images.save_image(recipe_uuid, raw)
+    cursor.execute(
+        "UPDATE recipes SET has_image = 1, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
+        (recipe_uuid,),
+    )
+    updated_at = cursor.execute(
+        "SELECT updated_at FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()["updated_at"]
+    conn.commit()
+    conn.close()
+    return {"has_image": True, "image_url": _image_url(recipe_uuid, True, updated_at)}
+
+
+@router.delete("/{recipe_uuid}/image", include_in_schema=False, status_code=204)
+async def delete_recipe_image(
+    recipe_uuid: str,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Remove the hero image from a recipe owned by the current user."""
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute("SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)).fetchone()
+    if row is None or row["user_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    recipe_images.delete_image(recipe_uuid)
+    cursor.execute(
+        "UPDATE recipes SET has_image = 0, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
+        (recipe_uuid,),
+    )
+    conn.commit()
+    conn.close()
+    return None
+
+
+@router.get("/{recipe_uuid}/image", include_in_schema=False)
+async def get_recipe_image(
+    recipe_uuid: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),  # noqa: B008
+):
+    """Serve a recipe's hero image if the recipe is public or the requester owns it.
+
+    404s (rather than 403s) for private recipes the requester can't see, so the
+    endpoint doesn't leak which UUIDs exist.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT user_id, is_public, has_image FROM recipes WHERE uuid = ?",
+        (recipe_uuid,),
+    ).fetchone()
+    conn.close()
+
+    if row is None or not row["has_image"]:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    is_public = bool(row["is_public"])
+    owner_id = get_user_id(current_user.email) if current_user else None
+    owned = owner_id is not None and owner_id == row["user_id"]
+    if not is_public and not owned:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    path = recipe_images.image_path(recipe_uuid)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+    # Long-lived cache; the URL carries a ?v= cache-buster tied to updated_at.
+    return FileResponse(
+        path,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 @router.post("/{recipe_uuid}/clone", response_model=RecipeResponse)
 async def clone_recipe(
     recipe_uuid: str,
@@ -687,4 +819,5 @@ async def delete_recipe(
     cursor.execute("DELETE FROM recipes WHERE uuid = ?", (recipe_uuid,))
     conn.commit()
     conn.close()
+    recipe_images.delete_image(recipe_uuid)
     return None

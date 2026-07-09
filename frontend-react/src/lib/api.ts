@@ -48,6 +48,9 @@ export interface RecipeListItem {
   createdAt?: string
   source: { kind: string; value: string }
   is_public: boolean
+  has_image?: boolean
+  /** Relative path to the hero image (needs config.apiUrl prefix), or null. */
+  image_url?: string | null
   tags?: RecipeTag[]
 }
 
@@ -141,6 +144,9 @@ export interface Recipe {
   owned?: boolean
   tags?: RecipeTag[]
   training_verified?: boolean
+  has_image?: boolean
+  /** Relative path to the hero image (needs config.apiUrl prefix), or null. */
+  image_url?: string | null
 }
 
 export const api = {
@@ -191,6 +197,18 @@ export const api = {
 
   deleteRecipe(uuid: string) {
     return request<void>(`/recipes/${uuid}`, { method: 'DELETE' })
+  },
+
+  /** Upload (or replace) a recipe's hero image. `imageBase64` is a cropped JPEG. */
+  setRecipeImage(uuid: string, imageBase64: string) {
+    return request<{ has_image: boolean; image_url: string | null }>(
+      `/recipes/${uuid}/image`,
+      { method: 'PUT', body: JSON.stringify({ image: imageBase64 }) },
+    )
+  },
+
+  deleteRecipeImage(uuid: string) {
+    return request<void>(`/recipes/${uuid}/image`, { method: 'DELETE' })
   },
 
   parsePhoto(imageBase64: string) {

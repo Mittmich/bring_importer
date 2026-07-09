@@ -4,6 +4,7 @@ import { useQuery, useMutation, type UseMutationResult } from '@tanstack/react-q
 import { ChevronDown, ExternalLink, LogIn, BookmarkPlus } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { isAuthenticated } from '@/hooks/useAuth'
+import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
@@ -73,6 +74,7 @@ interface ViewProps {
 function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: ViewProps) {
   const navigate = useNavigate()
   const [ingredientsOpen, setIngredientsOpen] = useState(false)
+  const heroSrc = useRecipeImage(recipe.image_url)
 
   const baseServings = parseServings(recipe.recipeYield)
   const unit = servingsUnit(recipe.recipeYield)
@@ -110,6 +112,13 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
+          {/* Hero image banner */}
+          {heroSrc && (
+            <div className="w-full aspect-video bg-muted overflow-hidden rounded-xl border border-border">
+              <img src={heroSrc} alt={recipe.name} className="w-full h-full object-cover" />
+            </div>
+          )}
+
           {/* Hero card */}
           <div className="bg-white rounded-xl border border-border px-6 py-6">
             <h1 className="text-xl font-bold text-foreground mb-3">{recipe.name}</h1>
