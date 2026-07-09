@@ -159,9 +159,16 @@ export function EditRecipePage() {
       queryClient.invalidateQueries({ queryKey: ['recipe', uuid] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
       queryClient.invalidateQueries({ queryKey: ['tags'] })
-      // Replace the edit entry so Back returns to the page before editing,
-      // not back into the editor.
-      navigate(`/recipes/${uuid}`, { replace: true })
+      // Pop the edit entry so the stack collapses back to the recipe detail
+      // (which we came from) with the list behind it. Swiping back then goes
+      // to the list, not back into the editor or the recipe again. Fall back
+      // to a replace-nav when there's no prior entry (e.g. the editor was
+      // opened via a direct link/refresh).
+      if ((window.history.state?.idx ?? 0) > 0) {
+        navigate(-1)
+      } else {
+        navigate(`/recipes/${uuid}`, { replace: true })
+      }
     },
   })
 
