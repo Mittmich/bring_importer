@@ -43,6 +43,11 @@ export function RecipeListPanel({ activeUuid }: Props) {
   }, [search])
 
   const { data: tags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags })
+  // Only offer tags that are actually on a recipe as filters. Orphaned tags
+  // (count 0 — e.g. left behind when their last recipe was deleted) can never
+  // match anything, so filtering by one just yields an empty list that reads
+  // like a broken search. They remain editable/removable on the Tags page.
+  const filterTags = tags.filter((t) => t.count > 0)
 
   function toggleTag(name: string) {
     setSelectedTags((prev) =>
@@ -122,7 +127,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
 
       {/* Tag filter — collapsed by default; only selected tags stay visible
           until expanded via the toggle. */}
-      {tags.length > 0 && (
+      {filterTags.length > 0 && (
         <div className="px-3 py-2 border-b border-border/50 flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setTagsExpanded((v) => !v)}
@@ -135,7 +140,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
             />
           </button>
 
-          {(tagsExpanded ? tags : tags.filter((t) => selectedTags.includes(t.name))).map((t) => {
+          {(tagsExpanded ? filterTags : filterTags.filter((t) => selectedTags.includes(t.name))).map((t) => {
             const active = selectedTags.includes(t.name)
             const resolved = tagColor(t.name, t.color)
             return (
