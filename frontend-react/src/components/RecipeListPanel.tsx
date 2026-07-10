@@ -75,7 +75,11 @@ export function RecipeListPanel({ activeUuid }: Props) {
 
   const recipes = data?.pages.flatMap((p) => p.items) ?? []
 
-  // Auto-load the next page when the sentinel scrolls into view.
+  // Auto-load the next page when the sentinel scrolls into view. The list
+  // scrolls inside `scrollRef` (an overflow-y-auto container), not the page,
+  // so the observer must use that container as its root — a viewport-rooted
+  // observer never sees the sentinel and pages past the first never load.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const el = sentinelRef.current
@@ -84,7 +88,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
       (entries) => {
         if (entries[0].isIntersecting && !isFetchingNextPage) fetchNextPage()
       },
-      { rootMargin: '200px' },
+      { root: scrollRef.current, rootMargin: '200px' },
     )
     observer.observe(el)
     return () => observer.disconnect()
@@ -162,7 +166,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
       )}
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {isLoading && (
           <div aria-busy="true" aria-label="Loading recipes">
             {Array.from({ length: 8 }).map((_, i) => (
