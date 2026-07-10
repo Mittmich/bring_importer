@@ -164,7 +164,11 @@ export function RecipeListPanel({ activeUuid }: Props) {
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {isLoading && (
-          <div className="p-4 text-sm text-muted-foreground text-center">Loading…</div>
+          <div aria-busy="true" aria-label="Loading recipes">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <RecipeRowSkeleton key={i} />
+            ))}
+          </div>
         )}
         {error && (
           <div className="p-4 text-sm text-destructive text-center">Could not load recipes.</div>
@@ -180,9 +184,23 @@ export function RecipeListPanel({ activeUuid }: Props) {
           <RecipeRow key={recipe.uuid} recipe={recipe} isActive={recipe.uuid === activeUuid} />
         ))}
         <div ref={sentinelRef} />
-        {isFetchingNextPage && (
-          <div className="p-3 text-xs text-muted-foreground text-center">Loading more…</div>
-        )}
+        {isFetchingNextPage &&
+          Array.from({ length: 3 }).map((_, i) => <RecipeRowSkeleton key={i} />)}
+      </div>
+    </div>
+  )
+}
+
+// Placeholder row shown while recipes load. Matches RecipeRow's geometry
+// (thumbnail box + two text lines) so the list doesn't jump when real rows
+// replace it.
+function RecipeRowSkeleton() {
+  return (
+    <div className="flex items-center px-4 py-4 border-b border-border/50">
+      <div className="w-14 h-14 rounded-lg bg-muted animate-pulse flex-shrink-0 mr-3" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 w-2/3 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-1/3 rounded bg-muted animate-pulse" />
       </div>
     </div>
   )
@@ -198,12 +216,18 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
         isActive ? 'bg-primary/5' : 'hover:bg-muted/40',
       )}
     >
-      {thumbSrc && (
-        <img
-          src={thumbSrc}
-          alt=""
-          className="w-14 h-14 rounded-lg object-cover flex-shrink-0 mr-3 border border-border/50"
-        />
+      {/* Reserve the thumbnail box up front for recipes that have an image
+          (known from the list payload) so the picture doesn't shift the row
+          when its bytes finish loading. */}
+      {recipe.has_image && (
+        <div
+          className={cn(
+            'w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 border border-border/50 bg-muted',
+            !thumbSrc && 'animate-pulse',
+          )}
+        >
+          {thumbSrc && <img src={thumbSrc} alt="" className="w-full h-full object-cover" />}
+        </div>
       )}
       <div className="min-w-0 flex-1">
         <p
