@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ChevronDown, ExternalLink, Pencil, Share2, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookHeart, ChevronDown, ExternalLink, Pencil, Share2, Trash2 } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { AddToCookbookModal } from '@/components/AddToCookbookModal'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TagChip } from '@/components/ui/tag-chip'
@@ -21,6 +22,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [ingredientsOpen, setIngredientsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [cookbookOpen, setCookbookOpen] = useState(false)
 
   function handleShare() {
     navigator.clipboard.writeText(`${window.location.origin}/share/${uuid}`)
@@ -61,6 +63,9 @@ export function RecipeDetail({ uuid, recipe }: Props) {
         </button>
         <span className="flex-1" />
         <KeepAwakeButton />
+        <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)} aria-label="Add to cookbook">
+          <BookHeart className="w-4 h-4" />
+        </Button>
         {recipe.is_public && (
           <Button variant="outline" size="sm" onClick={handleShare}>
             <Share2 className="w-4 h-4" />
@@ -128,6 +133,9 @@ export function RecipeDetail({ uuid, recipe }: Props) {
               Add to Bring
             </a>
             <KeepAwakeButton className="hidden md:flex" />
+            <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)}>
+              <BookHeart className="w-3.5 h-3.5 mr-1" /> Cookbook
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -270,6 +278,8 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           </div>
         </div>
       </div>
+
+      <AddToCookbookModal open={cookbookOpen} onOpenChange={setCookbookOpen} recipeUuid={uuid} />
     </div>
   )
 }

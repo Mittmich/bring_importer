@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Home, BookOpen, CalendarDays, User, Download, Share, X } from 'lucide-react'
+import { Home, BookOpen, BookHeart, CalendarDays, User, Download, Share, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 
 const tabs = [
   { to: '/', icon: Home, label: 'Home', end: true },
-  { to: '/plan', icon: CalendarDays, label: 'Plan' },
   { to: '/recipes', icon: BookOpen, label: 'Recipes' },
+  { to: '/cookbooks', icon: BookHeart, label: 'Cookbooks' },
+  { to: '/plan', icon: CalendarDays, label: 'Plan' },
   { to: '/account', icon: User, label: 'Account' },
 ]
 

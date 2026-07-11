@@ -61,6 +61,22 @@ export interface TagInfo {
   color: string | null
 }
 
+export interface Cookbook {
+  id: number
+  name: string
+  recipe_count: number
+  cover_image_url?: string | null
+  /** Only present when listCookbooks is called with a recipeUuid. */
+  contains?: boolean
+}
+
+export interface CookbookDetail {
+  id: number
+  name: string
+  recipe_count: number
+  recipes: RecipeListItem[]
+}
+
 export interface Friend {
   user_id: number
   email: string
@@ -249,6 +265,43 @@ export const api = {
 
   cloneRecipe(uuid: string) {
     return request<{ uuid: string; url: string }>(`/recipes/${uuid}/clone`, { method: 'POST' })
+  },
+
+  // --- Cookbooks ---
+
+  listCookbooks(recipeUuid?: string) {
+    const qs = recipeUuid ? `?recipe_uuid=${encodeURIComponent(recipeUuid)}` : ''
+    return request<Cookbook[]>(`/cookbooks${qs}`)
+  },
+
+  getCookbook(id: number) {
+    return request<CookbookDetail>(`/cookbooks/${id}`)
+  },
+
+  createCookbook(name: string) {
+    return request<Cookbook>('/cookbooks', { method: 'POST', body: JSON.stringify({ name }) })
+  },
+
+  renameCookbook(id: number, name: string) {
+    return request<{ id: number; name: string }>(`/cookbooks/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    })
+  },
+
+  deleteCookbook(id: number) {
+    return request<void>(`/cookbooks/${id}`, { method: 'DELETE' })
+  },
+
+  addRecipeToCookbook(id: number, recipeUuid: string) {
+    return request<{ ok: boolean }>(`/cookbooks/${id}/recipes`, {
+      method: 'POST',
+      body: JSON.stringify({ recipe_uuid: recipeUuid }),
+    })
+  },
+
+  removeRecipeFromCookbook(id: number, recipeUuid: string) {
+    return request<void>(`/cookbooks/${id}/recipes/${recipeUuid}`, { method: 'DELETE' })
   },
 
   // --- Friends ---

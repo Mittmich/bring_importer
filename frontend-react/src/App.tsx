@@ -10,6 +10,8 @@ import { EditRecipePage } from '@/pages/EditRecipePage'
 import { AccountPage } from '@/pages/AccountPage'
 import { TagsPage } from '@/pages/TagsPage'
 import { FriendsPage } from '@/pages/FriendsPage'
+import { CookbooksPage } from '@/pages/CookbooksPage'
+import { CookbookDetailPage } from '@/pages/CookbookDetailPage'
 import { PublicRecipePage } from '@/pages/PublicRecipePage'
 import { WeeklyPlanPage } from '@/pages/WeeklyPlanPage'
 
@@ -51,6 +53,8 @@ export default function App() {
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:uuid" element={<RecipesPage />} />
             <Route path="recipes/:uuid/edit" element={<EditRecipePage />} />
+            <Route path="cookbooks" element={<CookbooksPage />} />
+            <Route path="cookbooks/:id" element={<CookbookDetailPage />} />
             <Route path="account" element={<AccountPage />} />
             <Route path="account/tags" element={<TagsPage />} />
             <Route path="account/friends" element={<FriendsPage />} />
