@@ -28,6 +28,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pyjwt>=2.9.0",
     "beautifulsoup4>=4.13.4",
+    "rapidfuzz>=3.9.7",
 ]
 
 [project.optional-dependencies]

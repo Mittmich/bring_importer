@@ -119,7 +119,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search recipes…"
+            placeholder="Search recipes & ingredients…"
             className="w-full pl-9 pr-3 py-2.5 text-base bg-muted/50 rounded-md border border-transparent focus:outline-none focus:border-ring focus:bg-white transition-colors placeholder:text-muted-foreground"
           />
         </div>
