@@ -176,6 +176,30 @@ def init_db():
         "CREATE INDEX IF NOT EXISTS idx_cookbook_recipes_recipe ON cookbook_recipes(recipe_uuid)"
     )
 
+    # Create cookbook_members — grantees a cookbook is shared with (Phase 3).
+    # The cookbook owner is implicit (cookbooks.owner_id), never a row here. A
+    # 'pending' row is an outstanding invitation; 'accepted' is active access.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS cookbook_members (
+        cookbook_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('viewer', 'editor', 'manager')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted')),
+        invited_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP,
+        PRIMARY KEY (cookbook_id, user_id),
+        FOREIGN KEY (cookbook_id) REFERENCES cookbooks (id),
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cookbook_members_user "
+        "ON cookbook_members(user_id, status)"
+    )
+
     # Create google_integrations table — one row per user holding the Google
     # OAuth refresh token and the chosen target calendar for meal-plan sync.
     cursor.execute(

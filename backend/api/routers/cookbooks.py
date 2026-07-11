@@ -12,6 +12,7 @@ from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from api.access import cookbook_role, effective_role, role_at_least
 from api.auth import get_current_user, get_user_id
 from api.db import get_db_connection
 from api.models import User
@@ -19,6 +20,15 @@ from api.routers.recipes import _list_item, _tags_for
 from api.search import match_score, recipe_haystack
 
 router = APIRouter(prefix="/cookbooks", tags=["cookbooks"])
+
+
+def _are_friends(cursor, a: int, b: int) -> bool:
+    row = cursor.execute(
+        "SELECT 1 FROM friendships WHERE status = 'accepted' AND "
+        "((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))",
+        (a, b, b, a),
+    ).fetchone()
+    return row is not None
 
 
 class CookbookCreate(BaseModel):
@@ -31,6 +41,18 @@ class CookbookRename(BaseModel):
 
 class AddRecipeBody(BaseModel):
     recipe_uuid: str
+
+
+class InviteBody(BaseModel):
+    friend_id: int
+    role: str  # viewer | editor | manager
+
+
+class RoleBody(BaseModel):
+    role: str
+
+
+VALID_ROLES = {"viewer", "editor", "manager"}
 
 
 def _require_me(current_user: User) -> int:
@@ -86,41 +108,50 @@ async def list_cookbooks(
     me = _require_me(current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
+    # My own cookbooks plus any shared with me (accepted membership).
     rows = cursor.execute(
         """
-        SELECT c.id AS id, c.name AS name,
+        SELECT c.id AS id, c.name AS name, c.owner_id AS owner_id, m.role AS member_role,
           (SELECT COUNT(*) FROM cookbook_recipes cr WHERE cr.cookbook_id = c.id) AS recipe_count,
           (SELECT cr.recipe_uuid FROM cookbook_recipes cr
              JOIN recipes r ON r.uuid = cr.recipe_uuid
              WHERE cr.cookbook_id = c.id AND r.has_image = 1
              ORDER BY cr.added_at DESC LIMIT 1) AS cover_uuid
-        FROM cookbooks c WHERE c.owner_id = ?
+        FROM cookbooks c
+        LEFT JOIN cookbook_members m
+          ON m.cookbook_id = c.id AND m.user_id = ? AND m.status = 'accepted'
+        WHERE c.owner_id = ? OR m.user_id IS NOT NULL
         ORDER BY c.name COLLATE NOCASE
         """,
-        (me,),
+        (me, me),
     ).fetchall()
 
     contains_ids: set = set()
     if recipe_uuid:
-        contains_ids = {
-            r["cookbook_id"]
-            for r in cursor.execute(
-                "SELECT cr.cookbook_id AS cookbook_id FROM cookbook_recipes cr "
-                "JOIN cookbooks c ON c.id = cr.cookbook_id "
-                "WHERE cr.recipe_uuid = ? AND c.owner_id = ?",
-                (recipe_uuid, me),
-            ).fetchall()
-        }
+        ids = [r["id"] for r in rows]
+        if ids:
+            ph = ",".join("?" * len(ids))
+            contains_ids = {
+                r["cookbook_id"]
+                for r in cursor.execute(
+                    f"SELECT cookbook_id FROM cookbook_recipes "
+                    f"WHERE recipe_uuid = ? AND cookbook_id IN ({ph})",
+                    (recipe_uuid, *ids),
+                ).fetchall()
+            }
     conn.close()
 
     out: List[dict] = []
     for r in rows:
+        role = "owner" if r["owner_id"] == me else r["member_role"]
         item = {
             "id": r["id"],
             "name": r["name"],
             "recipe_count": r["recipe_count"],
             # No version param — a cover only needs to be roughly fresh.
             "cover_image_url": f"/recipes/{r['cover_uuid']}/image" if r["cover_uuid"] else None,
+            "role": role,
+            "shared": r["owner_id"] != me,
         }
         if recipe_uuid:
             item["contains"] = r["id"] in contains_ids
@@ -128,19 +159,101 @@ async def list_cookbooks(
     return out
 
 
+# --- Invitations. Declared before /{cookbook_id} so the static "invitations"
+#     segment isn't captured by the {cookbook_id} path param. ---
+
+
+@router.get("/invitations", include_in_schema=False)
+async def list_cookbook_invitations(current_user: User = Depends(get_current_user)):  # noqa: B008
+    """Pending cookbook invitations addressed to the current user."""
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    rows = cursor.execute(
+        "SELECT m.cookbook_id AS cookbook_id, c.name AS name, u.email AS owner_email, "
+        "m.role AS role FROM cookbook_members m "
+        "JOIN cookbooks c ON c.id = m.cookbook_id JOIN users u ON u.id = c.owner_id "
+        "WHERE m.user_id = ? AND m.status = 'pending' ORDER BY m.created_at DESC",
+        (me,),
+    ).fetchall()
+    conn.close()
+    return [
+        {
+            "cookbook_id": r["cookbook_id"],
+            "name": r["name"],
+            "owner_email": r["owner_email"],
+            "role": r["role"],
+        }
+        for r in rows
+    ]
+
+
+def _pending_invite(cursor, cookbook_id: int, me: int):
+    return cursor.execute(
+        "SELECT 1 FROM cookbook_members "
+        "WHERE cookbook_id = ? AND user_id = ? AND status = 'pending'",
+        (cookbook_id, me),
+    ).fetchone()
+
+
+@router.post("/invitations/{cookbook_id}/accept", include_in_schema=False)
+async def accept_invitation(
+    cookbook_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Accept a pending cookbook invitation."""
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if _pending_invite(cursor, cookbook_id, me) is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    cursor.execute(
+        "UPDATE cookbook_members SET status = 'accepted', responded_at = CURRENT_TIMESTAMP "
+        "WHERE cookbook_id = ? AND user_id = ?",
+        (cookbook_id, me),
+    )
+    conn.commit()
+    conn.close()
+    return {"status": "accepted"}
+
+
+@router.post("/invitations/{cookbook_id}/decline", include_in_schema=False, status_code=204)
+async def decline_invitation(
+    cookbook_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Decline a pending cookbook invitation (removes it)."""
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if _pending_invite(cursor, cookbook_id, me) is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    cursor.execute(
+        "DELETE FROM cookbook_members WHERE cookbook_id = ? AND user_id = ?",
+        (cookbook_id, me),
+    )
+    conn.commit()
+    conn.close()
+    return None
+
+
 @router.get("/{cookbook_id}", include_in_schema=False)
 async def get_cookbook(
     cookbook_id: int,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Return a cookbook with its recipes (as list items). 404 if not the owner's."""
+    """Return a cookbook with its recipes. Readable by the owner or any accepted
+    member; 404 otherwise. The response ``role`` lets the client gate controls."""
     me = _require_me(current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cb = _owned_cookbook(cursor, cookbook_id, me)
-    if cb is None:
+    role = cookbook_role(cursor, me, cookbook_id)
+    if not role_at_least(role, "viewer"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
+    cb = cursor.execute("SELECT id, name FROM cookbooks WHERE id = ?", (cookbook_id,)).fetchone()
 
     rows = cursor.execute(
         "SELECT r.uuid, r.title, r.recipe_json, r.created_at, r.updated_at, r.is_public, "
@@ -152,7 +265,13 @@ async def get_cookbook(
     conn.close()
 
     items = [_list_item(row, tag_map) for row in rows]
-    return {"id": cb["id"], "name": cb["name"], "recipe_count": len(items), "recipes": items}
+    return {
+        "id": cb["id"],
+        "name": cb["name"],
+        "recipe_count": len(items),
+        "recipes": items,
+        "role": role,
+    }
 
 
 @router.patch("/{cookbook_id}", include_in_schema=False)
@@ -161,14 +280,14 @@ async def rename_cookbook(
     body: CookbookRename,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Rename a cookbook the current user owns."""
+    """Rename a cookbook (owner or a manager member)."""
     me = _require_me(current_user)
     name = _clean_name(body.name)
     if not name:
         raise HTTPException(status_code=422, detail="Cookbook name cannot be empty")
     conn = get_db_connection()
     cursor = conn.cursor()
-    if _owned_cookbook(cursor, cookbook_id, me) is None:
+    if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
     cursor.execute(
@@ -263,7 +382,7 @@ async def bulk_add_recipes(
     me = _require_me(current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
-    if _owned_cookbook(cursor, cookbook_id, me) is None:
+    if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
 
@@ -295,10 +414,10 @@ async def add_recipe(
     me = _require_me(current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
-    if _owned_cookbook(cursor, cookbook_id, me) is None:
+    if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
-    if not _owns_recipe(cursor, body.recipe_uuid, me):
+    if not role_at_least(effective_role(cursor, me, body.recipe_uuid), "viewer"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
     cursor.execute(
@@ -321,12 +440,138 @@ async def remove_recipe(
     me = _require_me(current_user)
     conn = get_db_connection()
     cursor = conn.cursor()
-    if _owned_cookbook(cursor, cookbook_id, me) is None:
+    if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
     cursor.execute(
         "DELETE FROM cookbook_recipes WHERE cookbook_id = ? AND recipe_uuid = ?",
         (cookbook_id, recipe_uuid),
+    )
+    conn.commit()
+    conn.close()
+    return None
+
+
+# --- Members (sharing a cookbook with friends) ---
+
+
+@router.get("/{cookbook_id}/members", include_in_schema=False)
+async def list_members(
+    cookbook_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """List a cookbook's owner and members. Visible to the owner and any member."""
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if not role_at_least(cookbook_role(cursor, me, cookbook_id), "viewer"):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Cookbook not found")
+    owner = cursor.execute(
+        "SELECT u.id AS id, u.email AS email FROM cookbooks c "
+        "JOIN users u ON u.id = c.owner_id WHERE c.id = ?",
+        (cookbook_id,),
+    ).fetchone()
+    members = cursor.execute(
+        "SELECT m.user_id AS user_id, u.email AS email, m.role AS role, m.status AS status "
+        "FROM cookbook_members m JOIN users u ON u.id = m.user_id "
+        "WHERE m.cookbook_id = ? ORDER BY u.email COLLATE NOCASE",
+        (cookbook_id,),
+    ).fetchall()
+    conn.close()
+    return {
+        "owner": {"user_id": owner["id"], "email": owner["email"]},
+        "members": [
+            {"user_id": m["user_id"], "email": m["email"], "role": m["role"], "status": m["status"]}
+            for m in members
+        ],
+    }
+
+
+@router.post("/{cookbook_id}/members", include_in_schema=False)
+async def invite_member(
+    cookbook_id: int,
+    body: InviteBody,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Invite a friend to a cookbook at a role (owner/manager only, friends only)."""
+    me = _require_me(current_user)
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=422, detail="Invalid role")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cb = cursor.execute("SELECT owner_id FROM cookbooks WHERE id = ?", (cookbook_id,)).fetchone()
+    if cb is None or not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Cookbook not found")
+    if body.friend_id == cb["owner_id"]:
+        conn.close()
+        raise HTTPException(status_code=422, detail="The owner is already on this cookbook")
+    if not _are_friends(cursor, me, body.friend_id):
+        conn.close()
+        raise HTTPException(status_code=403, detail="You can only share with friends")
+
+    # New invite → pending; existing member → just update the role.
+    cursor.execute(
+        "INSERT INTO cookbook_members (cookbook_id, user_id, role, status, invited_by) "
+        "VALUES (?, ?, ?, 'pending', ?) "
+        "ON CONFLICT(cookbook_id, user_id) DO UPDATE SET role = excluded.role",
+        (cookbook_id, body.friend_id, body.role, me),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@router.patch("/{cookbook_id}/members/{user_id}", include_in_schema=False)
+async def update_member_role(
+    cookbook_id: int,
+    user_id: int,
+    body: RoleBody,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Change a member's role (owner/manager only)."""
+    me = _require_me(current_user)
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=422, detail="Invalid role")
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Cookbook not found")
+    row = cursor.execute(
+        "SELECT 1 FROM cookbook_members WHERE cookbook_id = ? AND user_id = ?",
+        (cookbook_id, user_id),
+    ).fetchone()
+    if row is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Member not found")
+    cursor.execute(
+        "UPDATE cookbook_members SET role = ? WHERE cookbook_id = ? AND user_id = ?",
+        (body.role, cookbook_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"ok": True}
+
+
+@router.delete("/{cookbook_id}/members/{user_id}", include_in_schema=False, status_code=204)
+async def remove_member(
+    cookbook_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Remove a member (owner/manager), or leave a cookbook yourself."""
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    is_manager = role_at_least(cookbook_role(cursor, me, cookbook_id), "manager")
+    if not is_manager and user_id != me:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Cookbook not found")
+    cursor.execute(
+        "DELETE FROM cookbook_members WHERE cookbook_id = ? AND user_id = ?",
+        (cookbook_id, user_id),
     )
     conn.commit()
     conn.close()

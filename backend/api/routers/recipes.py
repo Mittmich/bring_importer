@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from api import recipe_images
+from api.access import effective_role, role_at_least
 from api.auth import get_current_user, get_current_user_optional, get_user_id
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
@@ -240,7 +241,7 @@ async def get_recipe(
     recipe_uuid: str,
     current_user: Optional[User] = Depends(get_current_user_optional),  # noqa: B008
 ):
-    """Return recipe JSON if the recipe is public or the requester is the owner."""
+    """Return recipe JSON if the recipe is public, owned, or shared with the requester."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -257,7 +258,8 @@ async def get_recipe(
     is_public = bool(row["is_public"])
     owner_id = get_user_id(current_user.email) if current_user else None
     owned = owner_id is not None and owner_id == row["user_id"]
-    if not is_public and not owned:
+    role = effective_role(cursor, owner_id, recipe_uuid) if owner_id is not None else "none"
+    if not is_public and not role_at_least(role, "viewer"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -266,6 +268,8 @@ async def get_recipe(
     # Lets the public share page tell whether the viewer owns this recipe
     # without fetching their whole recipe list.
     data["owned"] = owned
+    # The viewer's role, so the client can gate edit controls on shared recipes.
+    data["role"] = role
     data["training_verified"] = bool(row["training_verified"])
     data["has_image"] = bool(row["has_image"])
     data["image_url"] = _image_url(recipe_uuid, bool(row["has_image"]), row["updated_at"])
@@ -620,9 +624,14 @@ async def update_recipe(
         "FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     ).fetchone()
-    if row is None or row["user_id"] != user_id:
+    # Editors (own the recipe, or have editor+ via a shared cookbook) may change
+    # content. Owner-only fields (sharing flag, verification, tags) are ignored
+    # for non-owners.
+    role = effective_role(cursor, user_id, recipe_uuid)
+    if row is None or not role_at_least(role, "editor"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
+    is_owner = role == "owner"
 
     try:
         stored = json.loads(row["recipe_json"])
@@ -647,10 +656,13 @@ async def update_recipe(
 
     new_title = stored.get("name", "")
     new_note = stored.get("note", "")
-    new_is_public = int(body.is_public) if body.is_public is not None else int(row["is_public"])
+    # Sharing flag and verification are the owner's call only.
+    new_is_public = (
+        int(body.is_public) if (body.is_public is not None and is_owner) else int(row["is_public"])
+    )
     new_verified = (
         int(body.training_verified)
-        if body.training_verified is not None
+        if (body.training_verified is not None and is_owner)
         else int(row["training_verified"])
     )
 
@@ -659,7 +671,8 @@ async def update_recipe(
         "is_public = ?, training_verified = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
         (new_title, json.dumps(stored), new_note, new_is_public, new_verified, recipe_uuid),
     )
-    if body.tags is not None:
+    # Tags are per-user; only the owner edits a recipe's tags for now.
+    if body.tags is not None and is_owner:
         _set_recipe_tags(cursor, user_id, recipe_uuid, body.tags)
     conn.commit()
 
@@ -692,7 +705,7 @@ async def set_recipe_image(
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute("SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)).fetchone()
-    if row is None or row["user_id"] != user_id:
+    if row is None or not role_at_least(effective_role(cursor, user_id, recipe_uuid), "editor"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -720,7 +733,7 @@ async def delete_recipe_image(
     recipe_uuid: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Remove the hero image from a recipe owned by the current user."""
+    """Remove the hero image from a recipe (owner or an editor via a shared cookbook)."""
     user_id = get_user_id(current_user.email)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Unknown user")
@@ -728,7 +741,7 @@ async def delete_recipe_image(
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute("SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)).fetchone()
-    if row is None or row["user_id"] != user_id:
+    if row is None or not role_at_least(effective_role(cursor, user_id, recipe_uuid), "editor"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
 
@@ -758,15 +771,16 @@ async def get_recipe_image(
         "SELECT user_id, is_public, has_image FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     ).fetchone()
-    conn.close()
 
     if row is None or not row["has_image"]:
+        conn.close()
         raise HTTPException(status_code=404, detail="Image not found")
 
     is_public = bool(row["is_public"])
     owner_id = get_user_id(current_user.email) if current_user else None
-    owned = owner_id is not None and owner_id == row["user_id"]
-    if not is_public and not owned:
+    role = effective_role(cursor, owner_id, recipe_uuid) if owner_id is not None else "none"
+    conn.close()
+    if not is_public and not role_at_least(role, "viewer"):
         raise HTTPException(status_code=404, detail="Image not found")
 
     path = recipe_images.image_path(recipe_uuid)
@@ -778,6 +792,73 @@ async def get_recipe_image(
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )
+
+
+class ShareRecipeBody(BaseModel):
+    friend_id: int
+    role: str  # viewer | editor | manager
+
+
+@router.post("/{recipe_uuid}/share", include_in_schema=False)
+async def share_recipe(
+    recipe_uuid: str,
+    body: ShareRecipeBody,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Share a single recipe with a friend by wrapping it in a lightweight
+    ``quickshare`` cookbook — keeping one sharing primitive. Owner only."""
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+    if body.role not in ("viewer", "editor", "manager"):
+        raise HTTPException(status_code=422, detail="Invalid role")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT user_id, title FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()
+    if row is None or row["user_id"] != user_id:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    friend = cursor.execute(
+        "SELECT 1 FROM friendships WHERE status = 'accepted' AND "
+        "((requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?))",
+        (user_id, body.friend_id, body.friend_id, user_id),
+    ).fetchone()
+    if friend is None:
+        conn.close()
+        raise HTTPException(status_code=403, detail="You can only share with friends")
+
+    name = row["title"] or "Shared recipe"
+    existing = cursor.execute(
+        "SELECT id FROM cookbooks WHERE owner_id = ? AND kind = 'quickshare' AND name = ?",
+        (user_id, name),
+    ).fetchone()
+    if existing is not None:
+        cookbook_id = existing["id"]
+    else:
+        cursor.execute(
+            "INSERT INTO cookbooks (owner_id, name, kind) VALUES (?, ?, 'quickshare')",
+            (user_id, name),
+        )
+        cookbook_id = cursor.lastrowid
+
+    cursor.execute(
+        "INSERT OR IGNORE INTO cookbook_recipes (cookbook_id, recipe_uuid, added_by) "
+        "VALUES (?, ?, ?)",
+        (cookbook_id, recipe_uuid, user_id),
+    )
+    cursor.execute(
+        "INSERT INTO cookbook_members (cookbook_id, user_id, role, status, invited_by) "
+        "VALUES (?, ?, ?, 'pending', ?) "
+        "ON CONFLICT(cookbook_id, user_id) DO UPDATE SET role = excluded.role",
+        (cookbook_id, body.friend_id, body.role, user_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"cookbook_id": cookbook_id}
 
 
 @router.post("/{recipe_uuid}/clone", response_model=RecipeResponse)
