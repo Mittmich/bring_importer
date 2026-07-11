@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { NavLink, useOutletContext } from 'react-router-dom'
+import { NavLink, useLocation, useOutletContext } from 'react-router-dom'
 import { Search, ChevronRight, ChevronDown, Plus } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -30,11 +30,24 @@ interface Props {
 }
 
 export function RecipeListPanel({ activeUuid }: Props) {
+  // The home screen hands off intent via navigation state: focus the search
+  // box, or arrive with a tag preselected (from a shelf's "See all").
+  const navState = useLocation().state as { focusSearch?: boolean; tag?: string } | null
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>(() =>
+    navState?.tag ? [navState.tag] : [],
+  )
   const [tagsExpanded, setTagsExpanded] = useState(false)
+  const searchRef = useRef<HTMLInputElement | null>(null)
   const { onImport } = useOutletContext<{ onImport: () => void }>()
+
+  // Focus the search box when arriving from the home screen's search button.
+  useEffect(() => {
+    if (navState?.focusSearch) searchRef.current?.focus()
+    // Run once on mount for the initial navigation intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Debounce the search term so each keystroke doesn't hit the server.
   useEffect(() => {
@@ -117,6 +130,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
+            ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search recipes & ingredients…"
