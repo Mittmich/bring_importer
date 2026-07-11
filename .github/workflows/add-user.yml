@@ -1,0 +1,75 @@
+# Add (or update) a user in the deployed app — triggered on demand.
+#
+# Runs `manage_users.py add <email> -p <password>` inside the running backend
+# container on Lightsail, against the live SQLite database. If the user already
+# exists, their password is updated.
+#
+# Trigger: Actions tab → "Add user" → Run workflow → fill in email + password.
+#
+# SECURITY: workflow_dispatch inputs are NOT secrets — the values you type are
+# recorded in the run's metadata and visible to anyone who can view Actions for
+# this repo. The password is masked in the step logs, but treat it as
+# semi-exposed: prefer a throwaway password the user changes on first login,
+# and/or rotate it afterwards.
+#
+# Reuses the same secrets as the deploy workflow:
+#   LIGHTSAIL_SSH_KEY, LIGHTSAIL_HOST, LIGHTSAIL_USER, LIGHTSAIL_APP_PATH
+
+name: Add user
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email of the user to add (or whose password to update)"
+        required: true
+        type: string
+      password:
+        description: "Password to set (masked in logs; see security note in the workflow file)"
+        required: true
+        type: string
+
+# Don't let two user-management runs race on the same SQLite file.
+concurrency:
+  group: manage-users
+  cancel-in-progress: false
+
+jobs:
+  add-user:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+      - name: Add Lightsail host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Add / update the user in the backend container
+        env:
+          EMAIL: ${{ inputs.email }}
+          PASSWORD: ${{ inputs.password }}
+          SSH_TARGET: ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}
+          APP_PATH: ${{ secrets.LIGHTSAIL_APP_PATH }}
+        run: |
+          # Transport the credentials as base64 so any special characters in the
+          # password survive both the SSH command string and remote shell
+          # parsing. Mask both the plaintext and its base64 form in the logs.
+          echo "::add-mask::$PASSWORD"
+          EMAIL_B64=$(printf '%s' "$EMAIL" | base64 -w0)
+          PASSWORD_B64=$(printf '%s' "$PASSWORD" | base64 -w0)
+          echo "::add-mask::$PASSWORD_B64"
+
+          ssh "$SSH_TARGET" \
+            "APP_PATH='$APP_PATH' E64='$EMAIL_B64' P64='$PASSWORD_B64' bash -s" <<'REMOTE'
+          set -euo pipefail
+          EMAIL=$(printf '%s' "$E64" | base64 -d)
+          PASSWORD=$(printf '%s' "$P64" | base64 -d)
+          cd "$APP_PATH"
+          sudo docker compose -f docker-compose.yml exec -T backend \
+            python3 manage_users.py add "$EMAIL" -p "$PASSWORD"
+          REMOTE
+
+      - name: Summary
+        run: echo "Done — user '${{ inputs.email }}' added or updated on the live app."
