@@ -6,7 +6,8 @@ personal-only: every endpoint is scoped to the current user as owner. Sharing
 ``.claude/plans/friends-cookbooks-sharing.md``.
 """
 
-from typing import List, Optional
+import json
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -15,6 +16,7 @@ from api.auth import get_current_user, get_user_id
 from api.db import get_db_connection
 from api.models import User
 from api.routers.recipes import _list_item, _tags_for
+from api.search import match_score, recipe_haystack
 
 router = APIRouter(prefix="/cookbooks", tags=["cookbooks"])
 
@@ -200,6 +202,87 @@ async def delete_cookbook(
 def _owns_recipe(cursor, recipe_uuid: str, user_id: int) -> bool:
     row = cursor.execute("SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)).fetchone()
     return row is not None and row["user_id"] == user_id
+
+
+def _matching_owned_uuids(
+    cursor, user_id: int, q: Optional[str], tags: Optional[List[str]]
+) -> List[str]:
+    """UUIDs of the user's own recipes matching a search — same filtering as the
+    recipe list (tag AND-filter + fuzzy full-text ``q``), but returns every match
+    (no pagination) so a search can be bulk-added to a cookbook."""
+    where = "WHERE user_id = ?"
+    params: List[Any] = [user_id]
+    tags_norm = sorted({t.strip().lower() for t in (tags or []) if t.strip()})
+    if tags_norm:
+        placeholders = ",".join("?" * len(tags_norm))
+        where += (
+            f" AND uuid IN (SELECT rt.recipe_uuid FROM recipe_tags rt "
+            f"JOIN tags t ON t.id = rt.tag_id WHERE LOWER(t.name) IN ({placeholders}) "
+            f"GROUP BY rt.recipe_uuid HAVING COUNT(DISTINCT LOWER(t.name)) = ?)"
+        )
+        params.extend([*tags_norm, len(tags_norm)])
+
+    rows = cursor.execute(f"SELECT uuid, recipe_json FROM recipes {where}", params).fetchall()
+
+    query = (q or "").strip()
+    if not query:
+        return [r["uuid"] for r in rows]
+
+    tag_map = _tags_for(cursor, [r["uuid"] for r in rows])
+    matched: List[str] = []
+    for r in rows:
+        try:
+            recipe_json = json.loads(r["recipe_json"])
+        except Exception:
+            recipe_json = {}
+        names = [t["name"] for t in tag_map.get(r["uuid"], [])]
+        if match_score(query, recipe_haystack(recipe_json, names)) > 0:
+            matched.append(r["uuid"])
+    return matched
+
+
+class BulkAddBody(BaseModel):
+    # Either add an explicit list of recipes, or everything matching a search.
+    recipe_uuids: Optional[List[str]] = None
+    q: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+
+@router.post("/{cookbook_id}/recipes/bulk", include_in_schema=False)
+async def bulk_add_recipes(
+    cookbook_id: int,
+    body: BulkAddBody,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Add many of the current user's recipes to a cookbook at once.
+
+    Pass ``recipe_uuids`` for an explicit set, or ``q``/``tags`` to add every
+    recipe matching that search. Only recipes the user owns are added; already
+    present ones are skipped. Returns ``{matched, added}``.
+    """
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if _owned_cookbook(cursor, cookbook_id, me) is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Cookbook not found")
+
+    if body.recipe_uuids is not None:
+        uuids = [u for u in dict.fromkeys(body.recipe_uuids) if _owns_recipe(cursor, u, me)]
+    else:
+        uuids = _matching_owned_uuids(cursor, me, body.q, body.tags)
+
+    added = 0
+    for u in uuids:
+        cursor.execute(
+            "INSERT OR IGNORE INTO cookbook_recipes (cookbook_id, recipe_uuid, added_by) "
+            "VALUES (?, ?, ?)",
+            (cookbook_id, u, me),
+        )
+        added += cursor.rowcount  # 1 when inserted, 0 when already present
+    conn.commit()
+    conn.close()
+    return {"matched": len(uuids), "added": added}
 
 
 @router.post("/{cookbook_id}/recipes", include_in_schema=False)

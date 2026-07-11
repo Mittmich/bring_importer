@@ -304,6 +304,22 @@ export const api = {
     return request<void>(`/cookbooks/${id}/recipes/${recipeUuid}`, { method: 'DELETE' })
   },
 
+  /** Add many recipes to a cookbook at once — an explicit set, or everything
+   *  matching a search (q/tags). Returns how many matched and were newly added. */
+  bulkAddToCookbook(
+    cookbookId: number,
+    opts: { q?: string; tags?: string[]; recipeUuids?: string[] },
+  ) {
+    const body: Record<string, unknown> = {}
+    if (opts.q) body.q = opts.q
+    if (opts.tags?.length) body.tags = opts.tags
+    if (opts.recipeUuids) body.recipe_uuids = opts.recipeUuids
+    return request<{ matched: number; added: number }>(`/cookbooks/${cookbookId}/recipes/bulk`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
   // --- Friends ---
 
   listFriends() {
