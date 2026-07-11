@@ -61,6 +61,19 @@ export interface TagInfo {
   color: string | null
 }
 
+export interface Friend {
+  user_id: number
+  email: string
+}
+
+export interface FriendRequest {
+  id: number
+  user_id: number
+  email: string
+  direction: 'incoming' | 'outgoing'
+  created_at?: string
+}
+
 export interface RecipeListPage {
   items: RecipeListItem[]
   total: number
@@ -229,6 +242,35 @@ export const api = {
 
   cloneRecipe(uuid: string) {
     return request<{ uuid: string; url: string }>(`/recipes/${uuid}/clone`, { method: 'POST' })
+  },
+
+  // --- Friends ---
+
+  listFriends() {
+    return request<Friend[]>('/friends')
+  },
+
+  listFriendRequests(direction: 'incoming' | 'outgoing') {
+    return request<FriendRequest[]>(`/friends/requests?direction=${direction}`)
+  },
+
+  sendFriendRequest(email: string) {
+    return request<{ status: 'pending' | 'accepted'; user: { id: number; email: string } }>(
+      '/friends/requests',
+      { method: 'POST', body: JSON.stringify({ email }) },
+    )
+  },
+
+  acceptFriendRequest(id: number) {
+    return request<{ status: string }>(`/friends/requests/${id}/accept`, { method: 'POST' })
+  },
+
+  declineFriendRequest(id: number) {
+    return request<void>(`/friends/requests/${id}/decline`, { method: 'POST' })
+  },
+
+  unfriend(userId: number) {
+    return request<void>(`/friends/${userId}`, { method: 'DELETE' })
   },
 
   getMealPlan(start: string, end: string) {

@@ -118,6 +118,30 @@ def init_db():
     )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_recipe_tags_tag ON recipe_tags(tag_id)")
 
+    # Create friendships table — the social graph behind recipe sharing. One
+    # canonical row per pair (requester -> addressee); query both directions.
+    # A 'pending' row is an outstanding friend request; 'accepted' is a
+    # friendship. See .claude/plans/friends-cookbooks-sharing.md.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS friendships (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        requester_id INTEGER NOT NULL,
+        addressee_id INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'blocked')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP,
+        UNIQUE(requester_id, addressee_id),
+        FOREIGN KEY (requester_id) REFERENCES users (id),
+        FOREIGN KEY (addressee_id) REFERENCES users (id)
+    )
+    """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_friendships_addressee "
+        "ON friendships(addressee_id, status)"
+    )
+
     # Create google_integrations table — one row per user holding the Google
     # OAuth refresh token and the chosen target calendar for meal-plan sync.
     cursor.execute(
