@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { NavLink, useLocation, useOutletContext } from 'react-router-dom'
-import { Search, ChevronRight, ChevronDown, Plus } from 'lucide-react'
+import { Search, ChevronRight, ChevronDown, Plus, BookHeart } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { BulkAddToCookbookModal } from '@/components/BulkAddToCookbookModal'
 import { TagChip } from '@/components/ui/tag-chip'
 import { tagColor } from '@/lib/tagColors'
 
@@ -39,6 +40,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
     navState?.tag ? [navState.tag] : [],
   )
   const [tagsExpanded, setTagsExpanded] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
   const { onImport } = useOutletContext<{ onImport: () => void }>()
 
@@ -92,6 +94,10 @@ export function RecipeListPanel({ activeUuid }: Props) {
   })
 
   const recipes = data?.pages.flatMap((p) => p.items) ?? []
+  const total = data?.pages[0]?.total ?? 0
+  // Offer bulk "add to cookbook" only when a search/tag filter is narrowing
+  // the list, so it's a deliberate set rather than "all my recipes".
+  const hasFilter = debounced.length > 0 || selectedTags.length > 0
 
   // Auto-load the next page when the sentinel scrolls into view. The list
   // scrolls inside `scrollRef` (an overflow-y-auto container), not the page,
@@ -184,6 +190,21 @@ export function RecipeListPanel({ activeUuid }: Props) {
         </div>
       )}
 
+      {/* Bulk add the current results to a cookbook. */}
+      {hasFilter && !isLoading && recipes.length > 0 && (
+        <div className="px-3 py-2 border-b border-border/50 flex items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {total} {total === 1 ? 'result' : 'results'}
+          </span>
+          <button
+            onClick={() => setBulkOpen(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+          >
+            <BookHeart className="w-3.5 h-3.5" /> Add to cookbook
+          </button>
+        </div>
+      )}
+
       {/* List */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {isLoading && (
@@ -210,6 +231,14 @@ export function RecipeListPanel({ activeUuid }: Props) {
         {isFetchingNextPage &&
           Array.from({ length: 3 }).map((_, i) => <RecipeRowSkeleton key={i} />)}
       </div>
+
+      <BulkAddToCookbookModal
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        q={debounced || undefined}
+        tags={selectedTags}
+        total={total}
+      />
     </div>
   )
 }
