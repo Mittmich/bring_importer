@@ -43,6 +43,7 @@ from api.recipe_extraction import (
     extract_recipe_from_jsonld,
     parse_recipe_with_openai,
 )
+from api.search import match_score, recipe_haystack
 
 # 5 MB is enough for any recipe page; bigger bodies are almost certainly a
 # feed or wrapper page and not a single recipe.
@@ -491,6 +492,27 @@ async def delete_tag(
     return None
 
 
+def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """Shape a recipes row into a list item for the ``GET /recipes`` envelope."""
+    try:
+        recipe_json = json.loads(row["recipe_json"])
+    except Exception:
+        recipe_json = {}
+    source = recipe_json.get("source") or {"kind": "unknown", "value": ""}
+    has_image = bool(row["has_image"])
+    return {
+        "uuid": row["uuid"],
+        "title": row["title"],
+        "datePublished": recipe_json.get("datePublished"),
+        "createdAt": row["created_at"],
+        "source": source,
+        "is_public": bool(row["is_public"]),
+        "has_image": has_image,
+        "image_url": _image_url(row["uuid"], has_image, row["updated_at"]),
+        "tags": tag_map.get(row["uuid"], []),
+    }
+
+
 @router.get("")
 async def list_recipes(
     limit: int = 30,
@@ -499,10 +521,12 @@ async def list_recipes(
     tag: Optional[List[str]] = Query(default=None),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Return a page of the current user's recipes, newest first.
+    """Return a page of the current user's recipes.
 
-    Response envelope: ``{items, total, limit, offset}``. ``q`` filters by title
-    (case-insensitive substring). ``limit`` is clamped to 1..100.
+    Response envelope: ``{items, total, limit, offset}``. ``limit`` is clamped
+    to 1..100. Without ``q``, recipes come newest-first. With ``q``, results are
+    a fuzzy full-recipe search — title, description, note, ingredients,
+    instructions, and tags — ranked by match score (see ``api.search``).
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -513,9 +537,6 @@ async def list_recipes(
 
     where = "WHERE user_id = ?"
     params: List[Any] = [user_id]
-    if q:
-        where += " AND LOWER(title) LIKE ?"
-        params.append(f"%{q.lower()}%")
 
     # Tag filter (AND): the recipe must carry every named tag.
     tags_norm = sorted({t.strip().lower() for t in (tag or []) if t.strip()})
@@ -528,40 +549,47 @@ async def list_recipes(
         )
         params.extend([*tags_norm, len(tags_norm)])
 
+    select_cols = (
+        "SELECT uuid, title, recipe_json, created_at, updated_at, is_public, has_image "
+        f"FROM recipes {where} "
+    )
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes {where}", params).fetchone()["c"]
-    rows = cursor.execute(
-        f"SELECT uuid, title, recipe_json, created_at, updated_at, is_public, has_image "
-        f"FROM recipes {where} "
-        "ORDER BY created_at DESC LIMIT ? OFFSET ?",
-        (*params, limit, offset),
-    ).fetchall()
 
-    tag_map = _tags_for(cursor, [row["uuid"] for row in rows])
+    query = (q or "").strip()
+    if query:
+        # Fuzzy full-recipe search. Load the tag-filtered candidates, score each
+        # against the query over all its text, keep the matches, rank by score
+        # (newest first as a tiebreak), then paginate in memory. Fine at a
+        # personal collection's scale; avoids maintaining an FTS index.
+        candidates = cursor.execute(select_cols, params).fetchall()
+        cand_tag_map = _tags_for(cursor, [r["uuid"] for r in candidates])
+        scored = []
+        for row in candidates:
+            try:
+                recipe_json = json.loads(row["recipe_json"])
+            except Exception:
+                recipe_json = {}
+            tag_names = [t["name"] for t in cand_tag_map.get(row["uuid"], [])]
+            score = match_score(query, recipe_haystack(recipe_json, tag_names))
+            if score > 0:
+                scored.append((score, row["created_at"] or "", row))
+        scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
+        total = len(scored)
+        page_rows = [s[2] for s in scored[offset : offset + limit]]
+        tag_map = cand_tag_map
+    else:
+        total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes {where}", params).fetchone()["c"]
+        page_rows = cursor.execute(
+            select_cols + "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
+        ).fetchall()
+        tag_map = _tags_for(cursor, [row["uuid"] for row in page_rows])
+
     conn.close()
 
-    items: List[Dict[str, Any]] = []
-    for row in rows:
-        try:
-            recipe_json = json.loads(row["recipe_json"])
-        except Exception:
-            recipe_json = {}
-        source = recipe_json.get("source") or {"kind": "unknown", "value": ""}
-        has_image = bool(row["has_image"])
-        items.append(
-            {
-                "uuid": row["uuid"],
-                "title": row["title"],
-                "datePublished": recipe_json.get("datePublished"),
-                "createdAt": row["created_at"],
-                "source": source,
-                "is_public": bool(row["is_public"]),
-                "has_image": has_image,
-                "image_url": _image_url(row["uuid"], has_image, row["updated_at"]),
-                "tags": tag_map.get(row["uuid"], []),
-            }
-        )
+    items = [_list_item(row, tag_map) for row in page_rows]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
