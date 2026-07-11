@@ -142,6 +142,40 @@ def init_db():
         "ON friendships(addressee_id, status)"
     )
 
+    # Create cookbooks + cookbook_recipes — a cookbook is a named collection of
+    # recipes owned by one user (the unit of sharing in later phases). Phase 2
+    # is personal-only; sharing (cookbook_members) arrives in Phase 3. See
+    # .claude/plans/friends-cookbooks-sharing.md.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS cookbooks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'normal',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_id) REFERENCES users (id)
+    )
+    """
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cookbooks_owner ON cookbooks(owner_id)")
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS cookbook_recipes (
+        cookbook_id INTEGER NOT NULL,
+        recipe_uuid TEXT NOT NULL,
+        added_by INTEGER,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (cookbook_id, recipe_uuid),
+        FOREIGN KEY (cookbook_id) REFERENCES cookbooks (id)
+    )
+    """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_cookbook_recipes_recipe ON cookbook_recipes(recipe_uuid)"
+    )
+
     # Create google_integrations table — one row per user holding the Google
     # OAuth refresh token and the chosen target calendar for meal-plan sync.
     cursor.execute(
