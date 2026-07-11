@@ -212,6 +212,13 @@ export const api = {
     return request<void>(`/recipes/${uuid}`, { method: 'DELETE' })
   },
 
+  changePassword(currentPassword: string, newPassword: string) {
+    return request<void>('/account/password', {
+      method: 'POST',
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    })
+  },
+
   /** Upload (or replace) a recipe's hero image. `imageBase64` is a cropped JPEG. */
   setRecipeImage(uuid: string, imageBase64: string) {
     return request<{ has_image: boolean; image_url: string | null }>(

@@ -1,19 +1,17 @@
 # Add (or update) a user in the deployed app — triggered on demand.
 #
-# Runs `manage_users.py add <email> -p <password>` inside the running backend
-# container on Lightsail, against the live SQLite database. If the user already
-# exists, their password is updated.
+# Creates the user with the shared DEFAULT_PASSWORD secret; the user then sets
+# their own password in the app under Account → Change password. If the email
+# already exists, its password is reset back to DEFAULT_PASSWORD.
 #
-# Trigger: Actions tab → "Add user" → Run workflow → fill in email + password.
+# Runs `manage_users.py add <email> -p <DEFAULT_PASSWORD>` inside the running
+# backend container on Lightsail, against the live SQLite database.
 #
-# SECURITY: workflow_dispatch inputs are NOT secrets — the values you type are
-# recorded in the run's metadata and visible to anyone who can view Actions for
-# this repo. The password is masked in the step logs, but treat it as
-# semi-exposed: prefer a throwaway password the user changes on first login,
-# and/or rotate it afterwards.
+# Trigger: Actions tab → "Add user" → Run workflow → enter the email.
 #
-# Reuses the same secrets as the deploy workflow:
-#   LIGHTSAIL_SSH_KEY, LIGHTSAIL_HOST, LIGHTSAIL_USER, LIGHTSAIL_APP_PATH
+# Required secrets (in addition to the deploy secrets
+# LIGHTSAIL_SSH_KEY / LIGHTSAIL_HOST / LIGHTSAIL_USER / LIGHTSAIL_APP_PATH):
+#   DEFAULT_PASSWORD — the initial password every new user is created with.
 
 name: Add user
 
@@ -21,11 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       email:
-        description: "Email of the user to add (or whose password to update)"
-        required: true
-        type: string
-      password:
-        description: "Password to set (masked in logs; see security note in the workflow file)"
+        description: "Email of the user to add (or reset to the default password)"
         required: true
         type: string
 
@@ -38,6 +32,15 @@ jobs:
   add-user:
     runs-on: ubuntu-latest
     steps:
+      - name: Check DEFAULT_PASSWORD secret is set
+        env:
+          PASSWORD: ${{ secrets.DEFAULT_PASSWORD }}
+        run: |
+          if [ -z "$PASSWORD" ]; then
+            echo "::error::The DEFAULT_PASSWORD repo secret is not set. Add it in Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
       - name: Set up SSH key
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -49,14 +52,14 @@ jobs:
       - name: Add / update the user in the backend container
         env:
           EMAIL: ${{ inputs.email }}
-          PASSWORD: ${{ inputs.password }}
+          PASSWORD: ${{ secrets.DEFAULT_PASSWORD }}
           SSH_TARGET: ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}
           APP_PATH: ${{ secrets.LIGHTSAIL_APP_PATH }}
         run: |
           # Transport the credentials as base64 so any special characters in the
           # password survive both the SSH command string and remote shell
-          # parsing. Mask both the plaintext and its base64 form in the logs.
-          echo "::add-mask::$PASSWORD"
+          # parsing. (GitHub already masks the secret's plaintext in logs; mask
+          # its base64 form too.)
           EMAIL_B64=$(printf '%s' "$EMAIL" | base64 -w0)
           PASSWORD_B64=$(printf '%s' "$PASSWORD" | base64 -w0)
           echo "::add-mask::$PASSWORD_B64"
@@ -72,4 +75,6 @@ jobs:
           REMOTE
 
       - name: Summary
-        run: echo "Done — user '${{ inputs.email }}' added or updated on the live app."
+        run: |
+          echo "Done — user '${{ inputs.email }}' created/reset to the default password."
+          echo "Ask them to log in and set their own password under Account → Change password."
