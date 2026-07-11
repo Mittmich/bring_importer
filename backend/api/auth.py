@@ -108,6 +108,18 @@ async def get_current_user_optional(
     return get_user(email=email)
 
 
+def update_password(email: str, new_password: str) -> None:
+    """Set a new bcrypt-hashed password for the user with ``email``."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET hashed_password = ? WHERE email = ?",
+        (get_password_hash(new_password), email),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_user_id(email: str) -> Optional[int]:
     conn = get_db_connection()
     cursor = conn.cursor()

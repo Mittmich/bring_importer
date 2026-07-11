@@ -1,0 +1,80 @@
+# Add (or update) a user in the deployed app — triggered on demand.
+#
+# Creates the user with the shared DEFAULT_PASSWORD secret; the user then sets
+# their own password in the app under Account → Change password. If the email
+# already exists, its password is reset back to DEFAULT_PASSWORD.
+#
+# Runs `manage_users.py add <email> -p <DEFAULT_PASSWORD>` inside the running
+# backend container on Lightsail, against the live SQLite database.
+#
+# Trigger: Actions tab → "Add user" → Run workflow → enter the email.
+#
+# Required secrets (in addition to the deploy secrets
+# LIGHTSAIL_SSH_KEY / LIGHTSAIL_HOST / LIGHTSAIL_USER / LIGHTSAIL_APP_PATH):
+#   DEFAULT_PASSWORD — the initial password every new user is created with.
+
+name: Add user
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email of the user to add (or reset to the default password)"
+        required: true
+        type: string
+
+# Don't let two user-management runs race on the same SQLite file.
+concurrency:
+  group: manage-users
+  cancel-in-progress: false
+
+jobs:
+  add-user:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check DEFAULT_PASSWORD secret is set
+        env:
+          PASSWORD: ${{ secrets.DEFAULT_PASSWORD }}
+        run: |
+          if [ -z "$PASSWORD" ]; then
+            echo "::error::The DEFAULT_PASSWORD repo secret is not set. Add it in Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+      - name: Add Lightsail host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Add / update the user in the backend container
+        env:
+          EMAIL: ${{ inputs.email }}
+          PASSWORD: ${{ secrets.DEFAULT_PASSWORD }}
+          SSH_TARGET: ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}
+          APP_PATH: ${{ secrets.LIGHTSAIL_APP_PATH }}
+        run: |
+          # Transport the credentials as base64 so any special characters in the
+          # password survive both the SSH command string and remote shell
+          # parsing. (GitHub already masks the secret's plaintext in logs; mask
+          # its base64 form too.)
+          EMAIL_B64=$(printf '%s' "$EMAIL" | base64 -w0)
+          PASSWORD_B64=$(printf '%s' "$PASSWORD" | base64 -w0)
+          echo "::add-mask::$PASSWORD_B64"
+
+          ssh "$SSH_TARGET" \
+            "APP_PATH='$APP_PATH' E64='$EMAIL_B64' P64='$PASSWORD_B64' bash -s" <<'REMOTE'
+          set -euo pipefail
+          EMAIL=$(printf '%s' "$E64" | base64 -d)
+          PASSWORD=$(printf '%s' "$P64" | base64 -d)
+          cd "$APP_PATH"
+          sudo docker compose -f docker-compose.yml exec -T backend \
+            python3 manage_users.py add "$EMAIL" -p "$PASSWORD"
+          REMOTE
+
+      - name: Summary
+        run: |
+          echo "Done — user '${{ inputs.email }}' created/reset to the default password."
+          echo "Ask them to log in and set their own password under Account → Change password."
