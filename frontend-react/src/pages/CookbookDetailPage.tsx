@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, Pencil, Trash2, Utensils, X } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { CookbookMembersSection } from '@/components/CookbookMembersSection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -62,6 +63,9 @@ export function CookbookDetailPage() {
     )
   }
 
+  const canManage = data.role === 'owner' || data.role === 'manager'
+  const isOwner = data.role === 'owner'
+
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-[#F8FAFC]">
       <div className="max-w-3xl mx-auto w-full p-4 md:p-6 space-y-4 pt-6 pb-10">
@@ -93,42 +97,45 @@ export function CookbookDetailPage() {
           ) : (
             <>
               <h1 className="text-xl font-bold text-foreground flex-1 truncate">{data.name}</h1>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => {
-                  setName(data.name)
-                  setEditing(true)
-                }}
-                aria-label="Rename cookbook"
-              >
-                <Pencil className="w-4 h-4" />
-              </Button>
-              {confirmDelete ? (
-                <>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => remove.mutate()}
-                    disabled={remove.isPending}
-                  >
-                    {remove.isPending ? 'Deleting…' : 'Delete'}
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
+              {canManage && (
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => setConfirmDelete(true)}
-                  aria-label="Delete cookbook"
+                  onClick={() => {
+                    setName(data.name)
+                    setEditing(true)
+                  }}
+                  aria-label="Rename cookbook"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Pencil className="w-4 h-4" />
                 </Button>
               )}
+              {isOwner &&
+                (confirmDelete ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => remove.mutate()}
+                      disabled={remove.isPending}
+                    >
+                      {remove.isPending ? 'Deleting…' : 'Delete'}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setConfirmDelete(true)}
+                    aria-label="Delete cookbook"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                ))}
             </>
           )}
         </div>
@@ -150,12 +157,15 @@ export function CookbookDetailPage() {
               <RecipeCard
                 key={r.uuid}
                 recipe={r}
+                canRemove={canManage}
                 onRemove={() => removeRecipe.mutate(r.uuid)}
                 removing={removeRecipe.isPending}
               />
             ))}
           </div>
         )}
+
+        <CookbookMembersSection cookbookId={cookbookId} role={data.role} />
       </div>
     </div>
   )
@@ -171,28 +181,32 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function RecipeCard({
   recipe,
+  canRemove,
   onRemove,
   removing,
 }: {
   recipe: RecipeListItem
+  canRemove: boolean
   onRemove: () => void
   removing: boolean
 }) {
   const src = useRecipeImage(recipe.image_url)
   return (
     <div className="group relative rounded-xl border border-border bg-white overflow-hidden">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault()
-          onRemove()
-        }}
-        disabled={removing}
-        aria-label="Remove from cookbook"
-        className="absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/45 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/65"
-      >
-        <X className="w-4 h-4" />
-      </button>
+      {canRemove && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            onRemove()
+          }}
+          disabled={removing}
+          aria-label="Remove from cookbook"
+          className="absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/45 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/65"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
       <NavLink to={`/recipes/${recipe.uuid}`} className="block">
         <div className="aspect-video bg-muted overflow-hidden">
           {src ? (

@@ -23,11 +23,13 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
   const [newName, setNewName] = useState('')
 
   const listKey = ['cookbooks', 'for-recipe', recipeUuid]
-  const { data: cookbooks = [], isLoading } = useQuery({
+  const { data: all = [], isLoading } = useQuery({
     queryKey: listKey,
     queryFn: () => api.listCookbooks(recipeUuid),
     enabled: open,
   })
+  // Only cookbooks you can curate (own or manage) can have recipes added.
+  const cookbooks = all.filter((c) => c.role === 'owner' || c.role === 'manager')
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['cookbooks'] })

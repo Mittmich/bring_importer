@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookHeart, Plus, X } from 'lucide-react'
+import { BookHeart, Check, Plus, Users, X } from 'lucide-react'
 import { api, type Cookbook } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
@@ -16,14 +16,31 @@ export function CookbooksPage() {
     queryKey: ['cookbooks'],
     queryFn: () => api.listCookbooks(),
   })
+  const { data: invitations = [] } = useQuery({
+    queryKey: ['cookbookInvitations'],
+    queryFn: api.listCookbookInvitations,
+  })
+
+  function invalidate() {
+    queryClient.invalidateQueries({ queryKey: ['cookbooks'] })
+    queryClient.invalidateQueries({ queryKey: ['cookbookInvitations'] })
+  }
 
   const create = useMutation({
     mutationFn: (n: string) => api.createCookbook(n),
     onSuccess: () => {
       setName('')
       setCreating(false)
-      queryClient.invalidateQueries({ queryKey: ['cookbooks'] })
+      invalidate()
     },
+  })
+  const accept = useMutation({
+    mutationFn: (id: number) => api.acceptCookbookInvitation(id),
+    onSuccess: invalidate,
+  })
+  const decline = useMutation({
+    mutationFn: (id: number) => api.declineCookbookInvitation(id),
+    onSuccess: invalidate,
   })
 
   function submit(e: React.FormEvent) {
@@ -67,6 +84,38 @@ export function CookbooksPage() {
               <X className="w-4 h-4" />
             </Button>
           </form>
+        )}
+
+        {invitations.length > 0 && (
+          <div className="space-y-1.5">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
+              Cookbook invitations
+            </h2>
+            <div className="bg-white rounded-xl border border-border divide-y divide-border/50 overflow-hidden">
+              {invitations.map((inv) => (
+                <div key={inv.cookbook_id} className="flex items-center gap-2 px-4 py-3">
+                  <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground truncate">{inv.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      from {inv.owner_email} · {inv.role}
+                    </p>
+                  </div>
+                  <Button size="sm" onClick={() => accept.mutate(inv.cookbook_id)} disabled={accept.isPending}>
+                    <Check className="w-4 h-4 mr-1" /> Accept
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => decline.mutate(inv.cookbook_id)}
+                    disabled={decline.isPending}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {isLoading ? (
@@ -115,8 +164,15 @@ function CookbookCard({ cookbook }: { cookbook: Cookbook }) {
         <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
           {cookbook.name}
         </p>
-        <p className="text-xs text-muted-foreground mt-0.5 tabular-nums">
-          {cookbook.recipe_count} {cookbook.recipe_count === 1 ? 'recipe' : 'recipes'}
+        <p className="text-xs text-muted-foreground mt-0.5 tabular-nums flex items-center gap-1.5">
+          <span>
+            {cookbook.recipe_count} {cookbook.recipe_count === 1 ? 'recipe' : 'recipes'}
+          </span>
+          {cookbook.shared && (
+            <span className="inline-flex items-center gap-1 text-primary">
+              <Users className="w-3 h-3" /> Shared · {cookbook.role}
+            </span>
+          )}
         </p>
       </div>
     </NavLink>

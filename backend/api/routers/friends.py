@@ -202,8 +202,8 @@ async def unfriend(
 ):
     """Remove any friendship or pending request between the current user and ``user_id``.
 
-    Also cancels an outgoing request the current user sent. Phase 3 will extend
-    this to revoke any cookbook shares between the two users.
+    Also cancels an outgoing request and **revokes all cookbook shares between the
+    two users, in both directions** — unfriending is a clean cutoff.
     """
     me = _require_me(current_user)
     conn = get_db_connection()
@@ -212,6 +212,14 @@ async def unfriend(
         "DELETE FROM friendships "
         "WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)",
         (me, user_id, user_id, me),
+    )
+    # Revoke shares in both directions: the other user's membership in my
+    # cookbooks, and my membership in theirs.
+    cursor.execute(
+        "DELETE FROM cookbook_members WHERE "
+        "(user_id = ? AND cookbook_id IN (SELECT id FROM cookbooks WHERE owner_id = ?)) OR "
+        "(user_id = ? AND cookbook_id IN (SELECT id FROM cookbooks WHERE owner_id = ?))",
+        (user_id, me, me, user_id),
     )
     conn.commit()
     conn.close()

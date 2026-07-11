@@ -61,11 +61,16 @@ export interface TagInfo {
   color: string | null
 }
 
+/** A cookbook role, weakest → strongest. */
+export type CookbookRole = 'viewer' | 'editor' | 'manager' | 'owner'
+
 export interface Cookbook {
   id: number
   name: string
   recipe_count: number
   cover_image_url?: string | null
+  role?: CookbookRole
+  shared?: boolean
   /** Only present when listCookbooks is called with a recipeUuid. */
   contains?: boolean
 }
@@ -75,6 +80,26 @@ export interface CookbookDetail {
   name: string
   recipe_count: number
   recipes: RecipeListItem[]
+  role?: CookbookRole
+}
+
+export interface CookbookMember {
+  user_id: number
+  email: string
+  role: 'viewer' | 'editor' | 'manager'
+  status: 'pending' | 'accepted'
+}
+
+export interface CookbookMembers {
+  owner: { user_id: number; email: string }
+  members: CookbookMember[]
+}
+
+export interface CookbookInvitation {
+  cookbook_id: number
+  name: string
+  owner_email: string
+  role: string
 }
 
 export interface Friend {
@@ -176,6 +201,8 @@ export interface Recipe {
   has_image?: boolean
   /** Relative path to the hero image (needs config.apiUrl prefix), or null. */
   image_url?: string | null
+  /** The viewer's role over this recipe (owner/editor/viewer/…), for gating edit UI. */
+  role?: CookbookRole
 }
 
 export const api = {
@@ -317,6 +344,52 @@ export const api = {
     return request<{ matched: number; added: number }>(`/cookbooks/${cookbookId}/recipes/bulk`, {
       method: 'POST',
       body: JSON.stringify(body),
+    })
+  },
+
+  // --- Cookbook sharing ---
+
+  getCookbookMembers(id: number) {
+    return request<CookbookMembers>(`/cookbooks/${id}/members`)
+  },
+
+  inviteCookbookMember(id: number, friendId: number, role: string) {
+    return request<{ ok: boolean }>(`/cookbooks/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ friend_id: friendId, role }),
+    })
+  },
+
+  updateCookbookMemberRole(id: number, userId: number, role: string) {
+    return request<{ ok: boolean }>(`/cookbooks/${id}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    })
+  },
+
+  removeCookbookMember(id: number, userId: number) {
+    return request<void>(`/cookbooks/${id}/members/${userId}`, { method: 'DELETE' })
+  },
+
+  listCookbookInvitations() {
+    return request<CookbookInvitation[]>('/cookbooks/invitations')
+  },
+
+  acceptCookbookInvitation(cookbookId: number) {
+    return request<{ status: string }>(`/cookbooks/invitations/${cookbookId}/accept`, {
+      method: 'POST',
+    })
+  },
+
+  declineCookbookInvitation(cookbookId: number) {
+    return request<void>(`/cookbooks/invitations/${cookbookId}/decline`, { method: 'POST' })
+  },
+
+  /** Quick-share a single recipe with a friend (wraps it in a quickshare cookbook). */
+  shareRecipe(uuid: string, friendId: number, role: string) {
+    return request<{ cookbook_id: number }>(`/recipes/${uuid}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ friend_id: friendId, role }),
     })
   },
 

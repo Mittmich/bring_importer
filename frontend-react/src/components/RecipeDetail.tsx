@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookHeart, ChevronDown, ExternalLink, Pencil, Share2, Trash2 } from 'lucide-react'
+import { ArrowLeft, BookHeart, ChevronDown, ExternalLink, Pencil, Share2, Trash2, UserPlus } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { AddToCookbookModal } from '@/components/AddToCookbookModal'
+import { ShareRecipeModal } from '@/components/ShareRecipeModal'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TagChip } from '@/components/ui/tag-chip'
@@ -23,6 +24,11 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const [ingredientsOpen, setIngredientsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const [cookbookOpen, setCookbookOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+
+  // The viewer owns this recipe, or can edit it via a shared cookbook.
+  const isOwner = recipe.owned ?? false
+  const canEdit = isOwner || recipe.role === 'editor' || recipe.role === 'manager'
 
   function handleShare() {
     navigator.clipboard.writeText(`${window.location.origin}/share/${uuid}`)
@@ -66,14 +72,21 @@ export function RecipeDetail({ uuid, recipe }: Props) {
         <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)} aria-label="Add to cookbook">
           <BookHeart className="w-4 h-4" />
         </Button>
+        {isOwner && (
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} aria-label="Share with a friend">
+            <UserPlus className="w-4 h-4" />
+          </Button>
+        )}
         {recipe.is_public && (
           <Button variant="outline" size="sm" onClick={handleShare}>
             <Share2 className="w-4 h-4" />
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => navigate(`/recipes/${uuid}/edit`)}>
-          <Pencil className="w-4 h-4" />
-        </Button>
+        {canEdit && (
+          <Button variant="outline" size="sm" onClick={() => navigate(`/recipes/${uuid}/edit`)}>
+            <Pencil className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -136,44 +149,57 @@ export function RecipeDetail({ uuid, recipe }: Props) {
             <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)}>
               <BookHeart className="w-3.5 h-3.5 mr-1" /> Cookbook
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/recipes/${uuid}/edit`)}
-              className="hidden md:flex"
-            >
-              <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
-            </Button>
+            {isOwner && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShareOpen(true)}
+                className="hidden md:flex"
+              >
+                <UserPlus className="w-3.5 h-3.5 mr-1" /> Share
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/recipes/${uuid}/edit`)}
+                className="hidden md:flex"
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+              </Button>
+            )}
             {recipe.is_public && (
               <Button variant="outline" size="sm" onClick={handleShare} className="hidden md:flex">
                 <Share2 className="w-3.5 h-3.5 mr-1" />
-                {copied ? 'Copied!' : 'Share'}
+                {copied ? 'Copied!' : 'Link'}
               </Button>
             )}
-            {confirmDelete ? (
-              <>
+            {isOwner &&
+              (confirmDelete ? (
+                <>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending ? 'Deleting…' : 'Confirm delete'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
                 <Button
-                  variant="destructive"
+                  variant="ghost"
                   size="sm"
-                  onClick={() => deleteMutation.mutate()}
-                  disabled={deleteMutation.isPending}
+                  onClick={() => setConfirmDelete(true)}
+                  className="hidden md:flex text-muted-foreground hover:text-destructive"
                 >
-                  {deleteMutation.isPending ? 'Deleting…' : 'Confirm delete'}
+                  <Trash2 className="w-3.5 h-3.5" />
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
-                  Cancel
-                </Button>
-              </>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmDelete(true)}
-                className="hidden md:flex text-muted-foreground hover:text-destructive"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            )}
+              ))}
           </div>
 
           {recipe.tags && recipe.tags.length > 0 && (
@@ -251,7 +277,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           )}
 
           {/* Mobile delete */}
-          <div className="md:hidden pt-2">
+          <div className={`md:hidden pt-2 ${isOwner ? '' : 'hidden'}`}>
             {confirmDelete ? (
               <div className="flex gap-2">
                 <Button
@@ -280,6 +306,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
       </div>
 
       <AddToCookbookModal open={cookbookOpen} onOpenChange={setCookbookOpen} recipeUuid={uuid} />
+      <ShareRecipeModal open={shareOpen} onOpenChange={setShareOpen} recipeUuid={uuid} />
     </div>
   )
 }
