@@ -295,3 +295,25 @@ def test_shared_recipe_appears_in_member_recipe_list(
     # And it's marked owned for A.
     a_items = {i["uuid"]: i for i in client.get("/recipes", headers=auth_headers).json()["items"]}
     assert a_items[r]["owned"] is True
+
+
+@pytest.mark.integration
+def test_shared_recipe_tags_appear_in_filter_scope(
+    client, auth_headers, tmp_db_path, mocked_openai
+):
+    cid, r, b_id, b_headers = _shared_cookbook(
+        client, auth_headers, tmp_db_path, "viewer", mocked_openai
+    )
+    client.put(f"/recipes/{r}", headers=auth_headers, json={"tags": ["Weeknight"]})
+
+    # B's search-bar tag filter includes the shared recipe's tag...
+    filter_tags = [
+        t["name"] for t in client.get("/recipes/tags?scope=filter", headers=b_headers).json()
+    ]
+    assert "Weeknight" in filter_tags
+    # ...but it isn't in B's own tag namespace (management scope).
+    mine = [t["name"] for t in client.get("/recipes/tags", headers=b_headers).json()]
+    assert "Weeknight" not in mine
+    # And filtering B's recipe list by that tag returns the shared recipe.
+    filtered = client.get("/recipes?tag=Weeknight", headers=b_headers).json()
+    assert r in {i["uuid"] for i in filtered["items"]}

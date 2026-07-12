@@ -57,7 +57,12 @@ export function RecipeListPanel({ activeUuid }: Props) {
     return () => clearTimeout(t)
   }, [search])
 
-  const { data: tags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags })
+  // Filter scope: tag names on any recipe I can see (mine + shared), so shared
+  // recipes' tags are selectable here too.
+  const { data: tags = [] } = useQuery({
+    queryKey: ['tags', 'filter'],
+    queryFn: () => api.getTags('filter'),
+  })
   // Only offer tags that are actually on a recipe as filters. Orphaned tags
   // (count 0 — e.g. left behind when their last recipe was deleted) can never
   // match anything, so filtering by one just yields an empty list that reads

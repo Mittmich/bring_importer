@@ -27,7 +27,7 @@ export function HomePage() {
   const { onImport } = useOutletContext<{ onImport: () => void }>()
   const navigate = useNavigate()
 
-  const { data: tagData = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags })
+  const { data: tagData = [] } = useQuery({ queryKey: ['tags'], queryFn: () => api.getTags() })
   const { data: recentData, isLoading } = useQuery({
     queryKey: ['recipes', 'recent'],
     queryFn: () => api.listRecipes({ limit: SHELF_SIZE }),

@@ -9,7 +9,7 @@ import { TAG_PALETTE, tagColor } from '@/lib/tagColors'
 import { cn } from '@/lib/utils'
 
 export function TagsPage() {
-  const { data: tags = [], isLoading } = useQuery({ queryKey: ['tags'], queryFn: api.getTags })
+  const { data: tags = [], isLoading } = useQuery({ queryKey: ['tags'], queryFn: () => api.getTags() })
 
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-[#F8FAFC]">
