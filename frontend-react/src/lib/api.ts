@@ -77,6 +77,8 @@ export interface Cookbook {
   cover_image_url?: string | null
   role?: CookbookRole
   shared?: boolean
+  /** 'all' = an auto cookbook of every recipe its owner has. */
+  kind?: string
   /** Only present when listCookbooks is called with a recipeUuid. */
   contains?: boolean
 }
@@ -87,6 +89,7 @@ export interface CookbookDetail {
   recipe_count: number
   recipes: RecipeListItem[]
   role?: CookbookRole
+  kind?: string
 }
 
 export interface CookbookMember {
@@ -347,6 +350,11 @@ export const api = {
 
   createCookbook(name: string) {
     return request<Cookbook>('/cookbooks', { method: 'POST', body: JSON.stringify({ name }) })
+  },
+
+  /** Find or create the auto "All my recipes" cookbook (share it to share everything). */
+  createAllCookbook() {
+    return request<Cookbook>('/cookbooks/all', { method: 'POST' })
   },
 
   renameCookbook(id: number, name: string) {

@@ -317,3 +317,68 @@ def test_shared_recipe_tags_appear_in_filter_scope(
     # And filtering B's recipe list by that tag returns the shared recipe.
     filtered = client.get("/recipes?tag=Weeknight", headers=b_headers).json()
     assert r in {i["uuid"] for i in filtered["items"]}
+
+
+@pytest.mark.integration
+def test_all_cookbook_shares_every_recipe_live(client, auth_headers, tmp_db_path, mocked_openai):
+    b_id, b_headers = _mkuser(tmp_db_path, "b@example.com")
+    _befriend(client, auth_headers, "b@example.com", b_headers)
+
+    r1 = _recipe(client, auth_headers)
+    # Create the auto 'all' cookbook and share it with B as viewer.
+    cid = client.post("/cookbooks/all", headers=auth_headers).json()["id"]
+    assert _share(client, auth_headers, cid, b_id, "viewer").status_code == 200
+    client.post(f"/cookbooks/invitations/{cid}/accept", headers=b_headers)
+
+    # B can see the existing recipe...
+    assert client.get(f"/recipes/{r1}.json", headers=b_headers).status_code == 200
+    # ...and a recipe A adds *after* sharing shows up automatically.
+    r2 = _recipe(client, auth_headers)
+    assert client.get(f"/recipes/{r2}.json", headers=b_headers).status_code == 200
+    b_list = {i["uuid"] for i in client.get("/recipes", headers=b_headers).json()["items"]}
+    assert {r1, r2} <= b_list
+    # The cookbook lists both dynamically.
+    detail = client.get(f"/cookbooks/{cid}", headers=b_headers).json()
+    assert detail["kind"] == "all"
+    assert {i["uuid"] for i in detail["recipes"]} == {r1, r2}
+
+
+@pytest.mark.integration
+def test_all_cookbook_is_find_or_create(client, auth_headers):
+    a = client.post("/cookbooks/all", headers=auth_headers).json()
+    b = client.post("/cookbooks/all", headers=auth_headers).json()
+    assert a["id"] == b["id"]  # only ever one per user
+
+
+@pytest.mark.integration
+def test_all_cookbook_rejects_manual_curation(client, auth_headers, mocked_openai):
+    cid = client.post("/cookbooks/all", headers=auth_headers).json()["id"]
+    r = _recipe(client, auth_headers)
+    assert (
+        client.post(
+            f"/cookbooks/{cid}/recipes", headers=auth_headers, json={"recipe_uuid": r}
+        ).status_code
+        == 400
+    )
+    assert (
+        client.post(
+            f"/cookbooks/{cid}/recipes/bulk", headers=auth_headers, json={"q": "x"}
+        ).status_code
+        == 400
+    )
+    assert client.delete(f"/cookbooks/{cid}/recipes/{r}", headers=auth_headers).status_code == 400
+
+
+@pytest.mark.integration
+def test_all_cookbook_edit_role_propagates(client, auth_headers, tmp_db_path, mocked_openai):
+    b_id, b_headers = _mkuser(tmp_db_path, "b@example.com")
+    _befriend(client, auth_headers, "b@example.com", b_headers)
+    r = _recipe(client, auth_headers)
+    cid = client.post("/cookbooks/all", headers=auth_headers).json()["id"]
+    _share(client, auth_headers, cid, b_id, "editor")
+    client.post(f"/cookbooks/invitations/{cid}/accept", headers=b_headers)
+    # Editor role from the 'all' cookbook lets B edit any of A's recipes.
+    assert (
+        client.put(f"/recipes/{r}", headers=b_headers, json={"title": "Edited by B"}).status_code
+        == 200
+    )

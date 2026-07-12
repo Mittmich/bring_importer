@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookHeart, Check, Plus, Users, X } from 'lucide-react'
+import { BookHeart, Check, Plus, Share2, Users, X } from 'lucide-react'
 import { api, type Cookbook } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 
 export function CookbooksPage() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
 
@@ -42,6 +43,13 @@ export function CookbooksPage() {
     mutationFn: (id: number) => api.declineCookbookInvitation(id),
     onSuccess: invalidate,
   })
+  const shareAll = useMutation({
+    mutationFn: () => api.createAllCookbook(),
+    onSuccess: (cb) => {
+      queryClient.invalidateQueries({ queryKey: ['cookbooks'] })
+      navigate(`/cookbooks/${cb.id}`)
+    },
+  })
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -60,6 +68,20 @@ export function CookbooksPage() {
             </Button>
           )}
         </div>
+
+        <button
+          onClick={() => shareAll.mutate()}
+          disabled={shareAll.isPending}
+          className="w-full flex items-center gap-3 bg-white rounded-xl border border-border p-4 hover:border-primary/40 transition-colors text-left"
+        >
+          <Share2 className="w-4 h-4 text-primary flex-shrink-0" />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Share all my recipes</p>
+            <p className="text-xs text-muted-foreground">
+              A cookbook that always contains every recipe you have.
+            </p>
+          </div>
+        </button>
 
         {creating && (
           <form onSubmit={submit} className="bg-white rounded-xl border border-border p-4 flex gap-2">

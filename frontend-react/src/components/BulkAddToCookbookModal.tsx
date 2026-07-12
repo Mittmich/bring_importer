@@ -34,8 +34,10 @@ export function BulkAddToCookbookModal({ open, onOpenChange, q, tags, total }: P
     queryFn: () => api.listCookbooks(),
     enabled: open,
   })
-  // Only cookbooks you can curate (own or manage) can have recipes added.
-  const cookbooks = all.filter((c) => c.role === 'owner' || c.role === 'manager')
+  // Only cookbooks you can curate (own or manage, and not an auto 'all' one).
+  const cookbooks = all.filter(
+    (c) => (c.role === 'owner' || c.role === 'manager') && c.kind !== 'all',
+  )
 
   // Reset the result each time the picker reopens.
   useEffect(() => {

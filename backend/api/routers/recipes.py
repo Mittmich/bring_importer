@@ -22,7 +22,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from api import recipe_images
-from api.access import effective_role, role_at_least
+from api.access import accessible_recipes_sql, effective_role, role_at_least
 from api.auth import get_current_user, get_current_user_optional, get_user_id
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
@@ -431,13 +431,9 @@ async def list_tags(
             "COUNT(DISTINCT r.uuid) AS count "
             "FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id "
             "JOIN recipes r ON r.uuid = rt.recipe_uuid "
-            "WHERE (r.user_id = ? OR r.uuid IN ("
-            "SELECT cr.recipe_uuid FROM cookbook_recipes cr "
-            "JOIN cookbooks c ON c.id = cr.cookbook_id "
-            "LEFT JOIN cookbook_members m ON m.cookbook_id = c.id AND m.user_id = ? "
-            "AND m.status = 'accepted' WHERE c.owner_id = ? OR m.user_id IS NOT NULL)) "
+            "WHERE " + accessible_recipes_sql("r") + " "
             "GROUP BY LOWER(t.name) ORDER BY name COLLATE NOCASE",
-            (user_id, user_id, user_id),
+            (user_id, user_id, user_id, user_id),
         ).fetchall()
     else:
         rows = cursor.execute(
@@ -580,16 +576,9 @@ async def list_recipes(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
 
-    # Accessible = own it, or it's in a cookbook I own or am an accepted member of.
-    where = (
-        "WHERE (r.user_id = ? OR r.uuid IN ("
-        "SELECT cr.recipe_uuid FROM cookbook_recipes cr "
-        "JOIN cookbooks c ON c.id = cr.cookbook_id "
-        "LEFT JOIN cookbook_members m ON m.cookbook_id = c.id AND m.user_id = ? "
-        "AND m.status = 'accepted' "
-        "WHERE c.owner_id = ? OR m.user_id IS NOT NULL))"
-    )
-    params: List[Any] = [user_id, user_id, user_id]
+    # Accessible = own it, in a cookbook I own/joined, or via a shared 'all' cookbook.
+    where = "WHERE " + accessible_recipes_sql("r")
+    params: List[Any] = [user_id, user_id, user_id, user_id]
 
     # Tag filter (AND): the recipe must carry every named tag.
     tags_norm = sorted({t.strip().lower() for t in (tag or []) if t.strip()})

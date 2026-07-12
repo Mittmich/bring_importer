@@ -65,6 +65,9 @@ export function CookbookDetailPage() {
 
   const canManage = data.role === 'owner' || data.role === 'manager'
   const isOwner = data.role === 'owner'
+  const isAuto = data.kind === 'all'
+  // An auto 'all' cookbook curates itself; only rename/delete/share apply.
+  const canCurate = canManage && !isAuto
 
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-[#F8FAFC]">
@@ -142,7 +145,14 @@ export function CookbookDetailPage() {
 
         <p className="text-sm text-muted-foreground -mt-2">
           {data.recipe_count} {data.recipe_count === 1 ? 'recipe' : 'recipes'}
+          {isAuto && ' · updates automatically'}
         </p>
+        {isAuto && (
+          <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+            This cookbook always contains every recipe {isOwner ? 'you have' : 'its owner has'}.
+            Share it to give a friend access to all of them.
+          </p>
+        )}
 
         {data.recipes.length === 0 ? (
           <div className="text-center py-14">
@@ -157,7 +167,7 @@ export function CookbookDetailPage() {
               <RecipeCard
                 key={r.uuid}
                 recipe={r}
-                canRemove={canManage}
+                canRemove={canCurate}
                 onRemove={() => removeRecipe.mutate(r.uuid)}
                 removing={removeRecipe.isPending}
               />
