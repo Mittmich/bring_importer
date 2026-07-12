@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, UserPlus, X } from 'lucide-react'
-import { api, type Friend, type FriendRequest } from '@/lib/api'
+import { api, personName, type Friend, type FriendRequest } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
@@ -187,20 +187,39 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function RequestRow({ req, children }: { req: FriendRequest; children: React.ReactNode }) {
+function PersonRow({
+  displayName,
+  email,
+  children,
+}: {
+  displayName?: string
+  email: string
+  children: React.ReactNode
+}) {
+  const name = personName(displayName, email)
   return (
     <div className="flex items-center gap-2 px-4 py-3">
-      <span className="text-sm text-foreground truncate flex-1">{req.email}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm text-foreground truncate">{name}</p>
+        {name !== email && <p className="text-xs text-muted-foreground truncate">{email}</p>}
+      </div>
       {children}
     </div>
   )
 }
 
+function RequestRow({ req, children }: { req: FriendRequest; children: React.ReactNode }) {
+  return (
+    <PersonRow displayName={req.display_name} email={req.email}>
+      {children}
+    </PersonRow>
+  )
+}
+
 function FriendRow({ friend, children }: { friend: Friend; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-3">
-      <span className="text-sm text-foreground truncate flex-1">{friend.email}</span>
+    <PersonRow displayName={friend.display_name} email={friend.email}>
       {children}
-    </div>
+    </PersonRow>
   )
 }

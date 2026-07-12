@@ -120,6 +120,28 @@ def update_password(email: str, new_password: str) -> None:
     conn.close()
 
 
+def get_profile(email: str) -> Optional[dict]:
+    """Return ``{email, display_name}`` for the user, or None if unknown."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT email, display_name FROM users WHERE email = ?", (email,)
+    ).fetchone()
+    conn.close()
+    if row is None:
+        return None
+    return {"email": row["email"], "display_name": row["display_name"] or ""}
+
+
+def set_display_name(email: str, display_name: str) -> None:
+    """Set (or clear) a user's display name."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET display_name = ? WHERE email = ?", (display_name, email))
+    conn.commit()
+    conn.close()
+
+
 def get_user_id(email: str) -> Optional[int]:
     conn = get_db_connection()
     cursor = conn.cursor()

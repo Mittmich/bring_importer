@@ -98,7 +98,7 @@ export function CookbooksPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{inv.name}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      from {inv.owner_email} · {inv.role}
+                      from {inv.owner_name || inv.owner_email} · {inv.role}
                     </p>
                   </div>
                   <Button size="sm" onClick={() => accept.mutate(inv.cookbook_id)} disabled={accept.isPending}>

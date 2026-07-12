@@ -223,8 +223,8 @@ function RecipeCard({
         </div>
         <div className="p-2.5">
           <p className="text-sm font-medium text-foreground truncate">{recipe.title}</p>
-          {recipe.owned === false && recipe.owner_email && (
-            <p className="text-xs text-primary truncate mt-0.5">{recipe.owner_email}</p>
+          {recipe.owned === false && (recipe.owner_name || recipe.owner_email) && (
+            <p className="text-xs text-primary truncate mt-0.5">{recipe.owner_name || recipe.owner_email}</p>
           )}
         </div>
       </NavLink>

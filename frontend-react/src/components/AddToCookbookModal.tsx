@@ -28,8 +28,13 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
     queryFn: () => api.listCookbooks(recipeUuid),
     enabled: open,
   })
-  // Only cookbooks you can curate (own or manage) can have recipes added.
+  // Only cookbooks you can curate (own or manage) can have recipes added/removed.
   const cookbooks = all.filter((c) => c.role === 'owner' || c.role === 'manager')
+  // Cookbooks the recipe is already in that you *can't* curate (e.g. the shared
+  // cookbook it came from) — shown read-only so its membership is still visible.
+  const readonlyMemberships = all.filter(
+    (c) => c.contains && c.role !== 'owner' && c.role !== 'manager',
+  )
 
   function invalidate() {
     queryClient.invalidateQueries({ queryKey: ['cookbooks'] })
@@ -63,12 +68,33 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
           <DialogDescription>Tap a cookbook to add or remove this recipe.</DialogDescription>
         </DialogHeader>
 
+        {readonlyMemberships.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Already in
+            </p>
+            {readonlyMemberships.map((cb) => (
+              <div
+                key={cb.id}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border bg-muted/30"
+              >
+                <span className="flex-1 text-sm font-medium text-foreground truncate">
+                  {cb.name}
+                </span>
+                <span className="text-xs text-primary flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> shared
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="space-y-1.5 max-h-72 overflow-y-auto">
           {isLoading ? (
             <p className="text-sm text-muted-foreground py-2">Loading…</p>
           ) : cookbooks.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">
-              No cookbooks yet — create one below.
+              No cookbooks of your own yet — create one below.
             </p>
           ) : (
             cookbooks.map((cb) => {

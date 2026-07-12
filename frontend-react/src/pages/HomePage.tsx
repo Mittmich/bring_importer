@@ -178,8 +178,8 @@ function RecipeCard({ recipe }: { recipe: RecipeListItem }) {
         {recipe.title}
       </p>
       <p className="text-xs text-muted-foreground mt-0.5 truncate">
-        {recipe.owned === false && recipe.owner_email
-          ? recipe.owner_email
+        {recipe.owned === false && (recipe.owner_name || recipe.owner_email)
+          ? recipe.owner_name || recipe.owner_email
           : relativeDate(recipe.datePublished ?? recipe.createdAt)}
       </p>
     </NavLink>

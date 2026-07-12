@@ -56,6 +56,8 @@ export interface RecipeListItem {
   owned?: boolean
   /** Email of the recipe's owner (for "shared by …" labels). */
   owner_email?: string
+  /** Display name of the owner (falls back to email server-side). */
+  owner_name?: string
 }
 
 export interface TagInfo {
@@ -90,12 +92,13 @@ export interface CookbookDetail {
 export interface CookbookMember {
   user_id: number
   email: string
+  display_name?: string
   role: 'viewer' | 'editor' | 'manager'
   status: 'pending' | 'accepted'
 }
 
 export interface CookbookMembers {
-  owner: { user_id: number; email: string }
+  owner: { user_id: number; email: string; display_name?: string }
   members: CookbookMember[]
 }
 
@@ -103,18 +106,32 @@ export interface CookbookInvitation {
   cookbook_id: number
   name: string
   owner_email: string
+  owner_name?: string
   role: string
+}
+
+export interface Profile {
+  email: string
+  display_name: string
+}
+
+/** Friendly name for a person: their display name if set, else their email. */
+export function personName(displayName?: string | null, email?: string): string {
+  const n = (displayName ?? '').trim()
+  return n || email || ''
 }
 
 export interface Friend {
   user_id: number
   email: string
+  display_name?: string
 }
 
 export interface FriendRequest {
   id: number
   user_id: number
   email: string
+  display_name?: string
   direction: 'incoming' | 'outgoing'
   created_at?: string
 }
@@ -211,6 +228,8 @@ export interface Recipe {
   role?: CookbookRole
   /** Email of the recipe's owner (for "shared by …" labels). */
   owner_email?: string
+  /** Display name of the owner (falls back to email server-side). */
+  owner_name?: string
   /** Version for optimistic-concurrency checks on save. */
   updated_at?: string
 }
@@ -269,6 +288,17 @@ export const api = {
     return request<void>('/account/password', {
       method: 'POST',
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    })
+  },
+
+  getProfile() {
+    return request<Profile>('/account/profile')
+  },
+
+  updateProfile(displayName: string) {
+    return request<Profile>('/account/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ display_name: displayName }),
     })
   },
 

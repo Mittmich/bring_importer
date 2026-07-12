@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Tag, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { getUserEmail, logout } from '@/hooks/useAuth'
@@ -36,6 +36,8 @@ export function AccountPage() {
           <ChevronRight className="w-4 h-4 text-muted-foreground/50 ml-auto" />
         </Link>
 
+        <DisplayNameCard />
+
         <ChangePasswordCard />
 
         <Button variant="outline" className="w-full text-destructive hover:text-destructive" onClick={logout}>
@@ -43,6 +45,55 @@ export function AccountPage() {
         </Button>
       </div>
     </div>
+  )
+}
+
+function DisplayNameCard() {
+  const queryClient = useQueryClient()
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: api.getProfile })
+  const [name, setName] = useState('')
+  const [done, setDone] = useState(false)
+
+  // Seed the field once the profile loads.
+  useEffect(() => {
+    if (profile) setName(profile.display_name)
+  }, [profile])
+
+  const save = useMutation({
+    mutationFn: (n: string) => api.updateProfile(n),
+    onSuccess: () => {
+      setDone(true)
+      queryClient.invalidateQueries({ queryKey: ['profile'] })
+      queryClient.invalidateQueries({ queryKey: ['friends'] })
+    },
+  })
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        setDone(false)
+        save.mutate(name.trim())
+      }}
+      className="bg-white rounded-xl border border-border p-5 space-y-3"
+    >
+      <div>
+        <p className="text-sm font-medium text-foreground">Display name</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Shown to friends instead of your email. Leave blank to use your email.
+        </p>
+      </div>
+      <Input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Your name"
+        maxLength={60}
+      />
+      {done && <p className="text-sm text-emerald-600">Saved.</p>}
+      <Button type="submit" className="w-full" disabled={save.isPending}>
+        {save.isPending ? 'Saving…' : 'Save'}
+      </Button>
+    </form>
   )
 }
 

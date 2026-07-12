@@ -150,14 +150,31 @@ def test_editor_can_edit_but_not_curate_or_destroy(
 
 
 @pytest.mark.integration
-def test_editor_cannot_change_owner_only_fields(client, auth_headers, tmp_db_path, mocked_openai):
+def test_editor_cannot_change_sharing_flag(client, auth_headers, tmp_db_path, mocked_openai):
     cid, r, b_id, b_headers = _shared_cookbook(
         client, auth_headers, tmp_db_path, "editor", mocked_openai
     )
-    client.put(f"/recipes/{r}", headers=b_headers, json={"is_public": True, "tags": ["x"]})
-    data = client.get(f"/recipes/{r}.json", headers=auth_headers).json()
-    assert data["is_public"] is False
-    assert data["tags"] == []
+    client.put(f"/recipes/{r}", headers=b_headers, json={"is_public": True})
+    assert client.get(f"/recipes/{r}.json", headers=auth_headers).json()["is_public"] is False
+
+
+@pytest.mark.integration
+def test_editor_can_edit_tags_of_shared_recipe(client, auth_headers, tmp_db_path, mocked_openai):
+    # Tags share the recipe's permissions: an editor can set them, and everyone
+    # (including the owner) sees the same tags.
+    cid, r, b_id, b_headers = _shared_cookbook(
+        client, auth_headers, tmp_db_path, "editor", mocked_openai
+    )
+    assert (
+        client.put(f"/recipes/{r}", headers=b_headers, json={"tags": ["Vegan"]}).status_code == 200
+    )
+    owner_tags = [
+        t["name"] for t in client.get(f"/recipes/{r}.json", headers=auth_headers).json()["tags"]
+    ]
+    editor_tags = [
+        t["name"] for t in client.get(f"/recipes/{r}.json", headers=b_headers).json()["tags"]
+    ]
+    assert owner_tags == ["Vegan"] and editor_tags == ["Vegan"]
 
 
 @pytest.mark.integration

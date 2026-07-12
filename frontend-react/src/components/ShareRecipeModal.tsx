@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { api, personName } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -87,7 +87,9 @@ export function ShareRecipeModal({ open, onOpenChange, recipeUuid }: Props) {
                     disabled={share.isPending}
                     className="w-full flex items-center px-3 py-2.5 rounded-lg border border-border hover:bg-muted/40 transition-colors text-left disabled:opacity-50"
                   >
-                    <span className="text-sm font-medium text-foreground truncate">{f.email}</span>
+                    <span className="text-sm font-medium text-foreground truncate">
+                      {personName(f.display_name, f.email)}
+                    </span>
                   </button>
                 ))
               )}
