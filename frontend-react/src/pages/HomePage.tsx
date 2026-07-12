@@ -177,8 +177,10 @@ function RecipeCard({ recipe }: { recipe: RecipeListItem }) {
       <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
         {recipe.title}
       </p>
-      <p className="text-xs text-muted-foreground mt-0.5">
-        {relativeDate(recipe.datePublished ?? recipe.createdAt)}
+      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+        {recipe.owned === false && recipe.owner_email
+          ? recipe.owner_email
+          : relativeDate(recipe.datePublished ?? recipe.createdAt)}
       </p>
     </NavLink>
   )

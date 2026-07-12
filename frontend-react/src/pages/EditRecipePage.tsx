@@ -108,6 +108,9 @@ export function EditRecipePage() {
   const [verified, setVerified] = useState(false)
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
+  // The recipe version we loaded — sent on save so a concurrent edit 409s
+  // instead of silently clobbering.
+  const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | undefined>()
 
   // Hero image editing. `newImage` holds a freshly cropped data URL to upload;
   // `imageRemoved` marks the existing image for deletion. Both reset when the
@@ -142,6 +145,7 @@ export function EditRecipePage() {
     setIsPublic(recipe.is_public ?? false)
     setVerified(recipe.training_verified ?? false)
     setTags((recipe.tags ?? []).map((t) => t.name))
+    setBaseUpdatedAt(recipe.updated_at)
     setNewImage(null)
     setImageRemoved(false)
     setImageError(null)
@@ -201,6 +205,7 @@ export function EditRecipePage() {
         is_public: isPublic,
         training_verified: verified,
         tags,
+        base_updated_at: baseUpdatedAt,
       })
       // Persist the hero image change, if any, as a separate call.
       if (newImage) {

@@ -63,6 +63,9 @@ class RecipeUpdate(BaseModel):
     is_public: Optional[bool] = None
     tags: Optional[List[str]] = None
     training_verified: Optional[bool] = None
+    # Optimistic concurrency: the ``updated_at`` the client loaded. If it no
+    # longer matches the stored value, someone else edited first → 409.
+    base_updated_at: Optional[str] = None
 
 
 class Tag(BaseModel):

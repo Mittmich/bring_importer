@@ -12,7 +12,7 @@
 import json
 import re
 import uuid as uuid_mod
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote_plus
 
@@ -270,6 +270,10 @@ async def get_recipe(
     data["owned"] = owned
     # The viewer's role, so the client can gate edit controls on shared recipes.
     data["role"] = role
+    # Who owns it (for "shared by …" labels) and the version for edit-conflict checks.
+    owner = cursor.execute("SELECT email FROM users WHERE id = ?", (row["user_id"],)).fetchone()
+    data["owner_email"] = owner["email"] if owner else None
+    data["updated_at"] = row["updated_at"]
     data["training_verified"] = bool(row["training_verified"])
     data["has_image"] = bool(row["has_image"])
     data["image_url"] = _image_url(recipe_uuid, bool(row["has_image"]), row["updated_at"])
@@ -496,14 +500,19 @@ async def delete_tag(
     return None
 
 
-def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
-    """Shape a recipes row into a list item for the ``GET /recipes`` envelope."""
+def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]], me: int) -> Dict[str, Any]:
+    """Shape a recipes row into a list item for the ``GET /recipes`` envelope.
+
+    ``row`` must carry ``owner_id`` and ``owner_email`` so shared recipes can show
+    who they belong to. ``me`` is the requesting user, used to set ``owned``.
+    """
     try:
         recipe_json = json.loads(row["recipe_json"])
     except Exception:
         recipe_json = {}
     source = recipe_json.get("source") or {"kind": "unknown", "value": ""}
     has_image = bool(row["has_image"])
+    owner_id = row["owner_id"]
     return {
         "uuid": row["uuid"],
         "title": row["title"],
@@ -514,6 +523,8 @@ def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
         "has_image": has_image,
         "image_url": _image_url(row["uuid"], has_image, row["updated_at"]),
         "tags": tag_map.get(row["uuid"], []),
+        "owned": owner_id == me,
+        "owner_email": row["owner_email"],
     }
 
 
@@ -525,12 +536,13 @@ async def list_recipes(
     tag: Optional[List[str]] = Query(default=None),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Return a page of the current user's recipes.
+    """Return a page of recipes accessible to the current user.
 
-    Response envelope: ``{items, total, limit, offset}``. ``limit`` is clamped
-    to 1..100. Without ``q``, recipes come newest-first. With ``q``, results are
-    a fuzzy full-recipe search — title, description, note, ingredients,
-    instructions, and tags — ranked by match score (see ``api.search``).
+    Includes the user's own recipes **and** recipes reachable through a shared
+    cookbook (owned or accepted membership), so shared recipes surface
+    everywhere, each tagged with its ``owner_email``/``owned``. Envelope:
+    ``{items, total, limit, offset}``. ``limit`` clamps to 1..100. Without ``q``,
+    newest-first; with ``q``, a fuzzy full-recipe search ranked by score.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -539,23 +551,33 @@ async def list_recipes(
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
 
-    where = "WHERE user_id = ?"
-    params: List[Any] = [user_id]
+    # Accessible = own it, or it's in a cookbook I own or am an accepted member of.
+    where = (
+        "WHERE (r.user_id = ? OR r.uuid IN ("
+        "SELECT cr.recipe_uuid FROM cookbook_recipes cr "
+        "JOIN cookbooks c ON c.id = cr.cookbook_id "
+        "LEFT JOIN cookbook_members m ON m.cookbook_id = c.id AND m.user_id = ? "
+        "AND m.status = 'accepted' "
+        "WHERE c.owner_id = ? OR m.user_id IS NOT NULL))"
+    )
+    params: List[Any] = [user_id, user_id, user_id]
 
     # Tag filter (AND): the recipe must carry every named tag.
     tags_norm = sorted({t.strip().lower() for t in (tag or []) if t.strip()})
     if tags_norm:
         placeholders = ",".join("?" * len(tags_norm))
         where += (
-            f" AND uuid IN (SELECT rt.recipe_uuid FROM recipe_tags rt "
+            f" AND r.uuid IN (SELECT rt.recipe_uuid FROM recipe_tags rt "
             f"JOIN tags t ON t.id = rt.tag_id WHERE LOWER(t.name) IN ({placeholders}) "
             f"GROUP BY rt.recipe_uuid HAVING COUNT(DISTINCT LOWER(t.name)) = ?)"
         )
         params.extend([*tags_norm, len(tags_norm)])
 
     select_cols = (
-        "SELECT uuid, title, recipe_json, created_at, updated_at, is_public, has_image "
-        f"FROM recipes {where} "
+        "SELECT r.uuid AS uuid, r.title AS title, r.recipe_json AS recipe_json, "
+        "r.created_at AS created_at, r.updated_at AS updated_at, r.is_public AS is_public, "
+        "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email "
+        f"FROM recipes r JOIN users uo ON uo.id = r.user_id {where} "
     )
 
     conn = get_db_connection()
@@ -584,16 +606,18 @@ async def list_recipes(
         page_rows = [s[2] for s in scored[offset : offset + limit]]
         tag_map = cand_tag_map
     else:
-        total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes {where}", params).fetchone()["c"]
+        total = cursor.execute(f"SELECT COUNT(*) AS c FROM recipes r {where}", params).fetchone()[
+            "c"
+        ]
         page_rows = cursor.execute(
-            select_cols + "ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            select_cols + "ORDER BY r.created_at DESC LIMIT ? OFFSET ?",
             (*params, limit, offset),
         ).fetchall()
         tag_map = _tags_for(cursor, [row["uuid"] for row in page_rows])
 
     conn.close()
 
-    items = [_list_item(row, tag_map) for row in page_rows]
+    items = [_list_item(row, tag_map, user_id) for row in page_rows]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
@@ -620,7 +644,7 @@ async def update_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT user_id, recipe_json, note, source, is_public, training_verified "
+        "SELECT user_id, recipe_json, note, source, is_public, training_verified, updated_at "
         "FROM recipes WHERE uuid = ?",
         (recipe_uuid,),
     ).fetchone()
@@ -632,6 +656,14 @@ async def update_recipe(
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
     is_owner = role == "owner"
+
+    # Optimistic concurrency: reject if the recipe changed since the client loaded it.
+    if body.base_updated_at is not None and row["updated_at"] != body.base_updated_at:
+        conn.close()
+        raise HTTPException(
+            status_code=409,
+            detail="This recipe was changed since you opened it. Reload and try again.",
+        )
 
     try:
         stored = json.loads(row["recipe_json"])
@@ -666,10 +698,22 @@ async def update_recipe(
         else int(row["training_verified"])
     )
 
+    # Microsecond-precision timestamp so consecutive edits always differ — the
+    # basis for the optimistic-concurrency check above (SQLite's CURRENT_TIMESTAMP
+    # is only second-resolution).
+    new_updated = datetime.now(timezone.utc).isoformat()
     cursor.execute(
         "UPDATE recipes SET title = ?, recipe_json = ?, note = ?, "
-        "is_public = ?, training_verified = ?, updated_at = CURRENT_TIMESTAMP WHERE uuid = ?",
-        (new_title, json.dumps(stored), new_note, new_is_public, new_verified, recipe_uuid),
+        "is_public = ?, training_verified = ?, updated_at = ? WHERE uuid = ?",
+        (
+            new_title,
+            json.dumps(stored),
+            new_note,
+            new_is_public,
+            new_verified,
+            new_updated,
+            recipe_uuid,
+        ),
     )
     # Tags are per-user; only the owner edits a recipe's tags for now.
     if body.tags is not None and is_owner:
@@ -678,6 +722,7 @@ async def update_recipe(
 
     stored["is_public"] = bool(new_is_public)
     stored["training_verified"] = bool(new_verified)
+    stored["updated_at"] = new_updated
     stored["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
     conn.close()
     return JSONResponse(content=stored)
