@@ -39,6 +39,11 @@ def init_db():
     )
     """
     )
+    # display_name — optional friendly name shown instead of email in the
+    # friends/members/owner UIs. Guarded add for pre-existing DBs.
+    _user_cols = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
+    if "display_name" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
 
     # Create recipes table
     cursor.execute(

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { LogOut, UserPlus, X } from 'lucide-react'
-import { api, type CookbookRole } from '@/lib/api'
+import { api, personName, type CookbookRole } from '@/lib/api'
 import { getUserEmail } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 
@@ -80,13 +80,15 @@ export function CookbookMembersSection({
       </h2>
       <div className="bg-white rounded-xl border border-border divide-y divide-border/50 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3">
-          <span className="text-sm text-foreground truncate flex-1">{data.owner.email}</span>
+          <span className="text-sm text-foreground truncate flex-1">
+            {personName(data.owner.display_name, data.owner.email)}
+          </span>
           <span className="text-xs text-muted-foreground">Owner</span>
         </div>
         {data.members.map((m) => (
           <div key={m.user_id} className="flex items-center gap-2 px-4 py-3">
             <span className="text-sm text-foreground truncate flex-1">
-              {m.email}
+              {personName(m.display_name, m.email)}
               {m.status === 'pending' && (
                 <span className="text-xs text-muted-foreground"> · pending</span>
               )}
@@ -136,7 +138,7 @@ export function CookbookMembersSection({
                 <option value="">Choose a friend…</option>
                 {invitable.map((f) => (
                   <option key={f.user_id} value={f.user_id}>
-                    {f.email}
+                    {personName(f.display_name, f.email)}
                   </option>
                 ))}
               </select>

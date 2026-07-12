@@ -295,8 +295,8 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
           {recipe.source?.kind === 'url' && recipe.source.value && (
             <> · {new URL(recipe.source.value).hostname.replace('www.', '')}</>
           )}
-          {recipe.owned === false && recipe.owner_email && (
-            <> · <span className="text-primary">{recipe.owner_email}</span></>
+          {recipe.owned === false && (recipe.owner_name || recipe.owner_email) && (
+            <> · <span className="text-primary">{recipe.owner_name || recipe.owner_email}</span></>
           )}
         </p>
         {recipe.tags && recipe.tags.length > 0 && (

@@ -96,7 +96,8 @@ async def list_friends(current_user: User = Depends(get_current_user)):  # noqa:
     conn = get_db_connection()
     cursor = conn.cursor()
     rows = cursor.execute(
-        "SELECT u.id AS user_id, u.email AS email FROM friendships f "
+        "SELECT u.id AS user_id, u.email AS email, u.display_name AS display_name "
+        "FROM friendships f "
         "JOIN users u ON u.id = CASE WHEN f.requester_id = ? THEN f.addressee_id "
         "ELSE f.requester_id END "
         "WHERE f.status = 'accepted' AND (f.requester_id = ? OR f.addressee_id = ?) "
@@ -104,7 +105,10 @@ async def list_friends(current_user: User = Depends(get_current_user)):  # noqa:
         (me, me, me),
     ).fetchall()
     conn.close()
-    return [{"user_id": r["user_id"], "email": r["email"]} for r in rows]
+    return [
+        {"user_id": r["user_id"], "email": r["email"], "display_name": r["display_name"] or ""}
+        for r in rows
+    ]
 
 
 @router.get("/requests", include_in_schema=False)
@@ -121,14 +125,16 @@ async def list_requests(
     cursor = conn.cursor()
     if direction == "incoming":
         rows = cursor.execute(
-            "SELECT f.id AS id, u.id AS user_id, u.email AS email, f.created_at AS created_at "
+            "SELECT f.id AS id, u.id AS user_id, u.email AS email, "
+            "u.display_name AS display_name, f.created_at AS created_at "
             "FROM friendships f JOIN users u ON u.id = f.requester_id "
             "WHERE f.addressee_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC",
             (me,),
         ).fetchall()
     else:
         rows = cursor.execute(
-            "SELECT f.id AS id, u.id AS user_id, u.email AS email, f.created_at AS created_at "
+            "SELECT f.id AS id, u.id AS user_id, u.email AS email, "
+            "u.display_name AS display_name, f.created_at AS created_at "
             "FROM friendships f JOIN users u ON u.id = f.addressee_id "
             "WHERE f.requester_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC",
             (me,),
@@ -139,6 +145,7 @@ async def list_requests(
             "id": r["id"],
             "user_id": r["user_id"],
             "email": r["email"],
+            "display_name": r["display_name"] or "",
             "direction": direction,
             "created_at": r["created_at"],
         }

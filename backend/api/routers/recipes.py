@@ -271,8 +271,13 @@ async def get_recipe(
     # The viewer's role, so the client can gate edit controls on shared recipes.
     data["role"] = role
     # Who owns it (for "shared by …" labels) and the version for edit-conflict checks.
-    owner = cursor.execute("SELECT email FROM users WHERE id = ?", (row["user_id"],)).fetchone()
+    owner = cursor.execute(
+        "SELECT email, display_name FROM users WHERE id = ?", (row["user_id"],)
+    ).fetchone()
     data["owner_email"] = owner["email"] if owner else None
+    data["owner_name"] = (
+        ((owner["display_name"] or "").strip() or owner["email"]) if owner else None
+    )
     data["updated_at"] = row["updated_at"]
     data["training_verified"] = bool(row["training_verified"])
     data["has_image"] = bool(row["has_image"])
@@ -525,6 +530,7 @@ def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]], me: int) -> Dict[s
         "tags": tag_map.get(row["uuid"], []),
         "owned": owner_id == me,
         "owner_email": row["owner_email"],
+        "owner_name": (row["owner_display_name"] or "").strip() or row["owner_email"],
     }
 
 
@@ -576,7 +582,8 @@ async def list_recipes(
     select_cols = (
         "SELECT r.uuid AS uuid, r.title AS title, r.recipe_json AS recipe_json, "
         "r.created_at AS created_at, r.updated_at AS updated_at, r.is_public AS is_public, "
-        "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email "
+        "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email, "
+        "uo.display_name AS owner_display_name "
         f"FROM recipes r JOIN users uo ON uo.id = r.user_id {where} "
     )
 
@@ -715,9 +722,10 @@ async def update_recipe(
             recipe_uuid,
         ),
     )
-    # Tags are per-user; only the owner edits a recipe's tags for now.
-    if body.tags is not None and is_owner:
-        _set_recipe_tags(cursor, user_id, recipe_uuid, body.tags)
+    # A recipe's tags live in the owner's namespace and follow the recipe's own
+    # permissions: anyone who can edit the recipe (editor+) can edit its tags.
+    if body.tags is not None:
+        _set_recipe_tags(cursor, row["user_id"], recipe_uuid, body.tags)
     conn.commit()
 
     stored["is_public"] = bool(new_is_public)

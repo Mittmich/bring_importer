@@ -171,7 +171,7 @@ async def list_cookbook_invitations(current_user: User = Depends(get_current_use
     cursor = conn.cursor()
     rows = cursor.execute(
         "SELECT m.cookbook_id AS cookbook_id, c.name AS name, u.email AS owner_email, "
-        "m.role AS role FROM cookbook_members m "
+        "u.display_name AS owner_display_name, m.role AS role FROM cookbook_members m "
         "JOIN cookbooks c ON c.id = m.cookbook_id JOIN users u ON u.id = c.owner_id "
         "WHERE m.user_id = ? AND m.status = 'pending' ORDER BY m.created_at DESC",
         (me,),
@@ -182,6 +182,7 @@ async def list_cookbook_invitations(current_user: User = Depends(get_current_use
             "cookbook_id": r["cookbook_id"],
             "name": r["name"],
             "owner_email": r["owner_email"],
+            "owner_name": (r["owner_display_name"] or "").strip() or r["owner_email"],
             "role": r["role"],
         }
         for r in rows
@@ -258,7 +259,8 @@ async def get_cookbook(
     rows = cursor.execute(
         "SELECT r.uuid AS uuid, r.title AS title, r.recipe_json AS recipe_json, "
         "r.created_at AS created_at, r.updated_at AS updated_at, r.is_public AS is_public, "
-        "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email "
+        "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email, "
+        "uo.display_name AS owner_display_name "
         "FROM cookbook_recipes cr JOIN recipes r ON r.uuid = cr.recipe_uuid "
         "JOIN users uo ON uo.id = r.user_id "
         "WHERE cr.cookbook_id = ? ORDER BY cr.added_at DESC",
@@ -471,21 +473,32 @@ async def list_members(
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
     owner = cursor.execute(
-        "SELECT u.id AS id, u.email AS email FROM cookbooks c "
+        "SELECT u.id AS id, u.email AS email, u.display_name AS display_name FROM cookbooks c "
         "JOIN users u ON u.id = c.owner_id WHERE c.id = ?",
         (cookbook_id,),
     ).fetchone()
     members = cursor.execute(
-        "SELECT m.user_id AS user_id, u.email AS email, m.role AS role, m.status AS status "
+        "SELECT m.user_id AS user_id, u.email AS email, u.display_name AS display_name, "
+        "m.role AS role, m.status AS status "
         "FROM cookbook_members m JOIN users u ON u.id = m.user_id "
         "WHERE m.cookbook_id = ? ORDER BY u.email COLLATE NOCASE",
         (cookbook_id,),
     ).fetchall()
     conn.close()
     return {
-        "owner": {"user_id": owner["id"], "email": owner["email"]},
+        "owner": {
+            "user_id": owner["id"],
+            "email": owner["email"],
+            "display_name": owner["display_name"] or "",
+        },
         "members": [
-            {"user_id": m["user_id"], "email": m["email"], "role": m["role"], "status": m["status"]}
+            {
+                "user_id": m["user_id"],
+                "email": m["email"],
+                "display_name": m["display_name"] or "",
+                "role": m["role"],
+                "status": m["status"],
+            }
             for m in members
         ],
     }

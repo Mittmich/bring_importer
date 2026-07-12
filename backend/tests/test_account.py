@@ -51,3 +51,24 @@ def test_change_password_requires_auth(client):
         json={"current_password": "x", "new_password": "brandnewpass1"},
     )
     assert resp.status_code == 401
+
+
+@pytest.mark.integration
+def test_profile_default_and_update(client, auth_headers, seed_user):
+    prof = client.get("/account/profile", headers=auth_headers).json()
+    assert prof == {"email": seed_user["email"], "display_name": ""}
+
+    resp = client.put(
+        "/account/profile", headers=auth_headers, json={"display_name": "  Chef Mike  "}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Chef Mike"  # trimmed
+    assert (
+        client.get("/account/profile", headers=auth_headers).json()["display_name"] == "Chef Mike"
+    )
+
+
+@pytest.mark.integration
+def test_display_name_too_long_is_422(client, auth_headers):
+    resp = client.put("/account/profile", headers=auth_headers, json={"display_name": "x" * 61})
+    assert resp.status_code == 422
