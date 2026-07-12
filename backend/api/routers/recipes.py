@@ -406,24 +406,47 @@ def _tags_for(cursor, recipe_uuids: List[str]) -> Dict[str, List[Dict[str, Any]]
 
 
 @router.get("/tags", include_in_schema=False, response_model=List[Tag])
-async def list_tags(current_user: User = Depends(get_current_user)):  # noqa: B008
-    """Return all of the current user's tags with usage counts, name-sorted.
+async def list_tags(
+    scope: str = Query("mine"),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """List tags with usage counts, name-sorted.
 
-    Uses a LEFT JOIN so orphaned (zero-use) tags still appear — the tag
-    management page needs to see and clean those up.
+    - ``scope=mine`` (default): the current user's own tags, including orphaned
+      (zero-use) ones — the tag-management page needs to clean those up.
+    - ``scope=filter``: distinct tag names appearing on any recipe accessible to
+      the user (own **or** shared), aggregated by name, counted over accessible
+      recipes — this is what the search bar's tag filter offers, so shared
+      recipes' tags are selectable too.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
         return []
     conn = get_db_connection()
     cursor = conn.cursor()
-    rows = cursor.execute(
-        "SELECT t.id AS id, t.name AS name, t.color AS color, "
-        "COUNT(rt.recipe_uuid) AS count FROM tags t "
-        "LEFT JOIN recipe_tags rt ON rt.tag_id = t.id WHERE t.user_id = ? "
-        "GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
-        (user_id,),
-    ).fetchall()
+
+    if scope == "filter":
+        rows = cursor.execute(
+            "SELECT MIN(t.id) AS id, MIN(t.name) AS name, MAX(t.color) AS color, "
+            "COUNT(DISTINCT r.uuid) AS count "
+            "FROM recipe_tags rt JOIN tags t ON t.id = rt.tag_id "
+            "JOIN recipes r ON r.uuid = rt.recipe_uuid "
+            "WHERE (r.user_id = ? OR r.uuid IN ("
+            "SELECT cr.recipe_uuid FROM cookbook_recipes cr "
+            "JOIN cookbooks c ON c.id = cr.cookbook_id "
+            "LEFT JOIN cookbook_members m ON m.cookbook_id = c.id AND m.user_id = ? "
+            "AND m.status = 'accepted' WHERE c.owner_id = ? OR m.user_id IS NOT NULL)) "
+            "GROUP BY LOWER(t.name) ORDER BY name COLLATE NOCASE",
+            (user_id, user_id, user_id),
+        ).fetchall()
+    else:
+        rows = cursor.execute(
+            "SELECT t.id AS id, t.name AS name, t.color AS color, "
+            "COUNT(rt.recipe_uuid) AS count FROM tags t "
+            "LEFT JOIN recipe_tags rt ON rt.tag_id = t.id WHERE t.user_id = ? "
+            "GROUP BY t.id ORDER BY t.name COLLATE NOCASE",
+            (user_id,),
+        ).fetchall()
     conn.close()
     return [
         {"id": r["id"], "name": r["name"], "count": r["count"], "color": r["color"]} for r in rows

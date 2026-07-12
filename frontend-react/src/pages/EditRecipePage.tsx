@@ -126,7 +126,7 @@ export function EditRecipePage() {
 
   const { data: allTags = [] } = useQuery({
     queryKey: ['tags'],
-    queryFn: api.getTags,
+    queryFn: () => api.getTags(),
   })
 
   const sensors = useSensors(

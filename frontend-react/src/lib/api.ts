@@ -254,8 +254,8 @@ export const api = {
     return request<RecipeListPage>(`/recipes${suffix}`)
   },
 
-  getTags() {
-    return request<TagInfo[]>('/recipes/tags')
+  getTags(scope?: 'mine' | 'filter') {
+    return request<TagInfo[]>(`/recipes/tags${scope ? `?scope=${scope}` : ''}`)
   },
 
   updateTag(id: number, body: { name?: string; color?: string | null }) {
