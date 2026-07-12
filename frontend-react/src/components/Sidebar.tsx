@@ -3,6 +3,16 @@ import { Home, BookOpen, BookHeart, CalendarDays, Plus, User, LogOut, Download }
 import { cn } from '@/lib/utils'
 import { getUserEmail, logout } from '@/hooks/useAuth'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
+import { useNotifications } from '@/hooks/useNotifications'
+
+function NavBadge({ count }: { count: number }) {
+  if (count <= 0) return null
+  return (
+    <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[11px] font-semibold flex items-center justify-center">
+      {count}
+    </span>
+  )
+}
 
 const navItems = [
   { to: '/', icon: Home, label: 'Home', end: true },
@@ -16,6 +26,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
   const email = getUserEmail()
   const navigate = useNavigate()
   const { canInstall, triggerInstall } = useInstallPrompt()
+  const { friendRequests, cookbookInvites } = useNotifications()
 
   return (
     <aside className="hidden md:flex flex-col w-[220px] min-w-[220px] border-r border-border bg-white">
@@ -53,6 +64,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
             >
               <Icon className="w-4 h-4 flex-shrink-0" />
               {label}
+              {to === '/cookbooks' && <NavBadge count={cookbookInvites} />}
             </NavLink>
           ),
         )}
@@ -74,6 +86,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
         >
           <User className="w-4 h-4 flex-shrink-0" />
           <span className="truncate">{email || 'Account'}</span>
+          <NavBadge count={friendRequests} />
         </button>
         <button
           onClick={logout}

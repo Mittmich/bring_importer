@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { Home, BookOpen, BookHeart, CalendarDays, User, Download, Share, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
+import { useNotifications } from '@/hooks/useNotifications'
 
 const tabs = [
   { to: '/', icon: Home, label: 'Home', end: true },
@@ -15,6 +16,9 @@ const tabs = [
 export function BottomNav() {
   const { canInstall, triggerInstall, showIosInstructions } = useInstallPrompt()
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false)
+  const { friendRequests, cookbookInvites } = useNotifications()
+  const badgeFor = (to: string) =>
+    to === '/account' ? friendRequests : to === '/cookbooks' ? cookbookInvites : 0
 
   return (
     <>
@@ -37,12 +41,19 @@ export function BottomNav() {
             end={end}
             className={({ isActive }) =>
               cn(
-                'flex-1 flex flex-col items-center justify-center gap-1 py-3.5 transition-colors',
+                'relative flex-1 flex flex-col items-center justify-center gap-1 py-3.5 transition-colors',
                 isActive ? 'text-primary' : 'text-muted-foreground',
               )
             }
           >
-            <Icon className="w-6 h-6" />
+            <span className="relative">
+              <Icon className="w-6 h-6" />
+              {badgeFor(to) > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-semibold flex items-center justify-center">
+                  {badgeFor(to)}
+                </span>
+              )}
+            </span>
             <span className="text-xs font-medium">{label}</span>
           </NavLink>
         ))}

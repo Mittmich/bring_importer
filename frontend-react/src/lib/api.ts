@@ -52,6 +52,10 @@ export interface RecipeListItem {
   /** Relative path to the hero image (needs config.apiUrl prefix), or null. */
   image_url?: string | null
   tags?: RecipeTag[]
+  /** False when the recipe is shared with me by someone else. */
+  owned?: boolean
+  /** Email of the recipe's owner (for "shared by …" labels). */
+  owner_email?: string
 }
 
 export interface TagInfo {
@@ -183,6 +187,8 @@ export interface RecipeUpdate {
   is_public?: boolean
   tags?: string[]
   training_verified?: boolean
+  /** Optimistic concurrency: the updated_at the client loaded (409 if stale). */
+  base_updated_at?: string
 }
 
 export interface Recipe {
@@ -203,6 +209,10 @@ export interface Recipe {
   image_url?: string | null
   /** The viewer's role over this recipe (owner/editor/viewer/…), for gating edit UI. */
   role?: CookbookRole
+  /** Email of the recipe's owner (for "shared by …" labels). */
+  owner_email?: string
+  /** Version for optimistic-concurrency checks on save. */
+  updated_at?: string
 }
 
 export const api = {

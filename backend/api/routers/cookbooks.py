@@ -256,15 +256,18 @@ async def get_cookbook(
     cb = cursor.execute("SELECT id, name FROM cookbooks WHERE id = ?", (cookbook_id,)).fetchone()
 
     rows = cursor.execute(
-        "SELECT r.uuid, r.title, r.recipe_json, r.created_at, r.updated_at, r.is_public, "
-        "r.has_image FROM cookbook_recipes cr JOIN recipes r ON r.uuid = cr.recipe_uuid "
+        "SELECT r.uuid AS uuid, r.title AS title, r.recipe_json AS recipe_json, "
+        "r.created_at AS created_at, r.updated_at AS updated_at, r.is_public AS is_public, "
+        "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email "
+        "FROM cookbook_recipes cr JOIN recipes r ON r.uuid = cr.recipe_uuid "
+        "JOIN users uo ON uo.id = r.user_id "
         "WHERE cr.cookbook_id = ? ORDER BY cr.added_at DESC",
         (cookbook_id,),
     ).fetchall()
     tag_map = _tags_for(cursor, [row["uuid"] for row in rows])
     conn.close()
 
-    items = [_list_item(row, tag_map) for row in rows]
+    items = [_list_item(row, tag_map, me) for row in rows]
     return {
         "id": cb["id"],
         "name": cb["name"],

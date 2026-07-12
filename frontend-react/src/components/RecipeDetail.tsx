@@ -130,6 +130,13 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 </a>
               </Badge>
             )}
+            {isOwner === false && recipe.owner_email && (
+              <Badge variant="muted">
+                <span className="flex items-center gap-1 text-primary">
+                  <UserPlus className="w-3 h-3" /> Shared by {recipe.owner_email}
+                </span>
+              </Badge>
+            )}
           </div>
 
           {recipe.description && (

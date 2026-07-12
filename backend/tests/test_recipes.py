@@ -728,3 +728,41 @@ def test_clone_nonexistent_recipe_returns_404(client, auth_headers):
         headers=auth_headers,
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.integration
+def test_update_recipe_optimistic_conflict(client, auth_headers, mocked_openai):
+    """base_updated_at guards against clobbering a concurrent edit."""
+    uuid = client.post("/recipes/parse", headers=auth_headers, data={"image": "aGVsbG8="}).json()[
+        "uuid"
+    ]
+
+    # An initial save (no guard) establishes a real updated_at version.
+    v1 = client.put(f"/recipes/{uuid}", headers=auth_headers, json={"title": "First"}).json()[
+        "updated_at"
+    ]
+    # Saving from that version succeeds and advances it.
+    r2 = client.put(
+        f"/recipes/{uuid}", headers=auth_headers, json={"title": "Second", "base_updated_at": v1}
+    )
+    assert r2.status_code == 200
+    v2 = r2.json()["updated_at"]
+    assert v2 != v1
+
+    # Saving again from the now-stale v1 is rejected.
+    stale = client.put(
+        f"/recipes/{uuid}", headers=auth_headers, json={"title": "Stale", "base_updated_at": v1}
+    )
+    assert stale.status_code == 409
+
+    # The current version works; omitting base_updated_at skips the check.
+    assert (
+        client.put(
+            f"/recipes/{uuid}", headers=auth_headers, json={"title": "Fresh", "base_updated_at": v2}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.put(f"/recipes/{uuid}", headers=auth_headers, json={"title": "NoGuard"}).status_code
+        == 200
+    )

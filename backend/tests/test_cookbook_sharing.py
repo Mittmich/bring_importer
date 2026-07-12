@@ -261,3 +261,20 @@ def test_quick_share_requires_friendship(client, auth_headers, tmp_db_path, mock
         json={"friend_id": stranger_id, "role": "viewer"},
     )
     assert resp.status_code == 403
+
+
+@pytest.mark.integration
+def test_shared_recipe_appears_in_member_recipe_list(
+    client, auth_headers, tmp_db_path, mocked_openai
+):
+    cid, r, b_id, b_headers = _shared_cookbook(
+        client, auth_headers, tmp_db_path, "viewer", mocked_openai
+    )
+    # The shared recipe shows up in B's main recipe list, tagged as not-owned.
+    items = {i["uuid"]: i for i in client.get("/recipes", headers=b_headers).json()["items"]}
+    assert r in items
+    assert items[r]["owned"] is False
+    assert items[r]["owner_email"] == "test@example.com"
+    # And it's marked owned for A.
+    a_items = {i["uuid"]: i for i in client.get("/recipes", headers=auth_headers).json()["items"]}
+    assert a_items[r]["owned"] is True
