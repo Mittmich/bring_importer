@@ -27,7 +27,11 @@ export function HomePage() {
   const { onImport } = useOutletContext<{ onImport: () => void }>()
   const navigate = useNavigate()
 
-  const { data: tagData = [] } = useQuery({ queryKey: ['tags'], queryFn: () => api.getTags() })
+  // Filter scope: include tags on recipes shared with me, so their shelves show too.
+  const { data: tagData = [] } = useQuery({
+    queryKey: ['tags', 'filter'],
+    queryFn: () => api.getTags('filter'),
+  })
   const { data: recentData, isLoading } = useQuery({
     queryKey: ['recipes', 'recent'],
     queryFn: () => api.listRecipes({ limit: SHELF_SIZE }),
