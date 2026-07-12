@@ -76,6 +76,24 @@ def _clean_name(name: str) -> str:
     return " ".join(name.split())
 
 
+def _all_cookbook_count_cover(cursor, owner_id: int):
+    """(recipe_count, cover_uuid) for an owner's dynamic 'all' cookbook."""
+    count = cursor.execute(
+        "SELECT COUNT(*) AS c FROM recipes WHERE user_id = ?", (owner_id,)
+    ).fetchone()["c"]
+    cover = cursor.execute(
+        "SELECT uuid FROM recipes WHERE user_id = ? AND has_image = 1 "
+        "ORDER BY created_at DESC LIMIT 1",
+        (owner_id,),
+    ).fetchone()
+    return count, (cover["uuid"] if cover else None)
+
+
+def _cookbook_kind(cursor, cookbook_id: int) -> Optional[str]:
+    row = cursor.execute("SELECT kind FROM cookbooks WHERE id = ?", (cookbook_id,)).fetchone()
+    return row["kind"] if row else None
+
+
 @router.post("", include_in_schema=False)
 async def create_cookbook(
     body: CookbookCreate,
@@ -111,7 +129,8 @@ async def list_cookbooks(
     # My own cookbooks plus any shared with me (accepted membership).
     rows = cursor.execute(
         """
-        SELECT c.id AS id, c.name AS name, c.owner_id AS owner_id, m.role AS member_role,
+        SELECT c.id AS id, c.name AS name, c.owner_id AS owner_id, c.kind AS kind,
+          m.role AS member_role,
           (SELECT COUNT(*) FROM cookbook_recipes cr WHERE cr.cookbook_id = c.id) AS recipe_count,
           (SELECT cr.recipe_uuid FROM cookbook_recipes cr
              JOIN recipes r ON r.uuid = cr.recipe_uuid
@@ -127,7 +146,12 @@ async def list_cookbooks(
     ).fetchall()
 
     contains_ids: set = set()
+    recipe_owner_id: Optional[int] = None
     if recipe_uuid:
+        owner_row = cursor.execute(
+            "SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)
+        ).fetchone()
+        recipe_owner_id = owner_row["user_id"] if owner_row else None
         ids = [r["id"] for r in rows]
         if ids:
             ph = ",".join("?" * len(ids))
@@ -139,24 +163,59 @@ async def list_cookbooks(
                     (recipe_uuid, *ids),
                 ).fetchall()
             }
-    conn.close()
 
     out: List[dict] = []
     for r in rows:
         role = "owner" if r["owner_id"] == me else r["member_role"]
+        # An 'all' cookbook dynamically holds every recipe its owner has.
+        if r["kind"] == "all":
+            count, cover_uuid = _all_cookbook_count_cover(cursor, r["owner_id"])
+            contains = recipe_owner_id == r["owner_id"]
+        else:
+            count, cover_uuid = r["recipe_count"], r["cover_uuid"]
+            contains = r["id"] in contains_ids
         item = {
             "id": r["id"],
             "name": r["name"],
-            "recipe_count": r["recipe_count"],
+            "kind": r["kind"],
+            "recipe_count": count,
             # No version param — a cover only needs to be roughly fresh.
-            "cover_image_url": f"/recipes/{r['cover_uuid']}/image" if r["cover_uuid"] else None,
+            "cover_image_url": f"/recipes/{cover_uuid}/image" if cover_uuid else None,
             "role": role,
             "shared": r["owner_id"] != me,
         }
         if recipe_uuid:
-            item["contains"] = r["id"] in contains_ids
+            item["contains"] = contains
         out.append(item)
+    conn.close()
     return out
+
+
+# --- Static sub-paths. Declared before /{cookbook_id} so segments like "all"
+#     and "invitations" aren't captured by the {cookbook_id} path param. ---
+
+
+@router.post("/all", include_in_schema=False)
+async def create_all_cookbook(current_user: User = Depends(get_current_user)):  # noqa: B008
+    """Find or create the current user's auto 'all' cookbook — a dynamic
+    collection of every recipe they own, for sharing everything with a friend."""
+    me = _require_me(current_user)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        "SELECT id, name FROM cookbooks WHERE owner_id = ? AND kind = 'all'", (me,)
+    ).fetchone()
+    if row is not None:
+        cookbook_id, name = row["id"], row["name"]
+    else:
+        name = "All my recipes"
+        cursor.execute(
+            "INSERT INTO cookbooks (owner_id, name, kind) VALUES (?, ?, 'all')", (me, name)
+        )
+        cookbook_id = cursor.lastrowid
+        conn.commit()
+    conn.close()
+    return {"id": cookbook_id, "name": name, "kind": "all", "role": "owner"}
 
 
 # --- Invitations. Declared before /{cookbook_id} so the static "invitations"
@@ -254,18 +313,30 @@ async def get_cookbook(
     if not role_at_least(role, "viewer"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
-    cb = cursor.execute("SELECT id, name FROM cookbooks WHERE id = ?", (cookbook_id,)).fetchone()
+    cb = cursor.execute(
+        "SELECT id, name, kind, owner_id FROM cookbooks WHERE id = ?", (cookbook_id,)
+    ).fetchone()
 
-    rows = cursor.execute(
+    recipe_cols = (
         "SELECT r.uuid AS uuid, r.title AS title, r.recipe_json AS recipe_json, "
         "r.created_at AS created_at, r.updated_at AS updated_at, r.is_public AS is_public, "
         "r.has_image AS has_image, r.user_id AS owner_id, uo.email AS owner_email, "
         "uo.display_name AS owner_display_name "
-        "FROM cookbook_recipes cr JOIN recipes r ON r.uuid = cr.recipe_uuid "
-        "JOIN users uo ON uo.id = r.user_id "
-        "WHERE cr.cookbook_id = ? ORDER BY cr.added_at DESC",
-        (cookbook_id,),
-    ).fetchall()
+    )
+    if cb["kind"] == "all":
+        # Dynamic: every recipe the cookbook owner has, newest first.
+        rows = cursor.execute(
+            recipe_cols + "FROM recipes r JOIN users uo ON uo.id = r.user_id "
+            "WHERE r.user_id = ? ORDER BY r.created_at DESC",
+            (cb["owner_id"],),
+        ).fetchall()
+    else:
+        rows = cursor.execute(
+            recipe_cols + "FROM cookbook_recipes cr JOIN recipes r ON r.uuid = cr.recipe_uuid "
+            "JOIN users uo ON uo.id = r.user_id "
+            "WHERE cr.cookbook_id = ? ORDER BY cr.added_at DESC",
+            (cookbook_id,),
+        ).fetchall()
     tag_map = _tags_for(cursor, [row["uuid"] for row in rows])
     conn.close()
 
@@ -273,6 +344,7 @@ async def get_cookbook(
     return {
         "id": cb["id"],
         "name": cb["name"],
+        "kind": cb["kind"],
         "recipe_count": len(items),
         "recipes": items,
         "role": role,
@@ -390,6 +462,9 @@ async def bulk_add_recipes(
     if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
+    if _cookbook_kind(cursor, cookbook_id) == "all":
+        conn.close()
+        raise HTTPException(status_code=400, detail="This cookbook updates automatically")
 
     if body.recipe_uuids is not None:
         uuids = [u for u in dict.fromkeys(body.recipe_uuids) if _owns_recipe(cursor, u, me)]
@@ -422,6 +497,9 @@ async def add_recipe(
     if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
+    if _cookbook_kind(cursor, cookbook_id) == "all":
+        conn.close()
+        raise HTTPException(status_code=400, detail="This cookbook updates automatically")
     if not role_at_least(effective_role(cursor, me, body.recipe_uuid), "viewer"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
@@ -448,6 +526,9 @@ async def remove_recipe(
     if not role_at_least(cookbook_role(cursor, me, cookbook_id), "manager"):
         conn.close()
         raise HTTPException(status_code=404, detail="Cookbook not found")
+    if _cookbook_kind(cursor, cookbook_id) == "all":
+        conn.close()
+        raise HTTPException(status_code=400, detail="This cookbook updates automatically")
     cursor.execute(
         "DELETE FROM cookbook_recipes WHERE cookbook_id = ? AND recipe_uuid = ?",
         (cookbook_id, recipe_uuid),

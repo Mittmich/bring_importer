@@ -28,8 +28,10 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
     queryFn: () => api.listCookbooks(recipeUuid),
     enabled: open,
   })
-  // Only cookbooks you can curate (own or manage) can have recipes added/removed.
-  const cookbooks = all.filter((c) => c.role === 'owner' || c.role === 'manager')
+  // Only cookbooks you can curate (own or manage, and not an auto 'all' one).
+  const cookbooks = all.filter(
+    (c) => (c.role === 'owner' || c.role === 'manager') && c.kind !== 'all',
+  )
   // Cookbooks the recipe is already in that you *can't* curate (e.g. the shared
   // cookbook it came from) — shown read-only so its membership is still visible.
   const readonlyMemberships = all.filter(

@@ -43,13 +43,36 @@ def cookbook_role(cursor: Any, user_id: int, cookbook_id: int) -> str:
     return m["role"] if m else "none"
 
 
+def accessible_recipes_sql(alias: str = "r") -> str:
+    """A SQL boolean for "recipes the user can access", with **4** ``?``
+    placeholders that all take the user's id. The recipe is accessible if:
+      - they own it,
+      - it's in a cookbook they own or are an accepted member of, or
+      - its owner shared an auto ``kind='all'`` cookbook with them.
+    """
+    return (
+        f"({alias}.user_id = ? "
+        f"OR {alias}.uuid IN ("
+        "SELECT cr.recipe_uuid FROM cookbook_recipes cr "
+        "JOIN cookbooks c ON c.id = cr.cookbook_id "
+        "LEFT JOIN cookbook_members m ON m.cookbook_id = c.id AND m.user_id = ? "
+        "AND m.status = 'accepted' WHERE c.owner_id = ? OR m.user_id IS NOT NULL) "
+        f"OR {alias}.user_id IN ("
+        "SELECT c2.owner_id FROM cookbooks c2 "
+        "JOIN cookbook_members m2 ON m2.cookbook_id = c2.id "
+        "AND m2.user_id = ? AND m2.status = 'accepted' WHERE c2.kind = 'all'))"
+    )
+
+
 def effective_role(cursor: Any, user_id: int, recipe_uuid: str) -> str:
     """The user's strongest role over a recipe: direct owner, else the best role
-    across any cookbook that contains it and that the user can access."""
+    across any cookbook that grants access (one that contains it, or an auto
+    ``kind='all'`` cookbook owned by the recipe's owner)."""
     row = cursor.execute("SELECT user_id FROM recipes WHERE uuid = ?", (recipe_uuid,)).fetchone()
     if row is None:
         return "none"
-    if row["user_id"] == user_id:
+    owner_id = row["user_id"]
+    if owner_id == user_id:
         return "owner"
 
     rows = cursor.execute(
@@ -59,6 +82,16 @@ def effective_role(cursor: Any, user_id: int, recipe_uuid: str) -> str:
         "LEFT JOIN cookbook_members m ON m.cookbook_id = c.id AND m.user_id = ? "
         "WHERE cr.recipe_uuid = ?",
         (user_id, recipe_uuid),
+    ).fetchall()
+
+    # Auto 'all' cookbooks owned by the recipe's owner grant their role over
+    # every recipe that owner has.
+    rows += cursor.execute(
+        "SELECT c.owner_id AS owner_id, m.role AS role, m.status AS status "
+        "FROM cookbooks c LEFT JOIN cookbook_members m "
+        "ON m.cookbook_id = c.id AND m.user_id = ? "
+        "WHERE c.kind = 'all' AND c.owner_id = ?",
+        (user_id, owner_id),
     ).fetchall()
 
     best = "none"
