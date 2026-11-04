@@ -193,9 +193,13 @@ def detect_recipe_language(stored: Dict[str, Any]) -> Optional[str]:
     ``TranslationError`` if the provider fails.
     """
     content = recipe_content(stored)
-    lines = [content.get("name") or "", content.get("description") or ""]
-    lines += [f"{i.get('amount', '')} {i.get('name', '')}" for i in content["ingredients"][:15]]
-    lines += [s.get("text", "") for s in content["instructions"][:5]]
+    # Judge by the running text — steps first, then ingredients. Titles (and
+    # often descriptions) are dish names like "Pilzparfait" that stay German
+    # in an otherwise English recipe, so they are only used as a last resort.
+    lines = [s.get("text", "") for s in content["instructions"][:6]]
+    lines += [str(i.get("name", "")) for i in content["ingredients"][:15]]
+    if not any(line.strip() for line in lines):
+        lines = [content.get("description") or "", content.get("name") or ""]
     sample = "\n".join(line.strip() for line in lines if line and line.strip())
     if not sample:
         return None
@@ -212,18 +216,36 @@ def add_translation(stored: Dict[str, Any], target: str) -> bool:
     """Translate ``stored``'s base content into ``target`` and record it on ``stored``.
 
     Mutates ``stored``: when its base language is unknown, the provider's
-    detected source language is recorded as ``inLanguage``; the translation is
-    stored under ``translations[target]`` unless the base turns out to already
-    be in ``target``. Returns True when a translation was stored. Raises
-    ``TranslationError``.
+    detected source language is recorded as ``inLanguage``. If the provider
+    reports the base is *already* in ``target``, the recorded language was wrong
+    (or unknown): ``inLanguage`` is corrected to ``target``, any stale copy under
+    ``translations[target]`` is dropped, and nothing is stored — a "translation"
+    of a recipe into its own language is just a copy. Otherwise the translation
+    is stored under ``translations[target]``. Returns True when a translation
+    was stored. Raises ``TranslationError``.
     """
     if stored.get("inLanguage") == target:
         return False
     translated, source_lang = translate_recipe_content(recipe_content(stored), target)
     source_lang = normalize_language(source_lang)  # only supported codes are stored
+    if source_lang == target:
+        set_base_language(stored, target)
+        return False
     if not stored.get("inLanguage") and source_lang:
         stored["inLanguage"] = source_lang
-    if stored.get("inLanguage") == target:
-        return False
     stored.setdefault("translations", {})[target] = translated
     return True
+
+
+def set_base_language(stored: Dict[str, Any], language: str) -> None:
+    """Record ``language`` as the base content's language.
+
+    A stored translation into that language is a copy of the base (or an
+    artefact of an earlier wrong label) and would be unreachable, so it is
+    dropped.
+    """
+    stored["inLanguage"] = language
+    translations = stored.get("translations") or {}
+    translations.pop(language, None)
+    if not translations:
+        stored.pop("translations", None)

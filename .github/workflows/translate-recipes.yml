@@ -6,9 +6,12 @@
 #
 # Trigger: Actions → "Translate recipes" → Run workflow.
 # Suggested order:
+#   0. mode = inspect      — read-only: each recipe's language + a text sample.
 #   1. mode = dry-run      — no LLM calls, no writes; shows what would happen.
 #   2. mode = detect-only  — cheap: detect and store each recipe's language.
 #   3. mode = translate    — detect (if still needed) and add missing translations.
+# Tick `redetect` to re-check recipes whose language is already recorded and
+# fix wrong labels (e.g. a German dish name on an English recipe).
 # Use `limit` to try a few recipes first. Re-running is safe: finished work is
 # skipped, and recipes edited mid-run are left alone and retried next time.
 #
@@ -25,10 +28,15 @@ on:
         description: "What to do"
         type: choice
         options:
+          - inspect
           - dry-run
           - detect-only
           - translate
         default: dry-run
+      redetect:
+        description: "Re-check recipes whose language is already recorded (fixes wrong labels)"
+        type: boolean
+        default: false
       languages:
         description: "Target languages, comma-separated (blank = all supported: en,de)"
         type: string
@@ -56,6 +64,7 @@ jobs:
         id: flags
         env:
           MODE: ${{ inputs.mode }}
+          REDETECT: ${{ inputs.redetect }}
           LANGS: ${{ inputs.languages }}
           LIMIT: ${{ inputs.limit }}
           UUID: ${{ inputs.uuid }}
@@ -67,11 +76,13 @@ jobs:
 
           FLAGS=""
           case "$MODE" in
+            inspect) FLAGS="--inspect" ;;
             dry-run) FLAGS="--dry-run" ;;
             detect-only) FLAGS="--detect-only" ;;
             translate) ;;
             *) echo "::error::Unknown mode $MODE"; exit 1 ;;
           esac
+          [ "$REDETECT" = "true" ] && FLAGS="$FLAGS --redetect"
           LANGS="${LANGS// /}"
           [ -n "$LANGS" ] && FLAGS="$FLAGS --languages $LANGS"
           [ -n "$LIMIT" ] && FLAGS="$FLAGS --limit $LIMIT"

@@ -58,7 +58,12 @@ from api.recipe_extraction import (
     parse_recipe_with_openai,
 )
 from api.search import match_score, recipe_haystack
-from api.translation import TranslationError, add_translation, translate_recipe_content
+from api.translation import (
+    TranslationError,
+    add_translation,
+    set_base_language,
+    translate_recipe_content,
+)
 
 # 5 MB is enough for any recipe page; bigger bodies are almost certainly a
 # feed or wrapper page and not a single recipe.
@@ -803,9 +808,8 @@ async def update_recipe(
         if declared is None:
             conn.close()
             raise HTTPException(status_code=422, detail="Unsupported language")
-        stored["inLanguage"] = declared
-        # A translation into the base language would be unreachable — drop it.
-        (stored.get("translations") or {}).pop(declared, None)
+        # Also drops a translation into that language (it would be unreachable).
+        set_base_language(stored, declared)
 
     edit_lang = normalize_language(body.language)
     variant_key = variant_language(stored, edit_lang)
