@@ -32,7 +32,6 @@ from api.auth import get_current_user, get_current_user_optional, get_user_id, g
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
 from api.i18n import (
-    CONTENT_FIELDS,
     localize_recipe,
     localized_title,
     normalize_language,
@@ -59,7 +58,7 @@ from api.recipe_extraction import (
     parse_recipe_with_openai,
 )
 from api.search import match_score, recipe_haystack
-from api.translation import TranslationError, translate_recipe_content
+from api.translation import TranslationError, add_translation, translate_recipe_content
 
 # 5 MB is enough for any recipe page; bigger bodies are almost certainly a
 # feed or wrapper page and not a single recipe.
@@ -905,27 +904,10 @@ async def translate_recipe(
     base_version = row["updated_at"]
     conn.close()
 
-    if stored.get("inLanguage") != target_lang:
-        base_content = {f: stored.get(f) for f in CONTENT_FIELDS}
-        if "ingredients" not in stored:
-            # Old flat format: wrap strings so the translator sees one shape.
-            base_content["ingredients"] = [
-                {"amount": "", "name": str(x)} for x in stored.get("recipeIngredient") or []
-            ]
-            base_content["instructions"] = [
-                {"text": str(x), "ingredients": []} for x in stored.get("recipeInstructions") or []
-            ]
-        try:
-            translated, source_lang = await run_in_threadpool(
-                translate_recipe_content, base_content, target_lang
-            )
-        except TranslationError as e:
-            raise HTTPException(status_code=502, detail=str(e)) from e
-
-        if not stored.get("inLanguage") and source_lang:
-            stored["inLanguage"] = source_lang
-        if stored.get("inLanguage") != target_lang:
-            stored.setdefault("translations", {})[target_lang] = translated
+    try:
+        await run_in_threadpool(add_translation, stored, target_lang)
+    except TranslationError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     conn = get_db_connection()
     cursor = conn.cursor()

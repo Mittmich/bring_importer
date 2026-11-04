@@ -88,3 +88,11 @@ structured output, preserving ingredient/step counts and indices.
   `tsc -b` + `vite build` pass; eslint unchanged at the 18 pre-existing errors.
 - Not done: the legacy vanilla `frontend/` (not served by docker-compose) was left untranslated.
   Only the OpenAI translation provider exists; others plug into `_PROVIDERS`.
+
+### Follow-up: backfill for existing recipes (2026-11-04)
+
+- `backend/translate_recipes.py` + `.github/workflows/translate-recipes.yml` (manual trigger,
+  modes dry-run / detect-only / translate, optional languages / limit / uuid). Idempotent;
+  skips recipes edited mid-run. Shared logic moved into `api/translation.py`
+  (`recipe_content`, `detect_recipe_language`, `add_translation`, `Provider` with
+  translate + detect). 10 tests in `tests/test_translate_recipes.py`.

@@ -121,7 +121,10 @@ def test_translate_recipe_content_preserves_structure():
         "ingredients": [{"amount": "1 cup", "name": "flour"}],
         "instructions": [{"text": "Mix.", "ingredients": [0]}],
     }
-    with patch.dict(translation_mod._PROVIDERS, {"openai": lambda c, t: out}):
+    with patch.dict(
+        translation_mod._PROVIDERS,
+        {"openai": translation_mod.Provider(translate=lambda c, t: out, detect=lambda x: "en")},
+    ):
         translated, src = translate_recipe_content(content, "de")
     assert src == "en"
     assert translated["instructions"] == [{"text": "Mischen.", "ingredients": [0]}]
@@ -138,7 +141,10 @@ def test_translate_recipe_content_rejects_count_mismatch():
         instructions=[],
     )
     content = {"name": "x", "ingredients": [{"amount": "", "name": "a"}], "instructions": []}
-    with patch.dict(translation_mod._PROVIDERS, {"openai": lambda c, t: out}):
+    with patch.dict(
+        translation_mod._PROVIDERS,
+        {"openai": translation_mod.Provider(translate=lambda c, t: out, detect=lambda x: "en")},
+    ):
         with pytest.raises(TranslationError):
             translate_recipe_content(content, "de")
 
@@ -376,7 +382,7 @@ def test_put_declares_base_language(client, auth_headers, mocked_openai, tmp_db_
 def test_translate_endpoint_stores_translation(client, auth_headers, mocked_openai, tmp_db_path):
     uuid = _make_recipe(client, auth_headers, data={"language": "en"})
     with patch(
-        "api.routers.recipes.translate_recipe_content", return_value=(GERMAN_VARIANT, "en")
+        "api.translation.translate_recipe_content", return_value=(GERMAN_VARIANT, "en")
     ) as mock_translate:
         resp = client.post(
             f"/recipes/{uuid}/translate", headers=auth_headers, json={"language": "de"}
@@ -395,7 +401,7 @@ def test_translate_endpoint_stores_translation(client, auth_headers, mocked_open
 def test_translate_detects_unknown_base_language(client, auth_headers, mocked_openai, tmp_db_path):
     uuid = _make_recipe(client, auth_headers)  # unknown base
     # Detected source equals target → nothing stored but language recorded.
-    with patch("api.routers.recipes.translate_recipe_content", return_value=(GERMAN_VARIANT, "de")):
+    with patch("api.translation.translate_recipe_content", return_value=(GERMAN_VARIANT, "de")):
         resp = client.post(
             f"/recipes/{uuid}/translate", headers=auth_headers, json={"language": "de"}
         )
@@ -408,9 +414,7 @@ def test_translate_detects_unknown_base_language(client, auth_headers, mocked_op
 @pytest.mark.integration
 def test_translate_provider_error_is_502(client, auth_headers, mocked_openai):
     uuid = _make_recipe(client, auth_headers, data={"language": "en"})
-    with patch(
-        "api.routers.recipes.translate_recipe_content", side_effect=TranslationError("nope")
-    ):
+    with patch("api.translation.translate_recipe_content", side_effect=TranslationError("nope")):
         resp = client.post(
             f"/recipes/{uuid}/translate", headers=auth_headers, json={"language": "de"}
         )

@@ -1,0 +1,104 @@
+# One-off backfill: detect the language of existing recipes and add translations.
+#
+# Runs `translate_recipes.py` inside the running backend container on
+# Lightsail, against the live SQLite database. The script ships in the backend
+# image, so the code must be deployed before running this.
+#
+# Trigger: Actions → "Translate recipes" → Run workflow.
+# Suggested order:
+#   1. mode = dry-run      — no LLM calls, no writes; shows what would happen.
+#   2. mode = detect-only  — cheap: detect and store each recipe's language.
+#   3. mode = translate    — detect (if still needed) and add missing translations.
+# Use `limit` to try a few recipes first. Re-running is safe: finished work is
+# skipped, and recipes edited mid-run are left alone and retried next time.
+#
+# Required secrets (shared with deploy-lightsail.yml):
+#   LIGHTSAIL_SSH_KEY / LIGHTSAIL_HOST / LIGHTSAIL_USER / LIGHTSAIL_APP_PATH
+# The container's .env must provide OPENAI_API_KEY (it already does for imports).
+
+name: Translate recipes
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "What to do"
+        type: choice
+        options:
+          - dry-run
+          - detect-only
+          - translate
+        default: dry-run
+      languages:
+        description: "Target languages, comma-separated (blank = all supported: en,de)"
+        type: string
+        default: ""
+      limit:
+        description: "Max recipes to process (blank = all)"
+        type: string
+        default: ""
+      uuid:
+        description: "Only this recipe uuid (blank = all)"
+        type: string
+        default: ""
+
+# Never run two backfills against the same SQLite file at once.
+concurrency:
+  group: translate-recipes
+  cancel-in-progress: false
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Validate inputs and build flags
+        id: flags
+        env:
+          MODE: ${{ inputs.mode }}
+          LANGS: ${{ inputs.languages }}
+          LIMIT: ${{ inputs.limit }}
+          UUID: ${{ inputs.uuid }}
+        run: |
+          # Inputs end up in a remote shell command — allow only safe characters.
+          [[ "$LANGS" =~ ^[a-zA-Z,\ ]*$ ]] || { echo "::error::Invalid languages: $LANGS"; exit 1; }
+          [[ "$LIMIT" =~ ^[0-9]*$ ]] || { echo "::error::limit must be a number"; exit 1; }
+          [[ "$UUID" =~ ^[0-9a-fA-F-]*$ ]] || { echo "::error::Invalid uuid"; exit 1; }
+
+          FLAGS=""
+          case "$MODE" in
+            dry-run) FLAGS="--dry-run" ;;
+            detect-only) FLAGS="--detect-only" ;;
+            translate) ;;
+            *) echo "::error::Unknown mode $MODE"; exit 1 ;;
+          esac
+          LANGS="${LANGS// /}"
+          [ -n "$LANGS" ] && FLAGS="$FLAGS --languages $LANGS"
+          [ -n "$LIMIT" ] && FLAGS="$FLAGS --limit $LIMIT"
+          [ -n "$UUID" ] && FLAGS="$FLAGS --uuid $UUID"
+          echo "flags=$FLAGS" >> "$GITHUB_OUTPUT"
+          echo "Running: translate_recipes.py $FLAGS"
+
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+      - name: Add Lightsail host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Run backfill inside the backend container
+        env:
+          FLAGS: ${{ steps.flags.outputs.flags }}
+          SSH_TARGET: ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}
+          APP_PATH: ${{ secrets.LIGHTSAIL_APP_PATH }}
+        run: |
+          # Keepalives: a full translate run can take a while between log lines.
+          ssh -o ServerAliveInterval=30 "$SSH_TARGET" \
+            "APP_PATH='$APP_PATH' FLAGS='$FLAGS' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_PATH"
+          # -T: no TTY; PYTHONUNBUFFERED so progress streams into the Actions log.
+          sudo docker compose -f docker-compose.yml exec -T -e PYTHONUNBUFFERED=1 backend \
+            python3 translate_recipes.py $FLAGS
+          REMOTE
