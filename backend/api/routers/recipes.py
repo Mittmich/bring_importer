@@ -7,6 +7,10 @@
 - ``DELETE /recipes/{uuid}`` — auth required; 204 on success.
 - ``GET /recipes/{uuid}.json`` — public; full recipe JSON.
 - ``GET /recipes/{uuid}.html`` — public; schema.org/Recipe HTML page for Bring.
+- ``POST /recipes/{uuid}/translate`` — auth (editor+); LLM-translate into a language.
+
+Read endpoints are localized by the request language (``?lang=`` or
+``Accept-Language``) — see ``api/i18n.py``.
 """
 
 import json
@@ -18,14 +22,23 @@ from urllib.parse import quote_plus
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from api import recipe_images
 from api.access import accessible_recipes_sql, effective_role, role_at_least
-from api.auth import get_current_user, get_current_user_optional, get_user_id
+from api.auth import get_current_user, get_current_user_optional, get_user_id, get_user_language
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
+from api.i18n import (
+    CONTENT_FIELDS,
+    localize_recipe,
+    localized_title,
+    normalize_language,
+    request_language,
+    variant_language,
+)
 from api.models import (
     Ingredient,
     InstructionStep,
@@ -34,6 +47,7 @@ from api.models import (
     RecipeUpdate,
     Tag,
     TagUpdate,
+    TranslateRequest,
     User,
 )
 from api.recipe_extraction import (
@@ -45,6 +59,7 @@ from api.recipe_extraction import (
     parse_recipe_with_openai,
 )
 from api.search import match_score, recipe_haystack
+from api.translation import TranslationError, translate_recipe_content
 
 # 5 MB is enough for any recipe page; bigger bodies are almost certainly a
 # feed or wrapper page and not a single recipe.
@@ -60,9 +75,10 @@ def _store_recipe(
     recipe,
     source: Dict[str, str],
     note: str = "",
+    translations: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Persist a parsed recipe with the standard shape and metadata."""
-    schema_recipe = {
+    schema_recipe: Dict[str, Any] = {
         "@context": "https://schema.org/",
         "@type": "Recipe",
         "name": recipe.title,
@@ -73,7 +89,10 @@ def _store_recipe(
         "description": recipe.description,
         "source": source,
         "note": note,
+        "inLanguage": recipe.inLanguage,
     }
+    if translations:
+        schema_recipe["translations"] = translations
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -92,18 +111,35 @@ def _store_recipe(
     conn.close()
 
 
+def _target_language(
+    explicit: Optional[str], request_lang: Optional[str], user_id: Optional[int]
+) -> Optional[str]:
+    """Language an import should be written in: explicit > request > profile."""
+    return (
+        normalize_language(explicit)
+        or request_lang
+        or (normalize_language(get_user_language(user_id)) if user_id is not None else None)
+    )
+
+
 @router.post("/parse", response_model=RecipeResponse)
 async def parse_recipe(
     background_tasks: BackgroundTasks,
     image: str = Form(...),
+    language: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
+    """Extract a recipe from a photo, written in the target language."""
     try:
-        recipe = parse_recipe_with_openai(image)
-        recipe_uuid = str(uuid_mod.uuid4())
         user_id = get_user_id(current_user.email)
         if user_id is None:
             raise HTTPException(status_code=401, detail="Unknown user")
+        target = _target_language(language, lang, user_id)
+        recipe = parse_recipe_with_openai(image, target)
+        if target:
+            recipe = recipe.model_copy(update={"inLanguage": target})
+        recipe_uuid = str(uuid_mod.uuid4())
         _store_recipe(
             recipe_uuid=recipe_uuid,
             user_id=user_id,
@@ -128,12 +164,41 @@ async def parse_recipe(
 class ImportURLBody(BaseModel):
     url: str
     note: Optional[str] = None
+    # Target language for the imported recipe (default: request language).
+    language: Optional[str] = None
+
+
+def _translate_imported(recipe: Recipe, target: str):
+    """Translate a JSON-LD-imported recipe (whose text is verbatim from the page).
+
+    Keeps the page's original text as the base content (``inLanguage`` = the
+    detected source language) and stores the target-language version as a
+    translation, so nothing is lost. Returns ``(recipe, translations)``. If the
+    translation fails the recipe is kept untranslated rather than failing the
+    import.
+    """
+    content = {
+        "name": recipe.title,
+        "description": recipe.description or "",
+        "recipeYield": recipe.recipeYield,
+        "ingredients": [i.model_dump() for i in recipe.ingredients],
+        "instructions": [s.model_dump() for s in recipe.instructions],
+    }
+    try:
+        translated, source_lang = translate_recipe_content(content, target)
+    except TranslationError:
+        return recipe, None
+    if source_lang == target:
+        return recipe.model_copy(update={"inLanguage": target}), None
+    # source_lang may be None (undetected): keep the base's language unknown.
+    return recipe.model_copy(update={"inLanguage": source_lang}), {target: translated}
 
 
 @router.post("/import-url", response_model=RecipeResponse)
 async def import_url(
     body: ImportURLBody,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Import a recipe from a public URL.
 
@@ -144,10 +209,15 @@ async def import_url(
          instruction-ingredient mappings.
       3. Fall back to OpenAI structured-output text extraction.
       4. Store with ``source={"kind":"url","value":url}`` and return uuid.
+
+    The recipe is produced in the target language (``body.language``, else the
+    request language): the LLM fallback writes it directly; JSON-LD text is
+    kept as the original and a translation is stored alongside.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
         raise HTTPException(status_code=401, detail="Unknown user")
+    target = _target_language(body.language, lang, user_id)
 
     url = body.url.strip()
     if not url:
@@ -199,10 +269,16 @@ async def import_url(
         if recipe is not None:
             break
 
+    translations = None
+    if recipe is not None and target:
+        recipe, translations = await run_in_threadpool(_translate_imported, recipe, target)
+
     # 3. OpenAI text fallback.
     if recipe is None:
         try:
-            recipe = extract_recipe_from_html_text(html_body, source_url=url)
+            recipe = extract_recipe_from_html_text(html_body, source_url=url, language=target)
+            if target:
+                recipe = recipe.model_copy(update={"inLanguage": target})
         except HTTPException:
             raise
         except Exception as e:
@@ -219,6 +295,7 @@ async def import_url(
         recipe=recipe,
         source={"kind": "url", "value": url},
         note=body.note or "",
+        translations=translations,
     )
     return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
 
@@ -236,38 +313,22 @@ def _image_url(recipe_uuid: str, has_image: bool, version: Any) -> Optional[str]
     return f"/recipes/{recipe_uuid}/image{suffix}"
 
 
-@router.get("/{recipe_uuid}.json", include_in_schema=False)
-async def get_recipe(
-    recipe_uuid: str,
-    current_user: Optional[User] = Depends(get_current_user_optional),  # noqa: B008
-):
-    """Return recipe JSON if the recipe is public, owned, or shared with the requester."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT recipe_json, is_public, user_id, training_verified, has_image, updated_at "
-        "FROM recipes WHERE uuid = ?",
-        (recipe_uuid,),
-    )
-    row = cursor.fetchone()
+_RECIPE_ROW_COLS = "recipe_json, is_public, user_id, training_verified, has_image, updated_at"
 
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Recipe not found")
 
-    is_public = bool(row["is_public"])
-    owner_id = get_user_id(current_user.email) if current_user else None
-    owned = owner_id is not None and owner_id == row["user_id"]
-    role = effective_role(cursor, owner_id, recipe_uuid) if owner_id is not None else "none"
-    if not is_public and not role_at_least(role, "viewer"):
-        conn.close()
-        raise HTTPException(status_code=404, detail="Recipe not found")
+def _recipe_payload(
+    cursor, recipe_uuid: str, row, viewer_id: Optional[int], lang: Optional[str]
+) -> Dict[str, Any]:
+    """Full recipe JSON for the client, localized to ``lang``, with viewer metadata.
 
-    data = json.loads(row["recipe_json"])
-    data["is_public"] = is_public
+    ``row`` must carry the ``_RECIPE_ROW_COLS`` columns.
+    """
+    data = localize_recipe(json.loads(row["recipe_json"]), lang)
+    role = effective_role(cursor, viewer_id, recipe_uuid) if viewer_id is not None else "none"
+    data["is_public"] = bool(row["is_public"])
     # Lets the public share page tell whether the viewer owns this recipe
     # without fetching their whole recipe list.
-    data["owned"] = owned
+    data["owned"] = viewer_id is not None and viewer_id == row["user_id"]
     # The viewer's role, so the client can gate edit controls on shared recipes.
     data["role"] = role
     # Who owns it (for "shared by …" labels) and the version for edit-conflict checks.
@@ -283,6 +344,37 @@ async def get_recipe(
     data["has_image"] = bool(row["has_image"])
     data["image_url"] = _image_url(recipe_uuid, bool(row["has_image"]), row["updated_at"])
     data["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
+    return data
+
+
+@router.get("/{recipe_uuid}.json", include_in_schema=False)
+async def get_recipe(
+    recipe_uuid: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    """Return recipe JSON if the recipe is public, owned, or shared with the requester.
+
+    Content is the version in the request language when one exists; see
+    ``localize_recipe`` for the language metadata added to the payload.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        f"SELECT {_RECIPE_ROW_COLS} FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()
+
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    viewer_id = get_user_id(current_user.email) if current_user else None
+    role = effective_role(cursor, viewer_id, recipe_uuid) if viewer_id is not None else "none"
+    if not bool(row["is_public"]) and not role_at_least(role, "viewer"):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+
+    data = _recipe_payload(cursor, recipe_uuid, row, viewer_id, lang)
     conn.close()
     return JSONResponse(content=data)
 
@@ -295,7 +387,10 @@ def _ingredient_string(ing: Dict[str, Any]) -> str:
 
 
 @router.get("/{recipe_uuid}.html", include_in_schema=False)
-async def get_recipe_html(recipe_uuid: str):
+async def get_recipe_html(
+    recipe_uuid: str,
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
     """HTML page with embedded JSON-LD for Bring and other recipe parsers.
 
     Converts the new structured {ingredients, instructions} format into the
@@ -314,8 +409,9 @@ async def get_recipe_html(recipe_uuid: str):
     if not row:
         raise HTTPException(status_code=404, detail="Recipe not found")
 
-    data = json.loads(row["recipe_json"])
+    data = localize_recipe(json.loads(row["recipe_json"]), lang)
     name = data.get("name", "Recipe")
+    html_lang = data.get("language") or "en"
 
     # Support both new format (ingredients list of dicts) and old (flat strings).
     if "ingredients" in data:
@@ -333,6 +429,8 @@ async def get_recipe_html(recipe_uuid: str):
         "recipeYield": data.get("recipeYield") or "",
         "description": data.get("description") or "",
     }
+    if data.get("language"):
+        jsonld["inLanguage"] = data["language"]
     if instruction_texts:
         jsonld["recipeInstructions"] = [
             {"@type": "HowToStep", "text": text} for text in instruction_texts
@@ -340,7 +438,7 @@ async def get_recipe_html(recipe_uuid: str):
 
     html = (
         "<!DOCTYPE html>\n"
-        '<html lang="en">\n'
+        f'<html lang="{html_lang}">\n'
         "<head>\n"
         '  <meta charset="UTF-8">\n'
         f"  <title>{name}</title>\n"
@@ -524,11 +622,14 @@ async def delete_tag(
     return None
 
 
-def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]], me: int) -> Dict[str, Any]:
+def _list_item(
+    row, tag_map: Dict[str, List[Dict[str, Any]]], me: int, lang: Optional[str] = None
+) -> Dict[str, Any]:
     """Shape a recipes row into a list item for the ``GET /recipes`` envelope.
 
     ``row`` must carry ``owner_id`` and ``owner_email`` so shared recipes can show
     who they belong to. ``me`` is the requesting user, used to set ``owned``.
+    The title is in ``lang`` when the recipe has a translation into it.
     """
     try:
         recipe_json = json.loads(row["recipe_json"])
@@ -539,7 +640,8 @@ def _list_item(row, tag_map: Dict[str, List[Dict[str, Any]]], me: int) -> Dict[s
     owner_id = row["owner_id"]
     return {
         "uuid": row["uuid"],
-        "title": row["title"],
+        "title": localized_title(recipe_json, row["title"], lang),
+        "language": variant_language(recipe_json, lang) or recipe_json.get("inLanguage"),
         "datePublished": recipe_json.get("datePublished"),
         "createdAt": row["created_at"],
         "source": source,
@@ -560,6 +662,7 @@ async def list_recipes(
     q: Optional[str] = None,
     tag: Optional[List[str]] = Query(default=None),  # noqa: B008
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Return a page of recipes accessible to the current user.
 
@@ -636,7 +739,7 @@ async def list_recipes(
 
     conn.close()
 
-    items = [_list_item(row, tag_map, user_id) for row in page_rows]
+    items = [_list_item(row, tag_map, user_id, lang) for row in page_rows]
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
@@ -645,6 +748,7 @@ async def update_recipe(
     recipe_uuid: str,
     body: RecipeUpdate,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Update the structured fields of a recipe owned by the current user.
 
@@ -655,6 +759,12 @@ async def update_recipe(
     The ``instructions`` field carries full ``InstructionStep`` objects so
     the caller can edit both step text and ingredient-index mappings in one
     PUT.
+
+    Language: ``body.language`` names the variant the content fields belong to.
+    If the recipe has a translation in that language it is edited; otherwise the
+    base content is. ``body.inLanguage`` declares the base content's language.
+    The response is the recipe localized to ``body.language`` (or the request
+    language).
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -689,21 +799,35 @@ async def update_recipe(
     except Exception:
         stored = {}
 
+    if body.inLanguage is not None:
+        declared = normalize_language(body.inLanguage)
+        if declared is None:
+            conn.close()
+            raise HTTPException(status_code=422, detail="Unsupported language")
+        stored["inLanguage"] = declared
+        # A translation into the base language would be unreachable — drop it.
+        (stored.get("translations") or {}).pop(declared, None)
+
+    edit_lang = normalize_language(body.language)
+    variant_key = variant_language(stored, edit_lang)
+    # The dict the content fields are written to: a translation or the base.
+    target: Dict[str, Any] = stored["translations"][variant_key] if variant_key else stored
+
     if body.title is not None:
-        stored["name"] = body.title
+        target["name"] = body.title
     if body.recipeYield is not None:
-        stored["recipeYield"] = body.recipeYield
+        target["recipeYield"] = body.recipeYield
     if body.description is not None:
-        stored["description"] = body.description
+        target["description"] = body.description
     if body.note is not None:
         stored["note"] = body.note
     if body.ingredients is not None:
-        stored["ingredients"] = [ing.model_dump() for ing in body.ingredients]
+        target["ingredients"] = [ing.model_dump() for ing in body.ingredients]
         # Remove old-format key if present
-        stored.pop("recipeIngredient", None)
+        target.pop("recipeIngredient", None)
     if body.instructions is not None:
-        stored["instructions"] = [step.model_dump() for step in body.instructions]
-        stored.pop("recipeInstructions", None)
+        target["instructions"] = [step.model_dump() for step in body.instructions]
+        target.pop("recipeInstructions", None)
 
     new_title = stored.get("name", "")
     new_note = stored.get("note", "")
@@ -740,12 +864,92 @@ async def update_recipe(
         _set_recipe_tags(cursor, row["user_id"], recipe_uuid, body.tags)
     conn.commit()
 
-    stored["is_public"] = bool(new_is_public)
-    stored["training_verified"] = bool(new_verified)
-    stored["updated_at"] = new_updated
-    stored["tags"] = _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])
+    fresh = cursor.execute(
+        f"SELECT {_RECIPE_ROW_COLS} FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()
+    data = _recipe_payload(cursor, recipe_uuid, fresh, user_id, edit_lang or lang)
     conn.close()
-    return JSONResponse(content=stored)
+    return JSONResponse(content=data)
+
+
+@router.post("/{recipe_uuid}/translate", include_in_schema=False)
+async def translate_recipe(
+    recipe_uuid: str,
+    body: TranslateRequest,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Translate a recipe's base content into ``body.language`` with the LLM provider.
+
+    Editor+ only. Stores the result in ``translations[language]`` (replacing an
+    existing one) and returns the recipe localized to that language. When the
+    base language is unknown, the provider's detected source language is
+    recorded as ``inLanguage``; if that turns out to already be the target
+    language, no translation is stored.
+    """
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+    target_lang = normalize_language(body.language)
+    if target_lang is None:
+        raise HTTPException(status_code=422, detail="Unsupported language")
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    row = cursor.execute(
+        f"SELECT {_RECIPE_ROW_COLS} FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()
+    if row is None or not role_at_least(effective_role(cursor, user_id, recipe_uuid), "editor"):
+        conn.close()
+        raise HTTPException(status_code=404, detail="Recipe not found")
+    stored = json.loads(row["recipe_json"])
+    base_version = row["updated_at"]
+    conn.close()
+
+    if stored.get("inLanguage") != target_lang:
+        base_content = {f: stored.get(f) for f in CONTENT_FIELDS}
+        if "ingredients" not in stored:
+            # Old flat format: wrap strings so the translator sees one shape.
+            base_content["ingredients"] = [
+                {"amount": "", "name": str(x)} for x in stored.get("recipeIngredient") or []
+            ]
+            base_content["instructions"] = [
+                {"text": str(x), "ingredients": []} for x in stored.get("recipeInstructions") or []
+            ]
+        try:
+            translated, source_lang = await run_in_threadpool(
+                translate_recipe_content, base_content, target_lang
+            )
+        except TranslationError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+        if not stored.get("inLanguage") and source_lang:
+            stored["inLanguage"] = source_lang
+        if stored.get("inLanguage") != target_lang:
+            stored.setdefault("translations", {})[target_lang] = translated
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Re-check the version: the LLM call takes seconds and an edit may have landed.
+    current = cursor.execute(
+        "SELECT updated_at FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()
+    if current is None or current["updated_at"] != base_version:
+        conn.close()
+        raise HTTPException(
+            status_code=409,
+            detail="This recipe was changed while translating. Reload and try again.",
+        )
+    cursor.execute(
+        "UPDATE recipes SET recipe_json = ?, updated_at = ? WHERE uuid = ?",
+        (json.dumps(stored), datetime.now(timezone.utc).isoformat(), recipe_uuid),
+    )
+    conn.commit()
+    fresh = cursor.execute(
+        f"SELECT {_RECIPE_ROW_COLS} FROM recipes WHERE uuid = ?", (recipe_uuid,)
+    ).fetchone()
+    data = _recipe_payload(cursor, recipe_uuid, fresh, user_id, target_lang)
+    conn.close()
+    return JSONResponse(content=data)
 
 
 class RecipeImageBody(BaseModel):
@@ -961,9 +1165,16 @@ async def clone_recipe(
         recipeYield=data.get("recipeYield", "4 servings"),
         description=data.get("description"),
         datePublished=datetime.now().strftime("%Y-%m-%d"),
+        inLanguage=data.get("inLanguage"),
     )
     new_uuid = str(uuid_mod.uuid4())
-    _store_recipe(recipe_uuid=new_uuid, user_id=user_id, recipe=recipe, source=source)
+    _store_recipe(
+        recipe_uuid=new_uuid,
+        user_id=user_id,
+        recipe=recipe,
+        source=source,
+        translations=data.get("translations"),
+    )
     return RecipeResponse(uuid=new_uuid, url=f"/recipes/{new_uuid}.json")
 
 

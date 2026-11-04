@@ -2,6 +2,7 @@ import * as React from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { tagColor, tagChipStyle } from '@/lib/tagColors'
+import { useI18n } from '@/i18n'
 
 interface TagChipProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 'color'> {
   name: string
@@ -20,6 +21,7 @@ interface TagChipProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 'colo
  */
 export function TagChip({ name, color, onRemove, muted, className, ...props }: TagChipProps) {
   const resolved = tagColor(name, color)
+  const { t } = useI18n()
   return (
     <span
       className={cn(
@@ -39,7 +41,7 @@ export function TagChip({ name, color, onRemove, muted, className, ...props }: T
             e.stopPropagation()
             onRemove()
           }}
-          aria-label={`Remove tag ${name}`}
+          aria-label={t('tags.removeLabel', { name })}
           className="-mr-0.5 rounded-full hover:bg-black/10"
         >
           <X className="h-3 w-3" />

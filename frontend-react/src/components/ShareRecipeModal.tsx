@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { useI18n, type MessageKey } from '@/i18n'
 
 const ROLES: Array<'viewer' | 'editor' | 'manager'> = ['viewer', 'editor', 'manager']
 
@@ -21,6 +22,7 @@ interface Props {
 export function ShareRecipeModal({ open, onOpenChange, recipeUuid }: Props) {
   const [role, setRole] = useState<'viewer' | 'editor' | 'manager'>('viewer')
   const [sharedWith, setSharedWith] = useState<string | null>(null)
+  const { t, tx } = useI18n()
 
   const { data: friends = [], isLoading } = useQuery({
     queryKey: ['friends'],
@@ -42,23 +44,24 @@ export function ShareRecipeModal({ open, onOpenChange, recipeUuid }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Share with a friend</DialogTitle>
-          <DialogDescription>
-            They'll get an invitation and can open it once they accept.
-          </DialogDescription>
+          <DialogTitle>{t('share.title')}</DialogTitle>
+          <DialogDescription>{t('share.description')}</DialogDescription>
         </DialogHeader>
 
         {sharedWith ? (
           <div className="py-2 space-y-3 text-center">
             <p className="text-sm text-foreground">
-              Invitation sent to <strong>{sharedWith}</strong> ({role}).
+              {tx('share.sent', {
+                name: <strong>{sharedWith}</strong>,
+                role: t(`role.${role}` as MessageKey),
+              })}
             </p>
-            <Button onClick={() => onOpenChange(false)}>Done</Button>
+            <Button onClick={() => onOpenChange(false)}>{t('common.done')}</Button>
           </div>
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Access</span>
+              <span className="text-sm text-muted-foreground">{t('share.access')}</span>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as 'viewer' | 'editor' | 'manager')}
@@ -66,17 +69,21 @@ export function ShareRecipeModal({ open, onOpenChange, recipeUuid }: Props) {
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
-                    {r === 'viewer' ? 'Can view' : r === 'editor' ? 'Can edit' : 'Can manage'}
+                    {r === 'viewer'
+                      ? t('role.canView')
+                      : r === 'editor'
+                        ? t('role.canEdit')
+                        : t('role.canManage')}
                   </option>
                 ))}
               </select>
             </div>
             <div className="space-y-1.5 max-h-72 overflow-y-auto">
               {isLoading ? (
-                <p className="text-sm text-muted-foreground py-2">Loading…</p>
+                <p className="text-sm text-muted-foreground py-2">{t('common.loading')}</p>
               ) : friends.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-2">
-                  No friends yet. Add friends under Account → Friends first.
+                  {t('share.noFriends')}
                 </p>
               ) : (
                 friends.map((f) => (

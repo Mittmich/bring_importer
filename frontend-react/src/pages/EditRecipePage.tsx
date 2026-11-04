@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Camera, GripVertical, ImagePlus, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Camera, GripVertical, ImagePlus, Languages, Loader2, Plus, Trash2, Upload } from 'lucide-react'
 import {
   DndContext,
   closestCenter,
@@ -19,7 +19,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { api, type Ingredient, type InstructionStep } from '@/lib/api'
+import { api, type Ingredient, type InstructionStep, type Recipe } from '@/lib/api'
 import { cropToLandscape } from '@/lib/cropImage'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { TagChip } from '@/components/ui/tag-chip'
+import { LanguageSelect } from '@/components/LanguageSelect'
+import { nativeName, normalizeLanguage, useI18n, type Language } from '@/i18n'
 
 // Local rows carry a stable client-side id so drag-and-drop has a key that
 // follows the item (not its position). Stripped before saving.
@@ -59,6 +61,7 @@ function SortableRow({
 }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
     useSortable({ id })
+  const { t } = useI18n()
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -77,7 +80,7 @@ function SortableRow({
         type="button"
         {...attributes}
         {...listeners}
-        aria-label="Drag to reorder"
+        aria-label={t('edit.dragToReorder')}
         className={`shrink-0 touch-none cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground ${align === 'center' ? '' : 'mt-2.5'}`}
       >
         <GripVertical className="w-4 h-4" />
@@ -91,6 +94,7 @@ export function EditRecipePage() {
   const { uuid } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t, tx } = useI18n()
 
   const { data: recipe, isLoading } = useQuery({
     queryKey: ['recipe', uuid],
@@ -111,6 +115,8 @@ export function EditRecipePage() {
   // The recipe version we loaded — sent on save so a concurrent edit 409s
   // instead of silently clobbering.
   const [baseUpdatedAt, setBaseUpdatedAt] = useState<string | undefined>()
+  // Declared language of the base content — only settable when it's unknown.
+  const [declaredLang, setDeclaredLang] = useState<Language | ''>('')
 
   // Hero image editing. `newImage` holds a freshly cropped data URL to upload;
   // `imageRemoved` marks the existing image for deletion. Both reset when the
@@ -146,6 +152,7 @@ export function EditRecipePage() {
     setVerified(recipe.training_verified ?? false)
     setTags((recipe.tags ?? []).map((t) => t.name))
     setBaseUpdatedAt(recipe.updated_at)
+    setDeclaredLang('')
     setNewImage(null)
     setImageRemoved(false)
     setImageError(null)
@@ -158,7 +165,7 @@ export function EditRecipePage() {
       setNewImage(dataUrl)
       setImageRemoved(false)
     } catch {
-      setImageError('Could not read that image.')
+      setImageError(t('edit.readImageFailed'))
     }
   }
 
@@ -205,6 +212,9 @@ export function EditRecipePage() {
         is_public: isPublic,
         training_verified: verified,
         tags,
+        // Save into the language version we loaded (a translation or the original).
+        language: recipe?.language ?? undefined,
+        inLanguage: declaredLang || undefined,
         base_updated_at: baseUpdatedAt,
       })
       // Persist the hero image change, if any, as a separate call.
@@ -313,7 +323,7 @@ export function EditRecipePage() {
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground bg-[#F8FAFC]">
-        Loading…
+        {t('common.loading')}
       </div>
     )
   }
@@ -326,15 +336,15 @@ export function EditRecipePage() {
           onClick={() => navigate(-1)}
           className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ArrowLeft className="w-4 h-4" /> Back
+          <ArrowLeft className="w-4 h-4" /> {t('common.back')}
         </button>
-        <span className="flex-1 text-sm font-semibold text-foreground truncate">Edit recipe</span>
+        <span className="flex-1 text-sm font-semibold text-foreground truncate">{t('edit.title')}</span>
         <Button
           size="sm"
           onClick={() => saveMutation.mutate()}
           disabled={saveMutation.isPending}
         >
-          {saveMutation.isPending ? 'Saving…' : 'Save'}
+          {saveMutation.isPending ? t('common.saving') : t('common.save')}
         </Button>
       </div>
 
@@ -342,18 +352,25 @@ export function EditRecipePage() {
         <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
           {saveMutation.isError && (
             <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">
-              {(saveMutation.error as any)?.message ?? 'Save failed.'}
+              {(saveMutation.error as any)?.message ?? t('edit.saveFailed')}
             </p>
+          )}
+
+          {recipe && (
+            <LanguageSection
+              uuid={uuid!}
+              recipe={recipe}
+              declaredLang={declaredLang}
+              onDeclare={setDeclaredLang}
+            />
           )}
 
           {/* Hero image */}
           <div className="bg-white rounded-xl border border-border p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Photo</Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Optional · shown at the top of the recipe · auto-cropped to landscape
-                </p>
+                <Label>{t('edit.photo')}</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('edit.photoHint')}</p>
               </div>
               {heroSrc && (
                 <button
@@ -361,7 +378,7 @@ export function EditRecipePage() {
                   onClick={removeImage}
                   className="text-muted-foreground hover:text-destructive transition-colors text-sm inline-flex items-center gap-1"
                 >
-                  <Trash2 className="w-4 h-4" /> Remove
+                  <Trash2 className="w-4 h-4" /> {t('common.remove')}
                 </button>
               )}
             </div>
@@ -380,14 +397,14 @@ export function EditRecipePage() {
             {heroSrc ? (
               <div className="space-y-2">
                 <div className="block w-full aspect-video overflow-hidden rounded-lg border border-border">
-                  <img src={heroSrc} alt="Recipe" className="w-full h-full object-cover" />
+                  <img src={heroSrc} alt={t('edit.imageAlt')} className="w-full h-full object-cover" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button variant="outline" size="sm" onClick={() => openImagePicker(true)}>
-                    <Camera className="w-4 h-4 mr-1.5" /> Take photo
+                    <Camera className="w-4 h-4 mr-1.5" /> {t('edit.takePhoto')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => openImagePicker(false)}>
-                    <Upload className="w-4 h-4 mr-1.5" /> Choose photo
+                    <Upload className="w-4 h-4 mr-1.5" /> {t('edit.choosePhoto')}
                   </Button>
                 </div>
               </div>
@@ -396,10 +413,10 @@ export function EditRecipePage() {
                 <ImagePlus className="w-6 h-6" />
                 <div className="flex flex-wrap items-center justify-center gap-2">
                   <Button variant="outline" size="sm" onClick={() => openImagePicker(true)}>
-                    <Camera className="w-4 h-4 mr-1.5" /> Take photo
+                    <Camera className="w-4 h-4 mr-1.5" /> {t('edit.takePhoto')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => openImagePicker(false)}>
-                    <Upload className="w-4 h-4 mr-1.5" /> Choose photo
+                    <Upload className="w-4 h-4 mr-1.5" /> {t('edit.choosePhoto')}
                   </Button>
                 </div>
               </div>
@@ -411,41 +428,41 @@ export function EditRecipePage() {
           {/* Basic info */}
           <div className="bg-white rounded-xl border border-border p-5 space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="title">Title</Label>
+              <Label htmlFor="title">{t('edit.fieldTitle')}</Label>
               <Input
                 id="title"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Recipe name"
+                placeholder={t('edit.titlePlaceholder')}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="yield">Servings</Label>
+              <Label htmlFor="yield">{t('edit.servings')}</Label>
               <Input
                 id="yield"
                 value={yield_}
                 onChange={(e) => setYield(e.target.value)}
-                placeholder="e.g. 4 servings"
+                placeholder={t('edit.servingsPlaceholder')}
               />
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t('edit.description')}</Label>
               <Textarea
                 id="description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Brief description…"
+                placeholder={t('edit.descriptionPlaceholder')}
                 rows={2}
               />
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="tags">Tags</Label>
+                <Label htmlFor="tags">{t('edit.tags')}</Label>
                 <Link to="/account/tags" className="text-xs font-medium text-primary hover:underline">
-                  Manage tags →
+                  {t('edit.manageTags')}
                 </Link>
               </div>
 
@@ -472,13 +489,13 @@ export function EditRecipePage() {
                   }
                 }}
                 onBlur={() => addTag(tagInput)}
-                placeholder="Add a tag and press Enter"
+                placeholder={t('edit.tagPlaceholder')}
               />
 
               {/* Quick-select from existing tags */}
               {allTags.some((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase())) && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
-                  <span className="text-xs text-muted-foreground self-center mr-0.5">Existing:</span>
+                  <span className="text-xs text-muted-foreground self-center mr-0.5">{t('edit.existingTags')}</span>
                   {allTags
                     .filter((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase()))
                     .map((t) => (
@@ -495,18 +512,18 @@ export function EditRecipePage() {
           <div className="bg-white rounded-xl border border-border p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Ingredients</Label>
+                <Label>{t('edit.ingredients')}</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Amount and name separately · drag <GripVertical className="w-3 h-3 inline -mt-0.5" /> to reorder
+                  {tx('edit.ingredientsHint', { icon: <GripVertical className="w-3 h-3 inline -mt-0.5" /> })}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={addIngredient}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                <Plus className="w-3.5 h-3.5 mr-1" /> {t('common.add')}
               </Button>
             </div>
 
             {ingredients.length === 0 && (
-              <p className="text-sm text-muted-foreground italic">No ingredients yet.</p>
+              <p className="text-sm text-muted-foreground italic">{t('edit.noIngredients')}</p>
             )}
 
             <DndContext
@@ -525,19 +542,19 @@ export function EditRecipePage() {
                         <Input
                           value={ing.amount}
                           onChange={(e) => updateIngredient(i, 'amount', e.target.value)}
-                          placeholder="Amount (e.g. 2 cups)"
+                          placeholder={t('edit.amountPlaceholder')}
                           className="w-32 shrink-0 text-sm"
                         />
                         <Input
                           value={ing.name}
                           onChange={(e) => updateIngredient(i, 'name', e.target.value)}
-                          placeholder="Ingredient name"
+                          placeholder={t('edit.namePlaceholder')}
                           className="flex-1 text-sm"
                         />
                         <button
                           onClick={() => removeIngredient(i)}
                           className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                          aria-label="Remove ingredient"
+                          aria-label={t('edit.removeIngredient')}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -553,19 +570,18 @@ export function EditRecipePage() {
           <div className="bg-white rounded-xl border border-border p-5 space-y-3">
             <div className="flex items-center justify-between">
               <div>
-                <Label>Instructions</Label>
+                <Label>{t('edit.instructions')}</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Check which ingredients each step uses · drag{' '}
-                  <GripVertical className="w-3 h-3 inline -mt-0.5" /> to reorder
+                  {tx('edit.instructionsHint', { icon: <GripVertical className="w-3 h-3 inline -mt-0.5" /> })}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={addInstruction}>
-                <Plus className="w-3.5 h-3.5 mr-1" /> Add
+                <Plus className="w-3.5 h-3.5 mr-1" /> {t('common.add')}
               </Button>
             </div>
 
             {instructions.length === 0 && (
-              <p className="text-sm text-muted-foreground italic">No steps yet.</p>
+              <p className="text-sm text-muted-foreground italic">{t('edit.noSteps')}</p>
             )}
 
             <DndContext
@@ -588,14 +604,14 @@ export function EditRecipePage() {
                           <Textarea
                             value={step.text}
                             onChange={(e) => updateInstructionText(stepIdx, e.target.value)}
-                            placeholder="Describe this step…"
+                            placeholder={t('edit.stepPlaceholder')}
                             rows={2}
                             className="flex-1 text-sm"
                           />
                           <button
                             onClick={() => removeInstruction(stepIdx)}
                             className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-2"
-                            aria-label="Remove step"
+                            aria-label={t('edit.removeStep')}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -617,7 +633,7 @@ export function EditRecipePage() {
                                       : 'bg-muted/50 border-border text-muted-foreground hover:border-primary/30')
                                   }
                                 >
-                                  {`${ing.amount} ${ing.name}`.trim() || `Ingredient ${ingIdx + 1}`}
+                                  {`${ing.amount} ${ing.name}`.trim() || t('edit.ingredientN', { n: ingIdx + 1 })}
                                 </button>
                               )
                             })}
@@ -633,12 +649,12 @@ export function EditRecipePage() {
 
           {/* Note */}
           <div className="bg-white rounded-xl border border-border p-5 space-y-1.5">
-            <Label htmlFor="note">Note</Label>
+            <Label htmlFor="note">{t('edit.note')}</Label>
             <Textarea
               id="note"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Personal notes about this recipe…"
+              placeholder={t('edit.notePlaceholder')}
               rows={3}
             />
           </div>
@@ -647,9 +663,9 @@ export function EditRecipePage() {
           <div className="bg-white rounded-xl border border-border p-5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <Label>Sharing</Label>
+                <Label>{t('edit.sharing')}</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {isPublic ? 'Anyone with the link can view this recipe.' : 'Only you can see this recipe.'}
+                  {isPublic ? t('edit.sharingPublic') : t('edit.sharingPrivate')}
                 </p>
               </div>
               <button
@@ -672,11 +688,8 @@ export function EditRecipePage() {
             <div className="bg-white rounded-xl border border-border p-5">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <Label>Verified extraction</Label>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Mark once the recipe matches the photo. Verified recipes become ground truth for
-                    improving extraction.
-                  </p>
+                  <Label>{t('edit.verified')}</Label>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('edit.verifiedHint')}</p>
                 </div>
                 <button
                   type="button"
@@ -694,6 +707,139 @@ export function EditRecipePage() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Which language version is being edited, plus the AI translation action.
+ *
+ * - The recipe has no version in the UI language → a prominent prompt to
+ *   translate it (the response replaces the form with the translated version).
+ * - Editing a translation → offer to re-translate from the original.
+ * - The original's language is unknown (older recipes) → let the user declare
+ *   it, and still offer translation (the provider detects the source language).
+ */
+function LanguageSection({
+  uuid,
+  recipe,
+  declaredLang,
+  onDeclare,
+}: {
+  uuid: string
+  recipe: Recipe
+  declaredLang: Language | ''
+  onDeclare: (lang: Language) => void
+}) {
+  const { t, lang } = useI18n()
+  const queryClient = useQueryClient()
+  const [justTranslated, setJustTranslated] = useState(false)
+
+  const contentLang = normalizeLanguage(recipe.language)
+  const baseLang = normalizeLanguage(recipe.inLanguage)
+  const isTranslation = contentLang !== null && contentLang !== baseLang
+  const missing = recipe.translation_available === false
+  const canTranslate = contentLang !== lang
+
+  const translate = useMutation({
+    mutationFn: () => api.translateRecipe(uuid, lang),
+    onSuccess: (translated) => {
+      // Re-seeds the form (the editor's effect keys off this query) with the
+      // translated version, and refresh lists so titles update too.
+      queryClient.setQueryData(['recipe', uuid], translated)
+      queryClient.invalidateQueries({ queryKey: ['recipes'] })
+      queryClient.invalidateQueries({ queryKey: ['meal-plan'] })
+      setJustTranslated(true)
+    },
+  })
+
+  const translateButton = (label: string, variant: 'default' | 'outline') => (
+    <Button
+      size="sm"
+      variant={variant}
+      onClick={() => {
+        setJustTranslated(false)
+        translate.mutate()
+      }}
+      disabled={translate.isPending}
+    >
+      {translate.isPending ? (
+        <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+      ) : (
+        <Languages className="w-4 h-4 mr-1.5" />
+      )}
+      {translate.isPending ? t('edit.translating') : label}
+    </Button>
+  )
+
+  return (
+    <div
+      className={`rounded-xl border p-5 space-y-3 ${missing ? 'bg-amber-50 border-amber-200' : 'bg-white border-border'}`}
+    >
+      {missing ? (
+        <div>
+          <Label>{t('edit.missingTitle', { language: nativeName(lang) })}</Label>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t('edit.missingBody', {
+              original: nativeName(contentLang),
+              language: nativeName(lang),
+            })}
+          </p>
+        </div>
+      ) : (
+        <div>
+          <Label>{t('edit.language')}</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {contentLang === null
+              ? t('edit.languageUnknown')
+              : isTranslation && baseLang
+                ? t('edit.languageTranslatedFrom', {
+                    language: nativeName(contentLang),
+                    original: nativeName(baseLang),
+                  })
+                : t('edit.languageEditing', { language: nativeName(contentLang) })}
+          </p>
+        </div>
+      )}
+
+      {/* Unknown original language: let the user declare it. */}
+      {contentLang === null && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">{t('edit.languageSet')}</span>
+          <LanguageSelect
+            value={declaredLang}
+            onChange={onDeclare}
+            placeholder={t('edit.languageChoose')}
+            aria-label={t('edit.languageSet')}
+          />
+        </div>
+      )}
+
+      {(canTranslate || isTranslation) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {canTranslate &&
+            translateButton(
+              t('edit.translateTo', { language: nativeName(lang) }),
+              missing ? 'default' : 'outline',
+            )}
+          {!canTranslate &&
+            isTranslation &&
+            baseLang &&
+            translateButton(t('edit.retranslate', { original: nativeName(baseLang) }), 'outline')}
+          <span className="text-xs text-muted-foreground">{t('edit.translateDiscards')}</span>
+        </div>
+      )}
+
+      {translate.isError && (
+        <p className="text-sm text-destructive">
+          {(translate.error as Error)?.message || t('edit.translateFailed')}
+        </p>
+      )}
+      {justTranslated && !translate.isPending && (
+        <p className="text-sm text-emerald-700">
+          {t('edit.translated', { language: nativeName(lang) })}
+        </p>
+      )}
     </div>
   )
 }

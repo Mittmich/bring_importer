@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from api.access import cookbook_role, effective_role, role_at_least
 from api.auth import get_current_user, get_user_id
 from api.db import get_db_connection
+from api.i18n import request_language
 from api.models import User
 from api.routers.recipes import _list_item, _tags_for
 from api.search import match_score, recipe_haystack
@@ -303,6 +304,7 @@ async def decline_invitation(
 async def get_cookbook(
     cookbook_id: int,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Return a cookbook with its recipes. Readable by the owner or any accepted
     member; 404 otherwise. The response ``role`` lets the client gate controls."""
@@ -340,7 +342,7 @@ async def get_cookbook(
     tag_map = _tags_for(cursor, [row["uuid"] for row in rows])
     conn.close()
 
-    items = [_list_item(row, tag_map, me) for row in rows]
+    items = [_list_item(row, tag_map, me, lang) for row in rows]
     return {
         "id": cb["id"],
         "name": cb["name"],

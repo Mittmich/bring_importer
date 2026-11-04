@@ -6,12 +6,14 @@ import { api, type Cookbook } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n, type MessageKey } from '@/i18n'
 
 export function CookbooksPage() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const { t } = useI18n()
 
   const { data: cookbooks = [], isLoading } = useQuery({
     queryKey: ['cookbooks'],
@@ -61,10 +63,10 @@ export function CookbooksPage() {
     <div className="flex flex-col h-full overflow-y-auto bg-[#F8FAFC]">
       <div className="max-w-3xl mx-auto w-full p-4 md:p-6 space-y-5 pt-6 pb-10">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-foreground">Cookbooks</h1>
+          <h1 className="text-xl font-bold text-foreground">{t('cookbooks.title')}</h1>
           {!creating && (
             <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="w-4 h-4 mr-1.5" /> New
+              <Plus className="w-4 h-4 mr-1.5" /> {t('cookbooks.new')}
             </Button>
           )}
         </div>
@@ -76,10 +78,8 @@ export function CookbooksPage() {
         >
           <Share2 className="w-4 h-4 text-primary flex-shrink-0" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Share all my recipes</p>
-            <p className="text-xs text-muted-foreground">
-              A cookbook that always contains every recipe you have.
-            </p>
+            <p className="text-sm font-medium text-foreground">{t('cookbooks.shareAll')}</p>
+            <p className="text-xs text-muted-foreground">{t('cookbooks.shareAllHint')}</p>
           </div>
         </button>
 
@@ -89,10 +89,10 @@ export function CookbooksPage() {
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Cookbook name"
+              placeholder={t('cookbooks.namePlaceholder')}
             />
             <Button type="submit" disabled={create.isPending || !name.trim()}>
-              {create.isPending ? 'Creating…' : 'Create'}
+              {create.isPending ? t('common.creating') : t('common.create')}
             </Button>
             <Button
               type="button"
@@ -111,7 +111,7 @@ export function CookbooksPage() {
         {invitations.length > 0 && (
           <div className="space-y-1.5">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
-              Cookbook invitations
+              {t('cookbooks.invitations')}
             </h2>
             <div className="bg-white rounded-xl border border-border divide-y divide-border/50 overflow-hidden">
               {invitations.map((inv) => (
@@ -120,11 +120,14 @@ export function CookbooksPage() {
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground truncate">{inv.name}</p>
                     <p className="text-xs text-muted-foreground truncate">
-                      from {inv.owner_name || inv.owner_email} · {inv.role}
+                      {t('cookbooks.from', {
+                        name: inv.owner_name || inv.owner_email,
+                        role: t(`role.${inv.role}` as MessageKey),
+                      })}
                     </p>
                   </div>
                   <Button size="sm" onClick={() => accept.mutate(inv.cookbook_id)} disabled={accept.isPending}>
-                    <Check className="w-4 h-4 mr-1" /> Accept
+                    <Check className="w-4 h-4 mr-1" /> {t('common.accept')}
                   </Button>
                   <Button
                     size="sm"
@@ -141,14 +144,12 @@ export function CookbooksPage() {
         )}
 
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
         ) : cookbooks.length === 0 ? (
           <div className="text-center py-14 space-y-1">
             <BookHeart className="w-8 h-8 text-primary/30 mx-auto mb-2" />
-            <p className="text-base font-semibold text-foreground">No cookbooks yet</p>
-            <p className="text-sm text-muted-foreground">
-              Group recipes into cookbooks — create one, then add recipes from any recipe's page.
-            </p>
+            <p className="text-base font-semibold text-foreground">{t('cookbooks.emptyTitle')}</p>
+            <p className="text-sm text-muted-foreground">{t('cookbooks.emptyBody')}</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -164,6 +165,7 @@ export function CookbooksPage() {
 
 function CookbookCard({ cookbook }: { cookbook: Cookbook }) {
   const cover = useRecipeImage(cookbook.cover_image_url)
+  const { t, tp } = useI18n()
   return (
     <NavLink
       to={`/cookbooks/${cookbook.id}`}
@@ -187,12 +189,11 @@ function CookbookCard({ cookbook }: { cookbook: Cookbook }) {
           {cookbook.name}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5 tabular-nums flex items-center gap-1.5">
-          <span>
-            {cookbook.recipe_count} {cookbook.recipe_count === 1 ? 'recipe' : 'recipes'}
-          </span>
+          <span>{tp('common.recipes', cookbook.recipe_count)}</span>
           {cookbook.shared && (
             <span className="inline-flex items-center gap-1 text-primary">
-              <Users className="w-3 h-3" /> Shared · {cookbook.role}
+              <Users className="w-3 h-3" />{' '}
+              {t('cookbooks.shared', { role: t(`role.${cookbook.role ?? 'viewer'}` as MessageKey) })}
             </span>
           )}
         </p>

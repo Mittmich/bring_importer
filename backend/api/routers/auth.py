@@ -1,6 +1,7 @@
 """``POST /token`` — login; ``POST /account/password`` — self-service password change."""
 
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -12,10 +13,12 @@ from api.auth import (
     get_current_user,
     get_profile,
     set_display_name,
+    set_language,
     update_password,
     verify_password,
 )
 from api.config import ACCESS_TOKEN_EXPIRE_MINUTES
+from api.i18n import SUPPORTED_LANGUAGES
 from api.models import Token, UserInDB
 
 MAX_DISPLAY_NAME_LENGTH = 60
@@ -66,13 +69,20 @@ async def change_password(
 
 
 class ProfileBody(BaseModel):
-    display_name: str
+    """Partial profile update — omitted fields are left unchanged."""
+
+    display_name: Optional[str] = None
+    language: Optional[str] = None
 
 
 @router.get("/account/profile", include_in_schema=False)
 async def read_profile(current_user: UserInDB = Depends(get_current_user)):  # noqa: B008
-    """Return the current user's ``{email, display_name}``."""
-    return get_profile(current_user.email) or {"email": current_user.email, "display_name": ""}
+    """Return the current user's ``{email, display_name, language}``."""
+    return get_profile(current_user.email) or {
+        "email": current_user.email,
+        "display_name": "",
+        "language": None,
+    }
 
 
 @router.put("/account/profile", include_in_schema=False)
@@ -80,12 +90,17 @@ async def update_profile(
     body: ProfileBody,
     current_user: UserInDB = Depends(get_current_user),  # noqa: B008
 ):
-    """Set (or clear) the current user's display name."""
-    name = " ".join(body.display_name.split())
-    if len(name) > MAX_DISPLAY_NAME_LENGTH:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Display name must be {MAX_DISPLAY_NAME_LENGTH} characters or fewer",
-        )
-    set_display_name(current_user.email, name)
-    return {"email": current_user.email, "display_name": name}
+    """Set (or clear) the current user's display name and/or preferred language."""
+    if body.display_name is not None:
+        name = " ".join(body.display_name.split())
+        if len(name) > MAX_DISPLAY_NAME_LENGTH:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Display name must be {MAX_DISPLAY_NAME_LENGTH} characters or fewer",
+            )
+        set_display_name(current_user.email, name)
+    if body.language is not None:
+        if body.language not in SUPPORTED_LANGUAGES:
+            raise HTTPException(status_code=422, detail="Unsupported language")
+        set_language(current_user.email, body.language)
+    return get_profile(current_user.email)

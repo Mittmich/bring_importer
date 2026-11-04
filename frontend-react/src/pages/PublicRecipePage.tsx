@@ -9,11 +9,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
 import { parseServings, servingsUnit, formatIngredient } from '@/lib/scaling'
+import { useI18n } from '@/i18n'
 
 export function PublicRecipePage() {
   const { uuid } = useParams<{ uuid: string }>()
   const navigate = useNavigate()
   const loggedIn = isAuthenticated()
+  const { t } = useI18n()
 
   const { data: recipe, isLoading, isError } = useQuery({
     queryKey: ['public-recipe', uuid],
@@ -33,7 +35,7 @@ export function PublicRecipePage() {
   if (isLoading) {
     return (
       <div className="h-[100svh] bg-[#F8FAFC] flex items-center justify-center text-sm text-muted-foreground">
-        Loading…
+        {t('common.loading')}
       </div>
     )
   }
@@ -41,11 +43,11 @@ export function PublicRecipePage() {
   if (isError || !recipe) {
     return (
       <div className="h-[100svh] bg-[#F8FAFC] flex flex-col items-center justify-center gap-3">
-        <p className="text-base font-medium text-foreground">Recipe not found</p>
-        <p className="text-sm text-muted-foreground">This recipe is private or doesn't exist.</p>
+        <p className="text-base font-medium text-foreground">{t('public.notFound')}</p>
+        <p className="text-sm text-muted-foreground">{t('public.notFoundBody')}</p>
         {loggedIn && (
           <Button variant="outline" size="sm" onClick={() => navigate('/recipes')}>
-            Go to my recipes
+            {t('public.goToMine')}
           </Button>
         )}
       </div>
@@ -75,9 +77,10 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
   const navigate = useNavigate()
   const [ingredientsOpen, setIngredientsOpen] = useState(false)
   const heroSrc = useRecipeImage(recipe.image_url)
+  const { t } = useI18n()
 
   const baseServings = parseServings(recipe.recipeYield)
-  const unit = servingsUnit(recipe.recipeYield)
+  const unit = servingsUnit(recipe.recipeYield, t('recipe.servings'))
   const [servings, setServings] = useState(baseServings)
   const scale = servings / baseServings
 
@@ -85,12 +88,12 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
     <div className="flex flex-col h-[100svh] bg-[#F8FAFC]">
       {/* Header */}
       <div className="bg-white border-b border-border px-4 py-3 flex items-center justify-between gap-2 max-w-2xl mx-auto w-full">
-        <span className="text-sm font-semibold text-primary">Recipe</span>
+        <span className="text-sm font-semibold text-primary">{t('common.recipe')}</span>
         <div className="flex items-center gap-2">
           <KeepAwakeButton />
           {isOwner ? (
             <Button size="sm" variant="outline" onClick={() => navigate(`/recipes/${uuid}`)}>
-              Open in my recipes
+              {t('public.openInMine')}
             </Button>
           ) : loggedIn ? (
             <Button
@@ -99,12 +102,16 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
               disabled={cloneMutation.isPending || cloneMutation.isSuccess}
             >
               <BookmarkPlus className="w-3.5 h-3.5 mr-1.5" />
-              {cloneMutation.isPending ? 'Saving…' : cloneMutation.isSuccess ? 'Saved!' : 'Save to my recipes'}
+              {cloneMutation.isPending
+                ? t('common.saving')
+                : cloneMutation.isSuccess
+                  ? t('public.savedBang')
+                  : t('public.saveToMine')}
             </Button>
           ) : (
             <Button size="sm" onClick={() => navigate('/login')}>
               <LogIn className="w-3.5 h-3.5 mr-1.5" />
-              Log in to save
+              {t('public.loginToSave')}
             </Button>
           )}
         </div>
@@ -129,13 +136,13 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
                   <button
                     onClick={() => setServings((s) => Math.max(1, s - 1))}
                     className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-lg leading-none"
-                    aria-label="Fewer servings"
+                    aria-label={t('recipe.fewerServings')}
                   >−</button>
                   <span className="px-1">🍽 {servings} {unit}</span>
                   <button
                     onClick={() => setServings((s) => s + 1)}
                     className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-lg leading-none"
-                    aria-label="More servings"
+                    aria-label={t('recipe.moreServings')}
                   >+</button>
                 </div>
               )}
@@ -170,7 +177,7 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
                   aria-expanded={ingredientsOpen}
                 >
                   <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Ingredients
+                    {t('recipe.ingredients')}
                   </h2>
                   <ChevronDown
                     className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${ingredientsOpen ? 'rotate-180' : ''}`}
@@ -178,7 +185,7 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
                 </button>
                 {/* Desktop: always visible, non-interactive */}
                 <h2 className="hidden md:block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Ingredients
+                  {t('recipe.ingredients')}
                 </h2>
               </div>
               <div className={`${ingredientsOpen ? '' : 'hidden'} md:block`}>
@@ -200,7 +207,7 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
             <div className="bg-white rounded-xl border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Instructions
+                  {t('recipe.instructions')}
                 </h2>
               </div>
               <PublicInstructions steps={recipe.instructions} ingredients={recipe.ingredients} scale={scale} />
@@ -210,19 +217,23 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
           {/* Save CTA at bottom */}
           {!isOwner && (
             <div className="bg-white rounded-xl border border-border p-5 flex flex-col items-center gap-3 text-center">
-              <p className="text-sm text-muted-foreground">Like this recipe? Save it to your collection.</p>
+              <p className="text-sm text-muted-foreground">{t('public.likeIt')}</p>
               {loggedIn ? (
                 <Button
                   onClick={() => cloneMutation.mutate()}
                   disabled={cloneMutation.isPending || cloneMutation.isSuccess}
                 >
                   <BookmarkPlus className="w-4 h-4 mr-1.5" />
-                  {cloneMutation.isPending ? 'Saving…' : cloneMutation.isSuccess ? 'Saved!' : 'Save to my recipes'}
+                  {cloneMutation.isPending
+                ? t('common.saving')
+                : cloneMutation.isSuccess
+                  ? t('public.savedBang')
+                  : t('public.saveToMine')}
                 </Button>
               ) : (
                 <Button onClick={() => navigate('/login')}>
                   <LogIn className="w-4 h-4 mr-1.5" />
-                  Log in to save
+                  {t('public.loginToSave')}
                 </Button>
               )}
             </div>

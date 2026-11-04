@@ -3,9 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { RecipeListPanel } from '@/components/RecipeListPanel'
 import { RecipeDetail } from '@/components/RecipeDetail'
+import { useI18n } from '@/i18n'
 
 export function RecipesPage() {
   const { uuid } = useParams<{ uuid?: string }>()
+  const { t } = useI18n()
 
   const { data: recipe, isLoading, error } = useQuery({
     queryKey: ['recipe', uuid],
@@ -24,15 +26,15 @@ export function RecipesPage() {
       <div className={`flex-1 overflow-hidden ${uuid ? 'flex' : 'hidden md:flex'}`}>
         {!uuid ? (
           <div className="hidden md:flex flex-1 items-center justify-center text-sm text-muted-foreground bg-[#F8FAFC]">
-            Select a recipe to view it
+            {t('list.selectRecipe')}
           </div>
         ) : isLoading ? (
           <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground bg-[#F8FAFC]">
-            Loading…
+            {t('common.loading')}
           </div>
         ) : error ? (
           <div className="flex-1 flex items-center justify-center text-sm text-destructive bg-[#F8FAFC]">
-            Could not load recipe.
+            {t('list.recipeLoadFailed')}
           </div>
         ) : recipe ? (
           <div className="flex-1 overflow-hidden">

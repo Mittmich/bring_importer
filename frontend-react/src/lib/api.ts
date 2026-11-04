@@ -1,4 +1,5 @@
 import { config } from './config'
+import { getLanguage } from '@/i18n/current'
 
 export class ApiError extends Error {
   status: number
@@ -18,6 +19,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      // The backend localizes recipe content (titles, ingredients, steps) to this.
+      'Accept-Language': getLanguage(),
       ...authHeaders(),
       ...init?.headers,
     },
@@ -58,6 +61,8 @@ export interface RecipeListItem {
   owner_email?: string
   /** Display name of the owner (falls back to email server-side). */
   owner_name?: string
+  /** Language of `title` (null = unknown legacy recipe). */
+  language?: string | null
 }
 
 export interface TagInfo {
@@ -116,6 +121,8 @@ export interface CookbookInvitation {
 export interface Profile {
   email: string
   display_name: string
+  /** Preferred UI/recipe language code, or null if never chosen. */
+  language: string | null
 }
 
 /** Friendly name for a person: their display name if set, else their email. */
@@ -207,6 +214,10 @@ export interface RecipeUpdate {
   is_public?: boolean
   tags?: string[]
   training_verified?: boolean
+  /** Which language variant the content fields belong to (the loaded `language`). */
+  language?: string
+  /** Declare the language the base recipe is written in. */
+  inLanguage?: string
   /** Optimistic concurrency: the updated_at the client loaded (409 if stale). */
   base_updated_at?: string
 }
@@ -235,6 +246,16 @@ export interface Recipe {
   owner_name?: string
   /** Version for optimistic-concurrency checks on save. */
   updated_at?: string
+  /** Language of the base (original) content; null/absent = unknown. */
+  inLanguage?: string | null
+  /** Language of the content in this payload; null = unknown legacy base. */
+  language?: string | null
+  /** The language that was requested (the UI language). */
+  requested_language?: string | null
+  /** Every language this recipe has content in. */
+  available_languages?: string[]
+  /** False when the recipe is known to have no version in the requested language. */
+  translation_available?: boolean
 }
 
 export const api = {
@@ -298,10 +319,19 @@ export const api = {
     return request<Profile>('/account/profile')
   },
 
-  updateProfile(displayName: string) {
+  /** Partial profile update — omitted fields are left unchanged. */
+  updateProfile(body: { display_name?: string; language?: string }) {
     return request<Profile>('/account/profile', {
       method: 'PUT',
-      body: JSON.stringify({ display_name: displayName }),
+      body: JSON.stringify(body),
+    })
+  },
+
+  /** LLM-translate a recipe into `language`; returns the recipe in that language. */
+  translateRecipe(uuid: string, language: string) {
+    return request<Recipe>(`/recipes/${uuid}/translate`, {
+      method: 'POST',
+      body: JSON.stringify({ language }),
     })
   },
 
@@ -317,8 +347,10 @@ export const api = {
     return request<void>(`/recipes/${uuid}/image`, { method: 'DELETE' })
   },
 
-  parsePhoto(imageBase64: string) {
+  /** Extract a recipe from a photo, written in `language` (default: UI language). */
+  parsePhoto(imageBase64: string, language?: string) {
     const form = new URLSearchParams({ image: imageBase64 })
+    if (language) form.set('language', language)
     return request<{ uuid: string; url: string }>('/recipes/parse', {
       method: 'POST',
       body: form,
@@ -326,10 +358,11 @@ export const api = {
     })
   },
 
-  importUrl(url: string, note?: string) {
+  /** Import a recipe page, translated into `language` (default: UI language). */
+  importUrl(url: string, note?: string, language?: string) {
     return request<{ uuid: string; url: string }>('/recipes/import-url', {
       method: 'POST',
-      body: JSON.stringify({ url, note }),
+      body: JSON.stringify({ url, note, language }),
     })
   },
 

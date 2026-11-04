@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookHeart, ChevronDown, ExternalLink, Pencil, Share2, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, BookHeart, ChevronDown, ExternalLink, Languages, Pencil, Share2, Trash2, UserPlus } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { AddToCookbookModal } from '@/components/AddToCookbookModal'
@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { TagChip } from '@/components/ui/tag-chip'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
 import { parseServings, servingsUnit, formatIngredient } from '@/lib/scaling'
+import { nativeName, useI18n } from '@/i18n'
 
 interface Props {
   uuid: string
@@ -25,6 +26,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const [copied, setCopied] = useState(false)
   const [cookbookOpen, setCookbookOpen] = useState(false)
   const [shareOpen, setShareOpen] = useState(false)
+  const { t, lang } = useI18n()
 
   // The viewer owns this recipe, or can edit it via a shared cookbook.
   const isOwner = recipe.owned ?? false
@@ -39,7 +41,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
   const heroSrc = useRecipeImage(recipe.image_url)
 
   const baseServings = parseServings(recipe.recipeYield)
-  const unit = servingsUnit(recipe.recipeYield)
+  const unit = servingsUnit(recipe.recipeYield, t('recipe.servings'))
   const [servings, setServings] = useState(baseServings)
   const scale = servings / baseServings
 
@@ -51,7 +53,8 @@ export function RecipeDetail({ uuid, recipe }: Props) {
     },
   })
 
-  const bringUrl = `${window.location.origin}/api/recipes/${uuid}.html`
+  // Bring fetches this server-side, so pass the language explicitly.
+  const bringUrl = `${window.location.origin}/api/recipes/${uuid}.html?lang=${lang}`
   const bringImportUrl =
     `https://api.getbring.com/rest/bringrecipes/deeplink` +
     `?url=${encodeURIComponent(bringUrl)}` +
@@ -65,15 +68,15 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           onClick={() => navigate(-1)}
           className="flex items-center gap-1.5 text-base font-medium text-primary"
         >
-          <ArrowLeft className="w-5 h-5" /> Recipes
+          <ArrowLeft className="w-5 h-5" /> {t('nav.recipes')}
         </button>
         <span className="flex-1" />
         <KeepAwakeButton />
-        <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)} aria-label="Add to cookbook">
+        <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)} aria-label={t('recipe.addToCookbook')}>
           <BookHeart className="w-4 h-4" />
         </Button>
         {isOwner && (
-          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} aria-label="Share with a friend">
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} aria-label={t('recipe.shareWithFriend')}>
             <UserPlus className="w-4 h-4" />
           </Button>
         )}
@@ -97,6 +100,29 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           </div>
         )}
 
+        {/* Not available in the UI language: say so, and offer translation to editors. */}
+        {recipe.translation_available === false && (
+          <div className="flex items-center gap-3 px-6 py-3 bg-amber-50 border-b border-amber-200 text-sm text-amber-900">
+            <Languages className="w-4 h-4 flex-shrink-0" />
+            <span className="flex-1">
+              {t('recipe.notInLanguage', {
+                language: nativeName(lang),
+                original: nativeName(recipe.language),
+              })}
+            </span>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="bg-white"
+                onClick={() => navigate(`/recipes/${uuid}/edit`)}
+              >
+                {t('recipe.translateInEditor')}
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Hero card */}
         <div className="bg-white border-b border-border px-6 py-6">
           <h1 className="text-xl font-bold text-foreground mb-3">{recipe.name}</h1>
@@ -107,13 +133,13 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 <button
                   onClick={() => setServings((s) => Math.max(1, s - 1))}
                   className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-lg leading-none"
-                  aria-label="Fewer servings"
+                  aria-label={t('recipe.fewerServings')}
                 >−</button>
                 <span className="px-1">🍽 {servings} {unit}</span>
                 <button
                   onClick={() => setServings((s) => s + 1)}
                   className="w-7 h-7 flex items-center justify-center rounded hover:bg-muted transition-colors text-lg leading-none"
-                  aria-label="More servings"
+                  aria-label={t('recipe.moreServings')}
                 >+</button>
               </div>
             )}
@@ -133,7 +159,8 @@ export function RecipeDetail({ uuid, recipe }: Props) {
             {isOwner === false && (recipe.owner_name || recipe.owner_email) && (
               <Badge variant="muted">
                 <span className="flex items-center gap-1 text-primary">
-                  <UserPlus className="w-3 h-3" /> Shared by {recipe.owner_name || recipe.owner_email}
+                  <UserPlus className="w-3 h-3" />{' '}
+                  {t('recipe.sharedBy', { name: recipe.owner_name || recipe.owner_email || '' })}
                 </span>
               </Badge>
             )}
@@ -150,11 +177,11 @@ export function RecipeDetail({ uuid, recipe }: Props) {
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 py-2 transition-colors"
             >
-              Add to Bring
+              {t('recipe.addToBring')}
             </a>
             <KeepAwakeButton className="hidden md:flex" />
             <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)}>
-              <BookHeart className="w-3.5 h-3.5 mr-1" /> Cookbook
+              <BookHeart className="w-3.5 h-3.5 mr-1" /> {t('recipe.cookbook')}
             </Button>
             {isOwner && (
               <Button
@@ -163,7 +190,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 onClick={() => setShareOpen(true)}
                 className="hidden md:flex"
               >
-                <UserPlus className="w-3.5 h-3.5 mr-1" /> Share
+                <UserPlus className="w-3.5 h-3.5 mr-1" /> {t('common.share')}
               </Button>
             )}
             {canEdit && (
@@ -173,13 +200,13 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 onClick={() => navigate(`/recipes/${uuid}/edit`)}
                 className="hidden md:flex"
               >
-                <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                <Pencil className="w-3.5 h-3.5 mr-1" /> {t('common.edit')}
               </Button>
             )}
             {recipe.is_public && (
               <Button variant="outline" size="sm" onClick={handleShare} className="hidden md:flex">
                 <Share2 className="w-3.5 h-3.5 mr-1" />
-                {copied ? 'Copied!' : 'Link'}
+                {copied ? t('recipe.copied') : t('recipe.link')}
               </Button>
             )}
             {isOwner &&
@@ -191,10 +218,10 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                     onClick={() => deleteMutation.mutate()}
                     disabled={deleteMutation.isPending}
                   >
-                    {deleteMutation.isPending ? 'Deleting…' : 'Confirm delete'}
+                    {deleteMutation.isPending ? t('common.deleting') : t('recipe.confirmDelete')}
                   </Button>
                   <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
-                    Cancel
+                    {t('common.cancel')}
                   </Button>
                 </>
               ) : (
@@ -230,7 +257,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                   aria-expanded={ingredientsOpen}
                 >
                   <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Ingredients
+                    {t('recipe.ingredients')}
                   </h2>
                   <ChevronDown
                     className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${ingredientsOpen ? 'rotate-180' : ''}`}
@@ -238,7 +265,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 </button>
                 {/* Desktop: always visible, non-interactive */}
                 <h2 className="hidden md:block text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Ingredients
+                  {t('recipe.ingredients')}
                 </h2>
               </div>
               <div className={`${ingredientsOpen ? '' : 'hidden'} md:block`}>
@@ -262,7 +289,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
             <div className="bg-white rounded-lg border border-border overflow-hidden">
               <div className="px-4 py-3 border-b border-border">
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Instructions
+                  {t('recipe.instructions')}
                 </h2>
               </div>
               <StructuredInstructions
@@ -277,7 +304,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           {recipe.note && (
             <div className="bg-white rounded-lg border border-border p-4">
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                Note
+                {t('recipe.note')}
               </h2>
               <p className="text-sm text-foreground">{recipe.note}</p>
             </div>
@@ -293,10 +320,10 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                   onClick={() => deleteMutation.mutate()}
                   disabled={deleteMutation.isPending}
                 >
-                  {deleteMutation.isPending ? 'Deleting…' : 'Confirm delete'}
+                  {deleteMutation.isPending ? t('common.deleting') : t('recipe.confirmDelete')}
                 </Button>
                 <Button variant="outline" onClick={() => setConfirmDelete(false)}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
               </div>
             ) : (
@@ -305,7 +332,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 className="w-full text-muted-foreground"
                 onClick={() => setConfirmDelete(true)}
               >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete recipe
+                <Trash2 className="w-4 h-4 mr-2" /> {t('recipe.deleteRecipe')}
               </Button>
             )}
           </div>

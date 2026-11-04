@@ -5,6 +5,7 @@ import { LogOut, UserPlus, X } from 'lucide-react'
 import { api, personName, type CookbookRole } from '@/lib/api'
 import { getUserEmail } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
+import { useI18n, type MessageKey } from '@/i18n'
 
 const ROLES: Array<'viewer' | 'editor' | 'manager'> = ['viewer', 'editor', 'manager']
 
@@ -22,6 +23,8 @@ export function CookbookMembersSection({
   const [inviteId, setInviteId] = useState<number | ''>('')
   const [inviteRole, setInviteRole] = useState<'viewer' | 'editor' | 'manager'>('viewer')
   const [error, setError] = useState<string | null>(null)
+  const { t } = useI18n()
+  const roleName = (r: string) => t(`role.${r}` as MessageKey)
 
   const { data } = useQuery({
     queryKey: ['cookbookMembers', cookbookId],
@@ -76,21 +79,21 @@ export function CookbookMembersSection({
   return (
     <div className="space-y-1.5">
       <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
-        Shared with
+        {t('cookbook.sharedWith')}
       </h2>
       <div className="bg-white rounded-xl border border-border divide-y divide-border/50 overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3">
           <span className="text-sm text-foreground truncate flex-1">
             {personName(data.owner.display_name, data.owner.email)}
           </span>
-          <span className="text-xs text-muted-foreground">Owner</span>
+          <span className="text-xs text-muted-foreground">{t('cookbook.owner')}</span>
         </div>
         {data.members.map((m) => (
           <div key={m.user_id} className="flex items-center gap-2 px-4 py-3">
             <span className="text-sm text-foreground truncate flex-1">
               {personName(m.display_name, m.email)}
               {m.status === 'pending' && (
-                <span className="text-xs text-muted-foreground"> · pending</span>
+                <span className="text-xs text-muted-foreground">{t('cookbook.pendingSuffix')}</span>
               )}
             </span>
             {canManage ? (
@@ -102,20 +105,20 @@ export function CookbookMembersSection({
                 >
                   {ROLES.map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {roleName(r)}
                     </option>
                   ))}
                 </select>
                 <button
                   onClick={() => remove.mutate(m.user_id)}
                   className="text-muted-foreground hover:text-destructive"
-                  aria-label="Remove member"
+                  aria-label={t('cookbook.removeMember')}
                 >
                   <X className="w-4 h-4" />
                 </button>
               </>
             ) : (
-              <span className="text-xs text-muted-foreground">{m.role}</span>
+              <span className="text-xs text-muted-foreground">{roleName(m.role)}</span>
             )}
           </div>
         ))}
@@ -123,10 +126,10 @@ export function CookbookMembersSection({
 
       {canManage && (
         <div className="bg-white rounded-xl border border-border p-4 space-y-2 mt-2">
-          <p className="text-sm font-medium text-foreground">Invite a friend</p>
+          <p className="text-sm font-medium text-foreground">{t('cookbook.inviteFriend')}</p>
           {invitable.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              No friends to invite. Add friends under Account → Friends first.
+              {t('cookbook.noFriendsToInvite')}
             </p>
           ) : (
             <div className="flex gap-2">
@@ -135,7 +138,7 @@ export function CookbookMembersSection({
                 onChange={(e) => setInviteId(e.target.value ? Number(e.target.value) : '')}
                 className="flex-1 text-sm bg-muted/50 rounded-md border border-border px-2 py-2"
               >
-                <option value="">Choose a friend…</option>
+                <option value="">{t('cookbook.chooseFriend')}</option>
                 {invitable.map((f) => (
                   <option key={f.user_id} value={f.user_id}>
                     {personName(f.display_name, f.email)}
@@ -149,7 +152,7 @@ export function CookbookMembersSection({
               >
                 {ROLES.map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {roleName(r)}
                   </option>
                 ))}
               </select>
@@ -169,7 +172,7 @@ export function CookbookMembersSection({
           onClick={() => leave.mutate(myMembership.user_id)}
           disabled={leave.isPending}
         >
-          <LogOut className="w-4 h-4 mr-1.5" /> Leave this cookbook
+          <LogOut className="w-4 h-4 mr-1.5" /> {t('cookbook.leave')}
         </Button>
       )}
     </div>

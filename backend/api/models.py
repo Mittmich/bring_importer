@@ -49,6 +49,8 @@ class Recipe(BaseModel):
     recipeYield: str = "4 servings"
     datePublished: Optional[str] = None
     description: Optional[str] = None
+    # Language code of the text content (see api/i18n.py); None = unknown.
+    inLanguage: Optional[str] = None
 
 
 class RecipeUpdate(BaseModel):
@@ -63,9 +65,20 @@ class RecipeUpdate(BaseModel):
     is_public: Optional[bool] = None
     tags: Optional[List[str]] = None
     training_verified: Optional[bool] = None
+    # Which language variant the content fields belong to. A code with a stored
+    # translation edits that translation; anything else edits the base content.
+    language: Optional[str] = None
+    # Declare the language of the base content (e.g. for legacy recipes).
+    inLanguage: Optional[str] = None
     # Optimistic concurrency: the ``updated_at`` the client loaded. If it no
     # longer matches the stored value, someone else edited first → 409.
     base_updated_at: Optional[str] = None
+
+
+class TranslateRequest(BaseModel):
+    """Body for ``POST /recipes/{uuid}/translate``."""
+
+    language: str
 
 
 class Tag(BaseModel):

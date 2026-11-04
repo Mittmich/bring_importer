@@ -14,8 +14,7 @@ import {
 import { api, type MealPlanEntry, type EntrySyncState } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+import { useI18n } from '@/i18n'
 
 function startOfWeek(d: Date): Date {
   const date = new Date(d)
@@ -40,6 +39,7 @@ export function WeeklyPlanPage() {
   const queryClient = useQueryClient()
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [pickerDate, setPickerDate] = useState<string | null>(null)
+  const { t, lang } = useI18n()
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const startISO = toISO(weekStart)
@@ -101,27 +101,27 @@ export function WeeklyPlanPage() {
     onSuccess: invalidate,
   })
 
-  const rangeLabel = `${weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – ${addDays(weekStart, 6).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+  const rangeLabel = `${weekStart.toLocaleDateString(lang, { month: 'short', day: 'numeric' })} – ${addDays(weekStart, 6).toLocaleDateString(lang, { month: 'short', day: 'numeric' })}`
 
   return (
     <div className="flex flex-col h-full bg-[#F8FAFC]">
       {/* Header */}
       <div className="bg-white border-b border-border px-4 py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h1 className="text-base font-semibold text-foreground">Weekly Plan</h1>
+          <h1 className="text-base font-semibold text-foreground">{t('plan.title')}</h1>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="sm" onClick={() => setWeekStart((w) => addDays(w, -7))} aria-label="Previous week">
+          <Button variant="ghost" size="sm" onClick={() => setWeekStart((w) => addDays(w, -7))} aria-label={t('plan.prevWeek')}>
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <span className="text-sm font-medium text-muted-foreground min-w-[120px] text-center tabular-nums">
             {rangeLabel}
           </span>
-          <Button variant="ghost" size="sm" onClick={() => setWeekStart((w) => addDays(w, 7))} aria-label="Next week">
+          <Button variant="ghost" size="sm" onClick={() => setWeekStart((w) => addDays(w, 7))} aria-label={t('plan.nextWeek')}>
             <ChevronRight className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => setWeekStart(startOfWeek(new Date()))}>
-            Today
+            {t('plan.today')}
           </Button>
         </div>
       </div>
@@ -143,7 +143,7 @@ export function WeeklyPlanPage() {
       {/* Week grid */}
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-          {days.map((day, i) => {
+          {days.map((day) => {
             const iso = toISO(day)
             const dayEntries = entriesByDate[iso] ?? []
             const isToday = iso === todayISO
@@ -154,7 +154,7 @@ export function WeeklyPlanPage() {
               >
                 <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
                   <span className={`text-xs font-semibold uppercase tracking-wider ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
-                    {DAY_LABELS[i]} {day.getDate()}
+                    {day.toLocaleDateString(lang, { weekday: 'short' })} {day.getDate()}
                   </span>
                 </div>
                 <div className="flex-1 p-2 space-y-1.5">
@@ -168,7 +168,7 @@ export function WeeklyPlanPage() {
                       <button
                         onClick={() => deleteMutation.mutate(entry.id)}
                         className="text-muted-foreground hover:text-destructive flex-shrink-0"
-                        aria-label={`Remove ${entry.recipe_title}`}
+                        aria-label={t('plan.removeEntry', { title: entry.recipe_title })}
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -178,7 +178,7 @@ export function WeeklyPlanPage() {
                     onClick={() => setPickerDate(iso)}
                     className="w-full flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium text-muted-foreground hover:text-primary hover:bg-muted/50 transition-colors"
                   >
-                    <Plus className="w-3.5 h-3.5" /> Add
+                    <Plus className="w-3.5 h-3.5" /> {t('common.add')}
                   </button>
                 </div>
               </div>
@@ -203,14 +203,15 @@ export function WeeklyPlanPage() {
 
 // Small per-meal sync indicator: amber when it needs a (re)sync, green when synced.
 function SyncDot({ state }: { state?: EntrySyncState }) {
+  const { t } = useI18n()
   const color =
     state === 'synced' ? 'bg-green-500' : state === 'missing' ? 'bg-amber-500' : 'bg-muted-foreground/40'
   const title =
     state === 'synced'
-      ? 'Synced to calendar'
+      ? t('plan.synced')
       : state === 'missing'
-        ? 'Was deleted in Google — Sync now to recreate'
-        : 'Not synced yet'
+        ? t('plan.missing')
+        : t('plan.notSynced')
   return <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`} title={title} />
 }
 
@@ -223,10 +224,11 @@ function ShoppingListButton({
   endISO: string
   disabled: boolean
 }) {
+  const { t, lang } = useI18n()
   const mutation = useMutation({
     mutationFn: () => api.buildShoppingList(startISO, endISO),
     onSuccess: (data) => {
-      const listUrl = `${window.location.origin}/api/meal-plan/shopping-list/${data.token}.html`
+      const listUrl = `${window.location.origin}/api/meal-plan/shopping-list/${data.token}.html?lang=${lang}`
       const bringUrl = `https://api.getbring.com/rest/bringrecipes/deeplink?url=${encodeURIComponent(listUrl)}&source=web`
       window.location.href = bringUrl
     },
@@ -235,7 +237,7 @@ function ShoppingListButton({
   return (
     <Button size="sm" onClick={() => mutation.mutate()} disabled={disabled || mutation.isPending}>
       <ShoppingCart className="w-4 h-4 mr-1.5" />
-      {mutation.isPending ? 'Building…' : 'Shopping list → Bring'}
+      {mutation.isPending ? t('plan.building') : t('plan.shoppingList')}
     </Button>
   )
 }
@@ -258,6 +260,7 @@ function GoogleSyncControls({
   needsReconnect: boolean
 }) {
   const queryClient = useQueryClient()
+  const { t } = useI18n()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [connecting, setConnecting] = useState(false)
 
@@ -283,11 +286,13 @@ function GoogleSyncControls({
       <>
         <Button variant="outline" size="sm" onClick={connect} disabled={connecting}>
           <CalendarPlus className="w-4 h-4 mr-1.5" />
-          {connecting ? 'Connecting…' : 'Connect calendar'}
+          {connecting ? t('plan.connecting') : t('plan.connect')}
         </Button>
         {connectError && (
           <span className="text-xs text-destructive">
-            Couldn&apos;t connect{connectError !== 'unknown' ? ` (${connectError})` : ''}. Try again.
+            {t('plan.connectFailed', {
+              reason: connectError !== 'unknown' ? ` (${connectError})` : '',
+            })}
           </span>
         )}
       </>
@@ -299,10 +304,10 @@ function GoogleSyncControls({
       <>
         <Button variant="outline" size="sm" onClick={connect} disabled={connecting}>
           <CalendarPlus className="w-4 h-4 mr-1.5" />
-          {connecting ? 'Connecting…' : 'Reconnect calendar'}
+          {connecting ? t('plan.connecting') : t('plan.reconnect')}
         </Button>
         <span className="text-xs text-destructive">
-          Google access expired. Reconnect to keep syncing.
+          {t('plan.expired')}
         </span>
       </>
     )
@@ -319,20 +324,16 @@ function GoogleSyncControls({
         disabled={entryCount === 0 || syncMutation.isPending}
       >
         <RefreshCw className={`w-4 h-4 mr-1.5 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-        {syncMutation.isPending ? 'Syncing…' : 'Sync now'}
+        {syncMutation.isPending ? t('plan.syncing') : t('plan.syncNow')}
       </Button>
       <span className="text-xs text-muted-foreground">
-        {syncMutation.isSuccess && pending === 0
-          ? 'All synced'
-          : pending > 0
-            ? `${pending} not synced`
-            : 'All synced'}
+        {pending > 0 ? t('plan.pending', { count: pending }) : t('plan.allSynced')}
       </span>
       <Button
         variant="ghost"
         size="sm"
         onClick={() => setSettingsOpen(true)}
-        aria-label="Calendar settings"
+        aria-label={t('plan.calendarSettings')}
       >
         <Settings2 className="w-4 h-4" />
       </Button>
@@ -356,6 +357,7 @@ function CalendarSettingsDialog({
   calendarId: string | null
 }) {
   const queryClient = useQueryClient()
+  const { t } = useI18n()
   const { data: calendars = [], isLoading } = useQuery({
     queryKey: ['google-calendars'],
     queryFn: api.googleCalendars,
@@ -380,12 +382,12 @@ function CalendarSettingsDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Calendar settings</DialogTitle>
+          <DialogTitle>{t('plan.calendarSettings')}</DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground mb-2">Sync target calendar</p>
+        <p className="text-sm text-muted-foreground mb-2">{t('plan.syncTarget')}</p>
         <div className="space-y-1 max-h-[40dvh] overflow-y-auto mb-4">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground py-2">Loading…</p>
+            <p className="text-sm text-muted-foreground py-2">{t('common.loading')}</p>
           ) : (
             calendars.map((cal) => {
               const active = cal.id === calendarId
@@ -397,7 +399,7 @@ function CalendarSettingsDialog({
                   className={`w-full text-left px-3 py-2.5 rounded-md text-sm flex items-center justify-between transition-colors ${active ? 'bg-primary/10 text-primary' : 'hover:bg-accent'}`}
                 >
                   <span>{cal.summary}</span>
-                  {active && <span className="text-xs">selected</span>}
+                  {active && <span className="text-xs">{t('plan.selected')}</span>}
                 </button>
               )
             })
@@ -409,7 +411,7 @@ function CalendarSettingsDialog({
           onClick={() => disconnectMutation.mutate()}
           disabled={disconnectMutation.isPending}
         >
-          {disconnectMutation.isPending ? 'Disconnecting…' : 'Disconnect Google Calendar'}
+          {disconnectMutation.isPending ? t('plan.disconnecting') : t('plan.disconnect')}
         </Button>
       </DialogContent>
     </Dialog>
@@ -427,6 +429,7 @@ function RecipePickerDialog({
 }) {
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
+  const { t, lang } = useI18n()
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 250)
     return () => clearTimeout(t)
@@ -437,7 +440,7 @@ function RecipePickerDialog({
     queryFn: () => api.listRecipes({ q: debounced || undefined, limit: 50 }),
   })
   const filtered = data?.items ?? []
-  const dayLabel = new Date(`${date}T00:00:00`).toLocaleDateString(undefined, {
+  const dayLabel = new Date(`${date}T00:00:00`).toLocaleDateString(lang, {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
@@ -447,7 +450,7 @@ function RecipePickerDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add recipe to {dayLabel}</DialogTitle>
+          <DialogTitle>{t('plan.addTo', { day: dayLabel })}</DialogTitle>
         </DialogHeader>
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -455,15 +458,15 @@ function RecipePickerDialog({
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search recipes…"
+            placeholder={t('plan.searchRecipes')}
             className="w-full pl-9 pr-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
         <div className="space-y-1 max-h-[50dvh] overflow-y-auto">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
+            <p className="text-sm text-muted-foreground py-4 text-center">{t('common.loading')}</p>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-4 text-center">No recipes found.</p>
+            <p className="text-sm text-muted-foreground py-4 text-center">{t('plan.noRecipes')}</p>
           ) : (
             filtered.map((r) => (
               <button
