@@ -9,6 +9,7 @@ This is a Progressive Web App (PWA) and a small **recipe library**: log in, impo
 - **Import from URL** — paste a recipe-page URL; the server first tries the page's `schema.org/Recipe` JSON-LD block (no LLM cost), then falls back to OpenAI text extraction if the page has no JSON-LD.
 - **Edit & delete** — update a recipe's title, yield, description, ingredients, and your private note; delete with a confirmation.
 - **Add to Bring** — a per-recipe action on the detail page that hands the recipe to the Bring widget.
+- **Languages (English / Deutsch)** — the UI is fully translated (pick a language under Account, or on the login screen). Imports are written in your language (photo/HTML extraction writes it directly; JSON-LD imports keep the page's original text and store a translation alongside). Recipes are shown in your language when a version in it exists; otherwise the edit screen offers **Translate with AI**. See `backend/api/i18n.py` and `frontend-react/src/i18n/`.
 - **Works Offline** — install as a PWA for offline access.
 - **Secure** — your OpenAI API key stays server-side; you authenticate to the backend with a JWT.
 
@@ -26,6 +27,7 @@ This is a Progressive Web App (PWA) and a small **recipe library**: log in, impo
 - Imported URLs are **fetched server-side** by the backend (10 s timeout, 5 MB cap, real browser User-Agent).
 - When the page exposes `schema.org/Recipe` JSON-LD, **no LLM call is made** for the URL import — only the structured data is used.
 - When JSON-LD is missing, the cleaned page body is sent to **OpenAI** (gpt-4o-mini) for text extraction. The OpenAI request includes the source URL; no extra metadata is shared.
+- Recipe **translation** (on JSON-LD import into another language, or "Translate with AI" in the editor) sends the recipe's title, description, yield, ingredients and steps to the configured translation provider (`TRANSLATION_PROVIDER`, default OpenAI).
 - Photo imports always call OpenAI's vision model; the image is resized to ≤1200×1200 JPEG at quality 0.85 before upload.
 
 ## Setup & Installation

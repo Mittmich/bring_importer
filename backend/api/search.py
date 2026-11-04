@@ -15,6 +15,8 @@ from typing import Any, Dict, List
 
 from rapidfuzz import fuzz
 
+from api.i18n import all_variants
+
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
 # A query word must reach this fuzzy ratio (0..100) against some word in the
@@ -31,27 +33,30 @@ def tokenize(text: str) -> List[str]:
 def recipe_haystack(recipe_json: Dict[str, Any], tag_names: List[str]) -> str:
     """Flatten every searchable part of a recipe into one lowercased string.
 
-    Handles both the structured format (``ingredients``/``instructions`` as
-    lists of dicts) and the older flat format (``recipeIngredient`` /
-    ``recipeInstructions`` as string lists).
+    Includes every language variant in ``translations``. Handles both the
+    structured format (``ingredients``/``instructions`` as lists of dicts) and
+    the older flat format (``recipeIngredient`` / ``recipeInstructions`` as
+    string lists).
     """
-    parts: List[str] = [
-        recipe_json.get("name") or "",
-        recipe_json.get("description") or "",
-        recipe_json.get("note") or "",
-    ]
+    parts: List[str] = [recipe_json.get("note") or ""]
 
-    for ing in recipe_json.get("ingredients") or []:
-        if isinstance(ing, dict):
-            parts.append(f"{ing.get('amount', '')} {ing.get('name', '')}")
-        else:
-            parts.append(str(ing))
+    # Base content plus every stored translation, so a recipe is findable in
+    # any language it has a version in.
+    for variant in all_variants(recipe_json):
+        parts.append(variant.get("name") or "")
+        parts.append(variant.get("description") or "")
 
-    for step in recipe_json.get("instructions") or []:
-        if isinstance(step, dict):
-            parts.append(step.get("text", ""))
-        else:
-            parts.append(str(step))
+        for ing in variant.get("ingredients") or []:
+            if isinstance(ing, dict):
+                parts.append(f"{ing.get('amount', '')} {ing.get('name', '')}")
+            else:
+                parts.append(str(ing))
+
+        for step in variant.get("instructions") or []:
+            if isinstance(step, dict):
+                parts.append(step.get("text", ""))
+            else:
+                parts.append(str(step))
 
     # Old flat format.
     for key in ("recipeIngredient", "recipeInstructions"):

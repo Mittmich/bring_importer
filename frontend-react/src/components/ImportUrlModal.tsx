@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
+import { ImportLanguageField } from '@/components/ImportPhotoModal'
+import { useI18n, type Language } from '@/i18n'
 
 interface Props {
   open: boolean
@@ -18,12 +20,17 @@ export function ImportUrlModal({ open, onOpenChange, onSwitchToPhoto, onDone }: 
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t, lang } = useI18n()
+  // Override of the target language; null = follow the UI language.
+  const [langOverride, setLangOverride] = useState<Language | null>(null)
+  const importLang = langOverride ?? lang
 
   function reset() {
     setUrl('')
     setNote('')
     setError(null)
     setLoading(false)
+    setLangOverride(null)
   }
 
   function handleClose() {
@@ -36,11 +43,11 @@ export function ImportUrlModal({ open, onOpenChange, onSwitchToPhoto, onDone }: 
     setLoading(true)
     setError(null)
     try {
-      const result = await api.importUrl(url.trim(), note.trim() || undefined)
+      const result = await api.importUrl(url.trim(), note.trim() || undefined, importLang)
       reset()
       onDone(result.uuid)
     } catch (e: any) {
-      setError(e.message ?? 'Failed to import recipe.')
+      setError(e.message ?? t('import.urlFailed'))
       setLoading(false)
     }
   }
@@ -49,15 +56,13 @@ export function ImportUrlModal({ open, onOpenChange, onSwitchToPhoto, onDone }: 
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Import from URL</DialogTitle>
-          <DialogDescription>
-            Paste a recipe page link and we'll fetch and extract the recipe.
-          </DialogDescription>
+          <DialogTitle>{t('import.urlTitle')}</DialogTitle>
+          <DialogDescription>{t('import.urlDescription')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="recipe-url">Recipe URL</Label>
+            <Label htmlFor="recipe-url">{t('import.urlLabel')}</Label>
             <Input
               id="recipe-url"
               type="url"
@@ -70,22 +75,24 @@ export function ImportUrlModal({ open, onOpenChange, onSwitchToPhoto, onDone }: 
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="recipe-note">Note (optional)</Label>
+            <Label htmlFor="recipe-note">{t('import.noteLabel')}</Label>
             <Textarea
               id="recipe-note"
-              placeholder="Any notes about this recipe…"
+              placeholder={t('import.notePlaceholder')}
               value={note}
               onChange={(e) => setNote(e.target.value)}
               rows={2}
             />
           </div>
 
+          <ImportLanguageField value={importLang} onChange={setLangOverride} />
+
           {error && (
             <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">{error}</p>
           )}
 
           {loading && (
-            <p className="text-sm text-muted-foreground text-center">Fetching and parsing the page…</p>
+            <p className="text-sm text-muted-foreground text-center">{t('import.fetching')}</p>
           )}
         </div>
 
@@ -94,13 +101,13 @@ export function ImportUrlModal({ open, onOpenChange, onSwitchToPhoto, onDone }: 
             onClick={onSwitchToPhoto}
             className="mr-auto text-xs text-muted-foreground hover:text-primary transition-colors"
           >
-            Import from photo instead
+            {t('import.switchToPhoto')}
           </button>
           <Button variant="outline" onClick={handleClose} disabled={loading}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleImport} disabled={!url.trim() || loading}>
-            {loading ? 'Importing…' : 'Import'}
+            {loading ? t('common.importing') : t('common.import')}
           </Button>
         </DialogFooter>
       </DialogContent>

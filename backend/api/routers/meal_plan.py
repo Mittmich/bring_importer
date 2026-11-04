@@ -22,6 +22,7 @@ from api import google_calendar as gcal
 from api.auth import get_current_user, get_user_id
 from api.config import app_origin
 from api.db import get_db_connection
+from api.i18n import localize_recipe, localized_title, request_language
 from api.models import (
     DateRange,
     Ingredient,
@@ -56,6 +57,15 @@ def _google_integration(user_id: int) -> Optional[Tuple[str, str]]:
     return row["refresh_token"], row["calendar_id"]
 
 
+def _title_in(row, lang: Optional[str]) -> str:
+    """Recipe title from a row carrying ``recipe_title`` + ``recipe_json``, localized."""
+    try:
+        stored = json.loads(row["recipe_json"] or "{}")
+    except Exception:
+        stored = {}
+    return localized_title(stored, row["recipe_title"] or "", lang)
+
+
 def _recipe_link(recipe_uuid: str) -> str:
     return f"{app_origin()}/recipes/{recipe_uuid}"
 
@@ -65,6 +75,7 @@ async def list_meal_plan(
     start: str,
     end: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Return the user's meal-plan entries in ``[start, end]`` (inclusive).
 
@@ -74,8 +85,9 @@ async def list_meal_plan(
     conn = get_db_connection()
     cursor = conn.cursor()
     rows = cursor.execute(
-        "SELECT m.id, m.date, m.recipe_uuid, m.position, r.title AS recipe_title "
-        "FROM meal_plan_entries m JOIN recipes r ON r.uuid = m.recipe_uuid "
+        "SELECT m.id, m.date, m.recipe_uuid, m.position, r.title AS recipe_title, "
+        "r.recipe_json AS recipe_json FROM meal_plan_entries m "
+        "JOIN recipes r ON r.uuid = m.recipe_uuid "
         "WHERE m.user_id = ? AND m.date >= ? AND m.date <= ? "
         "ORDER BY m.date, m.position, m.id",
         (user_id, start, end),
@@ -86,7 +98,7 @@ async def list_meal_plan(
             id=row["id"],
             date=row["date"],
             recipe_uuid=row["recipe_uuid"],
-            recipe_title=row["recipe_title"],
+            recipe_title=_title_in(row, lang),
             position=row["position"],
         )
         for row in rows
@@ -97,6 +109,7 @@ async def list_meal_plan(
 async def add_meal_plan_entry(
     body: MealPlanEntryCreate,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Assign a recipe the user owns to a day, appended after that day's entries."""
     user_id = _require_user_id(current_user)
@@ -104,7 +117,7 @@ async def add_meal_plan_entry(
     cursor = conn.cursor()
 
     recipe = cursor.execute(
-        "SELECT title, user_id FROM recipes WHERE uuid = ?",
+        "SELECT title AS recipe_title, recipe_json, user_id FROM recipes WHERE uuid = ?",
         (body.recipe_uuid,),
     ).fetchone()
     if recipe is None or recipe["user_id"] != user_id:
@@ -129,7 +142,7 @@ async def add_meal_plan_entry(
         id=entry_id,
         date=body.date,
         recipe_uuid=body.recipe_uuid,
-        recipe_title=recipe["title"],
+        recipe_title=_title_in(recipe, lang),
         position=next_pos,
     )
 
@@ -204,6 +217,7 @@ async def delete_meal_plan_entry(
 async def build_shopping_list(
     body: DateRange,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Merge every ingredient in the week's recipes and cache the result.
 
@@ -226,10 +240,11 @@ async def build_shopping_list(
             data = json.loads(row["recipe_json"])
         except Exception:
             continue
-        for ing in data.get("ingredients", []):
+        # Use each recipe's version in the requested language when it has one.
+        for ing in localize_recipe(data, lang).get("ingredients", []):
             raw_items.append(Ingredient(amount=ing.get("amount", ""), name=ing.get("name", "")))
 
-    merged = merge_ingredients(raw_items)
+    merged = merge_ingredients(raw_items, language=lang)
 
     token = str(uuid_mod.uuid4())
     items_json = json.dumps([ing.model_dump() for ing in merged])
@@ -288,8 +303,9 @@ async def shopping_list_html(token: str):
 def _week_entries(cursor, user_id: int, start: str, end: str):
     """Entries (joined to recipe title) in ``[start, end]`` for a user."""
     return cursor.execute(
-        "SELECT m.id, m.date, m.recipe_uuid, m.google_event_id, r.title AS recipe_title "
-        "FROM meal_plan_entries m JOIN recipes r ON r.uuid = m.recipe_uuid "
+        "SELECT m.id, m.date, m.recipe_uuid, m.google_event_id, r.title AS recipe_title, "
+        "r.recipe_json AS recipe_json FROM meal_plan_entries m "
+        "JOIN recipes r ON r.uuid = m.recipe_uuid "
         "WHERE m.user_id = ? AND m.date >= ? AND m.date <= ? "
         "ORDER BY m.date, m.position, m.id",
         (user_id, start, end),
@@ -300,6 +316,7 @@ def _week_entries(cursor, user_id: int, start: str, end: str):
 async def sync_to_calendar(
     body: DateRange,
     current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
     """Push the week's plan to Google Calendar — planner wins.
 
@@ -331,7 +348,7 @@ async def sync_to_calendar(
             new_id = await gcal.insert_event(
                 token,
                 calendar_id,
-                row["recipe_title"],
+                _title_in(row, lang),
                 row["date"],
                 f"Recipe: {_recipe_link(row['recipe_uuid'])}",
             )

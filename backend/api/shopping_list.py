@@ -6,15 +6,16 @@ summing quantities where units are compatible. It mirrors the structured-output
 pattern used in :mod:`api.recipe_extraction`.
 """
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel
 
+from api.i18n import language_name
 from api.models import Ingredient
 from api.recipe_extraction import _get_client
 
 
-def merge_ingredients(items: List[Ingredient]) -> List[Ingredient]:
+def merge_ingredients(items: List[Ingredient], language: Optional[str] = None) -> List[Ingredient]:
     """Merge duplicate ingredients, summing compatible quantities.
 
     Rules (enforced via the prompt):
@@ -56,6 +57,7 @@ def merge_ingredients(items: List[Ingredient]) -> List[Ingredient]:
                         "(e.g. 'to taste'). Normalize each name to a readable singular form. Never "
                         "invent ingredients that were not provided. amount is the quantity + unit "
                         "(empty string if there is none); name is the elementary ingredient."
+                        + (f" Write every name in {language_name(language)}." if language else "")
                     ),
                 },
                 {

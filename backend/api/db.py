@@ -44,6 +44,10 @@ def init_db():
     _user_cols = {row[1] for row in cursor.execute("PRAGMA table_info(users)").fetchall()}
     if "display_name" not in _user_cols:
         cursor.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+    # language — preferred UI / recipe language code (see api/i18n.py). NULL means
+    # "not chosen yet": the client falls back to the browser language.
+    if "language" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN language TEXT")
 
     # Create recipes table
     cursor.execute(

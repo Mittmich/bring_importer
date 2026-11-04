@@ -7,6 +7,7 @@ import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { CookbookMembersSection } from '@/components/CookbookMembersSection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/i18n'
 
 export function CookbookDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -16,6 +17,7 @@ export function CookbookDetailPage() {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const { t, tp } = useI18n()
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['cookbook', cookbookId],
@@ -48,15 +50,15 @@ export function CookbookDetailPage() {
   })
 
   if (isLoading) {
-    return <Centered>Loading…</Centered>
+    return <Centered>{t('common.loading')}</Centered>
   }
   if (isError || !data) {
     return (
       <Centered>
         <div className="text-center space-y-3">
-          <p className="text-sm text-muted-foreground">Cookbook not found.</p>
+          <p className="text-sm text-muted-foreground">{t('cookbook.notFound')}</p>
           <Button variant="outline" size="sm" onClick={() => navigate('/cookbooks')}>
-            Back to cookbooks
+            {t('cookbook.backToCookbooks')}
           </Button>
         </div>
       </Centered>
@@ -76,7 +78,7 @@ export function CookbookDetailPage() {
           to="/cookbooks"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="w-4 h-4" /> Cookbooks
+          <ArrowLeft className="w-4 h-4" /> {t('cookbook.back')}
         </Link>
 
         <div className="flex items-center gap-2">
@@ -108,7 +110,7 @@ export function CookbookDetailPage() {
                     setName(data.name)
                     setEditing(true)
                   }}
-                  aria-label="Rename cookbook"
+                  aria-label={t('cookbook.rename')}
                 >
                   <Pencil className="w-4 h-4" />
                 </Button>
@@ -122,10 +124,10 @@ export function CookbookDetailPage() {
                       onClick={() => remove.mutate()}
                       disabled={remove.isPending}
                     >
-                      {remove.isPending ? 'Deleting…' : 'Delete'}
+                      {remove.isPending ? t('common.deleting') : t('common.delete')}
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
-                      Cancel
+                      {t('common.cancel')}
                     </Button>
                   </>
                 ) : (
@@ -134,7 +136,7 @@ export function CookbookDetailPage() {
                     variant="ghost"
                     className="text-muted-foreground hover:text-destructive"
                     onClick={() => setConfirmDelete(true)}
-                    aria-label="Delete cookbook"
+                    aria-label={t('cookbook.delete')}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -144,13 +146,12 @@ export function CookbookDetailPage() {
         </div>
 
         <p className="text-sm text-muted-foreground -mt-2">
-          {data.recipe_count} {data.recipe_count === 1 ? 'recipe' : 'recipes'}
-          {isAuto && ' · updates automatically'}
+          {tp('common.recipes', data.recipe_count)}
+          {isAuto && t('cookbook.autoUpdates')}
         </p>
         {isAuto && (
           <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
-            This cookbook always contains every recipe {isOwner ? 'you have' : 'its owner has'}.
-            Share it to give a friend access to all of them.
+            {isOwner ? t('cookbook.autoHintMine') : t('cookbook.autoHintTheirs')}
           </p>
         )}
 
@@ -158,7 +159,7 @@ export function CookbookDetailPage() {
           <div className="text-center py-14">
             <Utensils className="w-8 h-8 text-primary/30 mx-auto mb-2" />
             <p className="text-sm text-muted-foreground">
-              No recipes yet. Open a recipe and use “Add to cookbook”.
+              {t('cookbook.empty')}
             </p>
           </div>
         ) : (
@@ -201,6 +202,7 @@ function RecipeCard({
   removing: boolean
 }) {
   const src = useRecipeImage(recipe.image_url)
+  const { t } = useI18n()
   return (
     <div className="group relative rounded-xl border border-border bg-white overflow-hidden">
       {canRemove && (
@@ -211,7 +213,7 @@ function RecipeCard({
             onRemove()
           }}
           disabled={removing}
-          aria-label="Remove from cookbook"
+          aria-label={t('cookbook.removeRecipe')}
           className="absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/45 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-black/65"
         >
           <X className="w-4 h-4" />

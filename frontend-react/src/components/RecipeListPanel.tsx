@@ -8,23 +8,13 @@ import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { BulkAddToCookbookModal } from '@/components/BulkAddToCookbookModal'
 import { TagChip } from '@/components/ui/tag-chip'
 import { tagColor } from '@/lib/tagColors'
+import { relativeDate } from '@/lib/format'
+import { useI18n } from '@/i18n'
 
 const MAX_ROW_TAGS = 3
 
 const PAGE_SIZE = 30
 
-function relativeDate(dateStr?: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return ''
-  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000)
-  if (days === 0) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 7) return `${days}d ago`
-  if (days < 30) return `${Math.floor(days / 7)}w ago`
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`
-  return `${Math.floor(days / 365)}y ago`
-}
 
 interface Props {
   activeUuid?: string
@@ -43,6 +33,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
   const [bulkOpen, setBulkOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement | null>(null)
   const { onImport } = useOutletContext<{ onImport: () => void }>()
+  const { t, tp } = useI18n()
 
   // Focus the search box when arriving from the home screen's search button.
   useEffect(() => {
@@ -127,12 +118,12 @@ export function RecipeListPanel({ activeUuid }: Props) {
     <div className="flex flex-col w-full md:w-[300px] md:min-w-[300px] border-r border-border bg-white h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-border">
-        <span className="text-base font-semibold text-foreground">Recipes</span>
+        <span className="text-base font-semibold text-foreground">{t('nav.recipes')}</span>
         <button
           onClick={onImport}
           className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
         >
-          <Plus className="w-4 h-4" /> Import
+          <Plus className="w-4 h-4" /> {t('common.import')}
         </button>
       </div>
 
@@ -144,7 +135,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
             ref={searchRef}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search recipes & ingredients…"
+            placeholder={t('home.search')}
             className="w-full pl-9 pr-3 py-2.5 text-base bg-muted/50 rounded-md border border-transparent focus:outline-none focus:border-ring focus:bg-white transition-colors placeholder:text-muted-foreground"
           />
         </div>
@@ -159,7 +150,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
             className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border border-border text-muted-foreground hover:border-primary/40 transition-colors"
             aria-expanded={tagsExpanded}
           >
-            Tags
+            {t('list.tags')}
             <ChevronDown
               className={cn('w-3.5 h-3.5 transition-transform', tagsExpanded && 'rotate-180')}
             />
@@ -189,7 +180,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
               onClick={() => setSelectedTags([])}
               className="text-xs px-2 py-1 rounded-full text-primary hover:underline"
             >
-              Clear
+              {t('common.clear')}
             </button>
           )}
         </div>
@@ -199,13 +190,13 @@ export function RecipeListPanel({ activeUuid }: Props) {
       {hasFilter && !isLoading && recipes.length > 0 && (
         <div className="px-3 py-2 border-b border-border/50 flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground tabular-nums">
-            {total} {total === 1 ? 'result' : 'results'}
+            {tp('list.results', total)}
           </span>
           <button
             onClick={() => setBulkOpen(true)}
             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
           >
-            <BookHeart className="w-3.5 h-3.5" /> Add to cookbook
+            <BookHeart className="w-3.5 h-3.5" /> {t('list.addToCookbook')}
           </button>
         </div>
       )}
@@ -213,20 +204,20 @@ export function RecipeListPanel({ activeUuid }: Props) {
       {/* List */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto">
         {isLoading && (
-          <div aria-busy="true" aria-label="Loading recipes">
+          <div aria-busy="true" aria-label={t('list.loading')}>
             {Array.from({ length: 8 }).map((_, i) => (
               <RecipeRowSkeleton key={i} />
             ))}
           </div>
         )}
         {error && (
-          <div className="p-4 text-sm text-destructive text-center">Could not load recipes.</div>
+          <div className="p-4 text-sm text-destructive text-center">{t('list.loadFailed')}</div>
         )}
         {!isLoading && !error && recipes.length === 0 && (
           <div className="p-6 text-sm text-muted-foreground text-center">
             {debounced || selectedTags.length
-              ? 'No recipes match your filters.'
-              : 'No recipes yet. Import one to get started.'}
+              ? t('list.noMatches')
+              : t('list.empty')}
           </div>
         )}
         {recipes.map((recipe) => (
@@ -265,6 +256,7 @@ function RecipeRowSkeleton() {
 
 function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boolean }) {
   const thumbSrc = useRecipeImage(recipe.image_url)
+  const { lang } = useI18n()
   return (
     <NavLink
       to={`/recipes/${recipe.uuid}`}
@@ -296,7 +288,7 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
           {recipe.title}
         </p>
         <p className="text-sm text-muted-foreground mt-1">
-          {relativeDate(recipe.datePublished ?? recipe.createdAt)}
+          {relativeDate(recipe.datePublished ?? recipe.createdAt, lang)}
           {recipe.source?.kind === 'url' && recipe.source.value && (
             <> · {new URL(recipe.source.value).hostname.replace('www.', '')}</>
           )}

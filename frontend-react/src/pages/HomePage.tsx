@@ -5,27 +5,18 @@ import { api, type RecipeListItem, type TagInfo } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { tagColor } from '@/lib/tagColors'
 import { Button } from '@/components/ui/button'
+import { relativeDate } from '@/lib/format'
+import { useI18n } from '@/i18n'
 
 // How many tag shelves to show, and how many recipes to pull per shelf.
 const MAX_SHELVES = 8
 const SHELF_SIZE = 12
 
-function relativeDate(dateStr?: string): string {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  if (isNaN(d.getTime())) return ''
-  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000)
-  if (days === 0) return 'today'
-  if (days === 1) return 'yesterday'
-  if (days < 7) return `${days}d ago`
-  if (days < 30) return `${Math.floor(days / 7)}w ago`
-  if (days < 365) return `${Math.floor(days / 30)}mo ago`
-  return `${Math.floor(days / 365)}y ago`
-}
 
 export function HomePage() {
   const { onImport } = useOutletContext<{ onImport: () => void }>()
   const navigate = useNavigate()
+  const { t } = useI18n()
 
   // Filter scope: include tags on recipes shared with me, so their shelves show too.
   const { data: tagData = [] } = useQuery({
@@ -52,9 +43,9 @@ export function HomePage() {
       <div className="sticky top-0 z-10 bg-[#F8FAFC]/85 backdrop-blur-sm border-b border-border/60">
         <div className="max-w-3xl mx-auto w-full px-4 pt-4 pb-3 space-y-3">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-foreground">Recipes</h1>
+            <h1 className="text-xl font-bold text-foreground">{t('nav.recipes')}</h1>
             <Button variant="outline" size="sm" onClick={onImport}>
-              <Plus className="w-4 h-4 mr-1.5" /> Import
+              <Plus className="w-4 h-4 mr-1.5" /> {t('common.import')}
             </Button>
           </div>
           <button
@@ -62,7 +53,7 @@ export function HomePage() {
             className="w-full flex items-center gap-2.5 pl-3.5 pr-3 py-3 rounded-xl bg-white border border-border text-muted-foreground text-sm hover:border-ring transition-colors"
           >
             <Search className="w-4 h-4 flex-shrink-0" />
-            Search recipes &amp; ingredients…
+            {t('home.search')}
           </button>
         </div>
       </div>
@@ -78,7 +69,7 @@ export function HomePage() {
         ) : (
           <>
             <Shelf
-              title="Recently added"
+              title={t('home.recentlyAdded')}
               seeAll={() => navigate('/recipes')}
               recipes={recent}
             />
@@ -87,7 +78,7 @@ export function HomePage() {
             ))}
             {shelfTags.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-2">
-                Tag your recipes to group them into shelves here.
+                {t('home.tagHint')}
               </p>
             )}
           </>
@@ -129,6 +120,7 @@ function Shelf({
   seeAll: () => void
   recipes: RecipeListItem[]
 }) {
+  const { t } = useI18n()
   return (
     <section>
       <div className="flex items-center justify-between mb-2.5">
@@ -145,7 +137,7 @@ function Shelf({
           onClick={seeAll}
           className="flex items-center gap-0.5 text-xs font-medium text-primary hover:underline flex-shrink-0"
         >
-          See all <ChevronRight className="w-3.5 h-3.5" />
+          {t('home.seeAll')} <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
       {/* Bleed to the screen edges so cards can scroll under the padding. */}
@@ -160,6 +152,7 @@ function Shelf({
 
 function RecipeCard({ recipe }: { recipe: RecipeListItem }) {
   const src = useRecipeImage(recipe.image_url)
+  const { lang } = useI18n()
   return (
     <NavLink
       to={`/recipes/${recipe.uuid}`}
@@ -184,7 +177,7 @@ function RecipeCard({ recipe }: { recipe: RecipeListItem }) {
       <p className="text-xs text-muted-foreground mt-0.5 truncate">
         {recipe.owned === false && (recipe.owner_name || recipe.owner_email)
           ? recipe.owner_name || recipe.owner_email
-          : relativeDate(recipe.datePublished ?? recipe.createdAt)}
+          : relativeDate(recipe.datePublished ?? recipe.createdAt, lang)}
       </p>
     </NavLink>
   )
@@ -213,17 +206,18 @@ function ShelfSkeleton({ label }: { label?: string }) {
 }
 
 function EmptyHome({ onImport }: { onImport: () => void }) {
+  const { t } = useI18n()
   return (
     <div className="flex flex-col items-center justify-center text-center gap-3 py-16">
       <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
         <Utensils className="w-7 h-7" />
       </div>
       <div>
-        <p className="text-base font-semibold text-foreground">No recipes yet</p>
-        <p className="text-sm text-muted-foreground mt-1">Import one to start building your collection.</p>
+        <p className="text-base font-semibold text-foreground">{t('home.emptyTitle')}</p>
+        <p className="text-sm text-muted-foreground mt-1">{t('home.emptyBody')}</p>
       </div>
       <Button onClick={onImport}>
-        <Plus className="w-4 h-4 mr-1.5" /> Import your first recipe
+        <Plus className="w-4 h-4 mr-1.5" /> {t('home.importFirst')}
       </Button>
     </div>
   )

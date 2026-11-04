@@ -4,6 +4,8 @@ import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { LanguageSelect } from '@/components/LanguageSelect'
+import { useI18n } from '@/i18n'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -11,6 +13,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t, lang, setLanguage } = useI18n()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -21,7 +24,7 @@ export function LoginPage() {
       localStorage.setItem('auth_token', result.access_token)
       navigate('/')
     } catch (e: any) {
-      setError(e.message ?? 'Login failed.')
+      setError(e.message ?? t('login.failed'))
       setLoading(false)
     }
   }
@@ -32,15 +35,15 @@ export function LoginPage() {
         <div className="mb-8 text-center">
           <span className="inline-flex items-center gap-2 text-lg font-bold text-foreground">
             <span className="w-2 h-2 rounded-sm bg-primary inline-block" />
-            My Recipes
+            {t('common.appName')}
           </span>
-          <p className="text-sm text-muted-foreground mt-2">Sign in to your account</p>
+          <p className="text-sm text-muted-foreground mt-2">{t('login.subtitle')}</p>
         </div>
 
         <div className="bg-white rounded-xl border border-border shadow-sm p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('login.email')}</Label>
               <Input
                 id="email"
                 type="email"
@@ -54,7 +57,7 @@ export function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -73,9 +76,17 @@ export function LoginPage() {
             )}
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Signing in…' : 'Sign in'}
+              {loading ? t('login.signingIn') : t('login.signIn')}
             </Button>
           </form>
+        </div>
+
+        <div className="mt-4 flex justify-center">
+          <LanguageSelect
+            value={lang}
+            onChange={(l) => setLanguage(l)}
+            aria-label={t('account.language')}
+          />
         </div>
       </div>
     </div>

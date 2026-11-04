@@ -6,9 +6,10 @@ export function parseServings(recipeYield?: string): number {
   return m ? parseInt(m[0], 10) : 4
 }
 
-export function servingsUnit(recipeYield?: string): string {
-  if (!recipeYield) return 'servings'
-  return recipeYield.replace(/^\d+\s*/, '').trim() || 'servings'
+/** The unit part of a yield ("4 servings" → "servings"); `fallback` when there is none. */
+export function servingsUnit(recipeYield?: string, fallback = 'servings'): string {
+  if (!recipeYield) return fallback
+  return recipeYield.replace(/^\d+\s*/, '').trim() || fallback
 }
 
 // Scale a number to a readable form, using Unicode fraction symbols for

@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { useI18n } from '@/i18n'
 
 interface Props {
   open: boolean
@@ -21,6 +22,7 @@ interface Props {
 export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
   const queryClient = useQueryClient()
   const [newName, setNewName] = useState('')
+  const { t } = useI18n()
 
   const listKey = ['cookbooks', 'for-recipe', recipeUuid]
   const { data: all = [], isLoading } = useQuery({
@@ -66,14 +68,14 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add to cookbook</DialogTitle>
-          <DialogDescription>Tap a cookbook to add or remove this recipe.</DialogDescription>
+          <DialogTitle>{t('addToCookbook.title')}</DialogTitle>
+          <DialogDescription>{t('addToCookbook.description')}</DialogDescription>
         </DialogHeader>
 
         {readonlyMemberships.length > 0 && (
           <div className="space-y-1.5">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Already in
+              {t('addToCookbook.alreadyIn')}
             </p>
             {readonlyMemberships.map((cb) => (
               <div
@@ -84,7 +86,7 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
                   {cb.name}
                 </span>
                 <span className="text-xs text-primary flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> shared
+                  <Check className="w-3.5 h-3.5" /> {t('addToCookbook.shared')}
                 </span>
               </div>
             ))}
@@ -93,10 +95,10 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
 
         <div className="space-y-1.5 max-h-72 overflow-y-auto">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground py-2">Loading…</p>
+            <p className="text-sm text-muted-foreground py-2">{t('common.loading')}</p>
           ) : cookbooks.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">
-              No cookbooks of your own yet — create one below.
+              {t('addToCookbook.noneOwn')}
             </p>
           ) : (
             cookbooks.map((cb) => {
@@ -140,10 +142,10 @@ export function AddToCookbookModal({ open, onOpenChange, recipeUuid }: Props) {
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="New cookbook"
+            placeholder={t('common.newCookbook')}
           />
           <Button type="submit" disabled={!newName.trim() || createAndAdd.isPending}>
-            <Plus className="w-4 h-4 mr-1" /> Create
+            <Plus className="w-4 h-4 mr-1" /> {t('common.create')}
           </Button>
         </form>
       </DialogContent>

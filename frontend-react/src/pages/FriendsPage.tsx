@@ -5,12 +5,14 @@ import { ArrowLeft, Check, UserPlus, X } from 'lucide-react'
 import { api, personName, type Friend, type FriendRequest } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { useI18n } from '@/i18n'
 
 export function FriendsPage() {
   const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const { t } = useI18n()
 
   const { data: friends = [] } = useQuery({ queryKey: ['friends'], queryFn: api.listFriends })
   const { data: incoming = [] } = useQuery({
@@ -34,8 +36,8 @@ export function FriendsPage() {
       setEmail('')
       setNotice(
         res.status === 'accepted'
-          ? `You're now friends with ${res.user.email}.`
-          : `Request sent to ${res.user.email}.`,
+          ? t('friends.nowFriends', { email: res.user.email })
+          : t('friends.requestSent', { email: res.user.email }),
       )
       invalidate()
     },
@@ -71,20 +73,18 @@ export function FriendsPage() {
           to="/account"
           className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="w-4 h-4" /> Account
+          <ArrowLeft className="w-4 h-4" /> {t('friends.back')}
         </Link>
 
         <div>
-          <h1 className="text-lg font-semibold text-foreground">Friends</h1>
-          <p className="text-sm text-muted-foreground">
-            Add friends by email so you can share recipes with them.
-          </p>
+          <h1 className="text-lg font-semibold text-foreground">{t('friends.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('friends.subtitle')}</p>
         </div>
 
         {/* Add a friend */}
         <form onSubmit={submit} className="bg-white rounded-xl border border-border p-4 space-y-3">
           <label htmlFor="friend-email" className="text-sm font-medium text-foreground">
-            Add a friend
+            {t('friends.add')}
           </label>
           <div className="flex gap-2">
             <Input
@@ -97,7 +97,7 @@ export function FriendsPage() {
             />
             <Button type="submit" disabled={send.isPending || !email.trim()}>
               <UserPlus className="w-4 h-4 mr-1.5" />
-              {send.isPending ? 'Sending…' : 'Send'}
+              {send.isPending ? t('friends.sending') : t('friends.send')}
             </Button>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -106,7 +106,7 @@ export function FriendsPage() {
 
         {/* Incoming requests */}
         {incoming.length > 0 && (
-          <Section title="Requests received">
+          <Section title={t('friends.received')}>
             {incoming.map((r) => (
               <RequestRow key={r.id} req={r}>
                 <Button
@@ -114,7 +114,7 @@ export function FriendsPage() {
                   onClick={() => accept.mutate(r.id)}
                   disabled={accept.isPending}
                 >
-                  <Check className="w-4 h-4 mr-1" /> Accept
+                  <Check className="w-4 h-4 mr-1" /> {t('common.accept')}
                 </Button>
                 <Button
                   size="sm"
@@ -131,10 +131,10 @@ export function FriendsPage() {
 
         {/* Outgoing requests */}
         {outgoing.length > 0 && (
-          <Section title="Requests sent">
+          <Section title={t('friends.sent')}>
             {outgoing.map((r) => (
               <RequestRow key={r.id} req={r}>
-                <span className="text-xs text-muted-foreground">Pending</span>
+                <span className="text-xs text-muted-foreground">{t('common.pending')}</span>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -142,7 +142,7 @@ export function FriendsPage() {
                   onClick={() => remove.mutate(r.user_id)}
                   disabled={remove.isPending}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
               </RequestRow>
             ))}
@@ -150,9 +150,13 @@ export function FriendsPage() {
         )}
 
         {/* Friends */}
-        <Section title={`Friends${friends.length ? ` (${friends.length})` : ''}`}>
+        <Section
+          title={
+            friends.length ? t('friends.listCount', { count: friends.length }) : t('friends.list')
+          }
+        >
           {friends.length === 0 ? (
-            <p className="text-sm text-muted-foreground px-1 py-2">No friends yet.</p>
+            <p className="text-sm text-muted-foreground px-1 py-2">{t('friends.none')}</p>
           ) : (
             friends.map((f) => (
               <FriendRow key={f.user_id} friend={f}>
@@ -163,7 +167,7 @@ export function FriendsPage() {
                   onClick={() => remove.mutate(f.user_id)}
                   disabled={remove.isPending}
                 >
-                  Remove
+                  {t('common.remove')}
                 </Button>
               </FriendRow>
             ))

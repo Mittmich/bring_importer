@@ -4,19 +4,21 @@ import { Home, BookOpen, BookHeart, CalendarDays, User, Download, Share, X } fro
 import { cn } from '@/lib/utils'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import { useNotifications } from '@/hooks/useNotifications'
+import { useI18n, type MessageKey } from '@/i18n'
 
-const tabs = [
-  { to: '/', icon: Home, label: 'Home', end: true },
-  { to: '/recipes', icon: BookOpen, label: 'Recipes' },
-  { to: '/cookbooks', icon: BookHeart, label: 'Cookbooks' },
-  { to: '/plan', icon: CalendarDays, label: 'Plan' },
-  { to: '/account', icon: User, label: 'Account' },
+const tabs: Array<{ to: string; icon: typeof Home; label: MessageKey; end?: boolean }> = [
+  { to: '/', icon: Home, label: 'nav.home', end: true },
+  { to: '/recipes', icon: BookOpen, label: 'nav.recipes' },
+  { to: '/cookbooks', icon: BookHeart, label: 'nav.cookbooks' },
+  { to: '/plan', icon: CalendarDays, label: 'nav.plan' },
+  { to: '/account', icon: User, label: 'nav.account' },
 ]
 
 export function BottomNav() {
   const { canInstall, triggerInstall, showIosInstructions } = useInstallPrompt()
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false)
   const { friendRequests, cookbookInvites } = useNotifications()
+  const { t, tx } = useI18n()
   const badgeFor = (to: string) =>
     to === '/account' ? friendRequests : to === '/cookbooks' ? cookbookInvites : 0
 
@@ -26,9 +28,12 @@ export function BottomNav() {
         <div className="md:hidden flex items-center gap-2 px-4 py-3 bg-primary text-primary-foreground text-sm">
           <Share className="w-4 h-4 flex-shrink-0" />
           <span className="flex-1">
-            Tap <Share className="w-3.5 h-3.5 inline mb-0.5" /> then <strong>Add to Home Screen</strong> to install
+            {tx('nav.iosInstall', {
+              icon: <Share className="w-3.5 h-3.5 inline mb-0.5" />,
+              action: <strong>{t('nav.iosAddToHome')}</strong>,
+            })}
           </span>
-          <button onClick={() => setIosBannerDismissed(true)} aria-label="Dismiss">
+          <button onClick={() => setIosBannerDismissed(true)} aria-label={t('common.dismiss')}>
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -54,7 +59,7 @@ export function BottomNav() {
                 </span>
               )}
             </span>
-            <span className="text-xs font-medium">{label}</span>
+            <span className="text-xs font-medium">{t(label)}</span>
           </NavLink>
         ))}
         {canInstall && (
@@ -63,7 +68,7 @@ export function BottomNav() {
             className="flex-1 flex flex-col items-center justify-center gap-1 py-3.5 text-primary"
           >
             <Download className="w-6 h-6" />
-            <span className="text-xs font-medium">Install</span>
+            <span className="text-xs font-medium">{t('nav.install')}</span>
           </button>
         )}
       </nav>

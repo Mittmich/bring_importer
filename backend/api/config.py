@@ -22,6 +22,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30000
 COLLECT_TRAINING_DATA = os.getenv("COLLECT_TRAINING_DATA", "").lower() in ("1", "true", "yes", "on")
 TRAINING_DATA_DIR = os.getenv("TRAINING_DATA_DIR", "training_data")
 
+# --- Recipe translation (see api/translation.py) ---
+# Which LLM provider translates recipes between languages, and its model.
+TRANSLATION_PROVIDER = os.getenv("TRANSLATION_PROVIDER", "openai").lower()
+TRANSLATION_MODEL = os.getenv("TRANSLATION_MODEL", "gpt-5.4-mini")
+
 # --- Recipe hero images ---
 # Optional user-uploaded photo shown at the top of a recipe. Stored on disk
 # (one JPEG per recipe, keyed by uuid) rather than inline in the JSON so the

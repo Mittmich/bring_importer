@@ -32,6 +32,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from api.config import OPENAI_API_KEY
+from api.i18n import language_name
 from api.models import Ingredient, InstructionStep, Recipe
 
 # User-Agent sent when we fetch a page server-side. A real browser string
@@ -49,7 +50,8 @@ MAX_HTML_CHARS_FOR_OPENAI = 30_000
 # than inline literals) so the training-data collector can record exactly which
 # model/prompt produced a snapshot, and so the eval harness has one seam to swap.
 IMAGE_MODEL = "gpt-5.4-mini"
-IMAGE_PROMPT_VERSION = "v1"
+# v2: prompt asks for output in a target language.
+IMAGE_PROMPT_VERSION = "v2"
 
 # Lazy singleton — avoids crashing at import time when OPENAI_API_KEY is absent
 # (e.g. during the health-check startup path or in tests).
@@ -61,6 +63,17 @@ def _get_client() -> OpenAI:
     if _client is None:
         _client = OpenAI(api_key=OPENAI_API_KEY)
     return _client
+
+
+def _language_instruction(language: Optional[str]) -> str:
+    """System-prompt suffix telling the model which language to write in."""
+    if not language:
+        return ""
+    return (
+        f" Write every text field (title, description, yield, ingredient amounts and names, "
+        f"instruction steps) in {language_name(language)}, translating from the source if it "
+        f"is in another language. Keep quantities exactly as given."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -190,8 +203,12 @@ def _map_ingredients_to_instructions(
 # ---------------------------------------------------------------------------
 
 
-def parse_recipe_with_openai(image_base64: str) -> Recipe:
-    """Extract a structured recipe from a base64-encoded image."""
+def parse_recipe_with_openai(image_base64: str, language: Optional[str] = None) -> Recipe:
+    """Extract a structured recipe from a base64-encoded image.
+
+    With ``language``, the model writes the recipe in that language
+    (translating if the photo is in another one).
+    """
     if "base64," in image_base64:
         image_base64 = image_base64.split("base64,")[1]
 
@@ -206,6 +223,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
                     "Instructions are ordered cooking steps. "
                     "In each instruction step, list the 0-based indices of ingredients "
                     "from the ingredient list that are used in that step."
+                    + _language_instruction(language)
                 ),
             },
             {
@@ -242,6 +260,7 @@ def parse_recipe_with_openai(image_base64: str) -> Recipe:
         recipeYield=out.recipeYield or "4 servings",
         description=out.description,
         datePublished=datetime.now().strftime("%Y-%m-%d"),
+        inLanguage=language,
     )
 
 
@@ -355,7 +374,9 @@ def extract_recipe_from_jsonld(jsonld_obj: Any) -> Optional[Recipe]:
     )
 
 
-def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
+def extract_recipe_from_html_text(
+    html: str, source_url: str = "", language: Optional[str] = None
+) -> Recipe:
     """OpenAI structured-output extraction fallback for URL import.
 
     Strips the HTML to a reasonable size, then calls OpenAI with structured
@@ -379,6 +400,7 @@ def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
                     "Instructions are ordered cooking steps. "
                     "In each instruction step, list the 0-based indices of ingredients "
                     "from the ingredient list that are used in that step."
+                    + _language_instruction(language)
                 ),
             },
             {
@@ -407,4 +429,5 @@ def extract_recipe_from_html_text(html: str, source_url: str = "") -> Recipe:
         recipeYield=out.recipeYield or "4 servings",
         description=out.description,
         datePublished=datetime.now().strftime("%Y-%m-%d"),
+        inLanguage=language,
     )

@@ -121,16 +121,20 @@ def update_password(email: str, new_password: str) -> None:
 
 
 def get_profile(email: str) -> Optional[dict]:
-    """Return ``{email, display_name}`` for the user, or None if unknown."""
+    """Return ``{email, display_name, language}`` for the user, or None if unknown."""
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT email, display_name FROM users WHERE email = ?", (email,)
+        "SELECT email, display_name, language FROM users WHERE email = ?", (email,)
     ).fetchone()
     conn.close()
     if row is None:
         return None
-    return {"email": row["email"], "display_name": row["display_name"] or ""}
+    return {
+        "email": row["email"],
+        "display_name": row["display_name"] or "",
+        "language": row["language"],
+    }
 
 
 def set_display_name(email: str, display_name: str) -> None:
@@ -140,6 +144,23 @@ def set_display_name(email: str, display_name: str) -> None:
     cursor.execute("UPDATE users SET display_name = ? WHERE email = ?", (display_name, email))
     conn.commit()
     conn.close()
+
+
+def set_language(email: str, language: Optional[str]) -> None:
+    """Set (or clear, with ``None``) a user's preferred language code."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET language = ? WHERE email = ?", (language, email))
+    conn.commit()
+    conn.close()
+
+
+def get_user_language(user_id: int) -> Optional[str]:
+    """A user's stored preferred language code, or None."""
+    conn = get_db_connection()
+    row = conn.execute("SELECT language FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return row["language"] if row else None
 
 
 def get_user_id(email: str) -> Optional[int]:
