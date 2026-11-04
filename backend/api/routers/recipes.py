@@ -7,6 +7,7 @@
 - ``DELETE /recipes/{uuid}`` — auth required; 204 on success.
 - ``GET /recipes/{uuid}.json`` — public; full recipe JSON.
 - ``GET /recipes/{uuid}.html`` — public; schema.org/Recipe HTML page for Bring.
+- ``GET /recipes/{uuid}.pdf`` — same access as ``.json``; printable PDF export.
 - ``POST /recipes/{uuid}/translate`` — auth (editor+); LLM-translate into a language.
 
 Read endpoints are localized by the request language (``?lang=`` or
@@ -17,13 +18,13 @@ import json
 import re
 import uuid as uuid_mod
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from api import recipe_images
@@ -57,6 +58,7 @@ from api.recipe_extraction import (
     extract_recipe_from_jsonld,
     parse_recipe_with_openai,
 )
+from api.recipe_pdf import build_document, content_disposition, pdf_filename, render_pdf
 from api.search import match_score, recipe_haystack
 from api.translation import (
     TranslationError,
@@ -351,6 +353,31 @@ def _recipe_payload(
     return data
 
 
+def _visible_recipe(
+    recipe_uuid: str, current_user: Optional[User], lang: Optional[str]
+) -> Tuple[Dict[str, Any], Optional[int]]:
+    """The localized payload of a recipe the requester may see, and their user id.
+
+    Visible = public, or the requester has viewer+ access. Anything else is a
+    404 (not 403) so private uuids can't be probed.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        row = cursor.execute(
+            f"SELECT {_RECIPE_ROW_COLS} FROM recipes WHERE uuid = ?", (recipe_uuid,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        viewer_id = get_user_id(current_user.email) if current_user else None
+        role = effective_role(cursor, viewer_id, recipe_uuid) if viewer_id is not None else "none"
+        if not bool(row["is_public"]) and not role_at_least(role, "viewer"):
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        return _recipe_payload(cursor, recipe_uuid, row, viewer_id, lang), viewer_id
+    finally:
+        conn.close()
+
+
 @router.get("/{recipe_uuid}.json", include_in_schema=False)
 async def get_recipe(
     recipe_uuid: str,
@@ -362,25 +389,35 @@ async def get_recipe(
     Content is the version in the request language when one exists; see
     ``localize_recipe`` for the language metadata added to the payload.
     """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    row = cursor.execute(
-        f"SELECT {_RECIPE_ROW_COLS} FROM recipes WHERE uuid = ?", (recipe_uuid,)
-    ).fetchone()
-
-    if not row:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Recipe not found")
-
-    viewer_id = get_user_id(current_user.email) if current_user else None
-    role = effective_role(cursor, viewer_id, recipe_uuid) if viewer_id is not None else "none"
-    if not bool(row["is_public"]) and not role_at_least(role, "viewer"):
-        conn.close()
-        raise HTTPException(status_code=404, detail="Recipe not found")
-
-    data = _recipe_payload(cursor, recipe_uuid, row, viewer_id, lang)
-    conn.close()
+    data, _ = _visible_recipe(recipe_uuid, current_user, lang)
     return JSONResponse(content=data)
+
+
+@router.get("/{recipe_uuid}.pdf", include_in_schema=False)
+async def get_recipe_pdf(
+    recipe_uuid: str,
+    servings: Optional[int] = Query(None, ge=1, le=200),
+    current_user: Optional[User] = Depends(get_current_user_optional),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    """A printable PDF of the recipe, in the request language.
+
+    Same visibility as ``GET /recipes/{uuid}.json`` (public, or viewer+).
+    ``servings`` scales amounts like the servings selector in the app.
+    """
+    data, _ = _visible_recipe(recipe_uuid, current_user, lang)
+    doc = build_document(data, servings=servings, lang=lang)
+    image = recipe_images.image_path(recipe_uuid) if data.get("has_image") else None
+    pdf_bytes = await run_in_threadpool(render_pdf, doc, image)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": content_disposition(pdf_filename(doc.title)),
+            # Depends on auth and language; never share it between users.
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 def _ingredient_string(ing: Dict[str, Any]) -> str:

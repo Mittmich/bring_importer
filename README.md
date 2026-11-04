@@ -10,6 +10,7 @@ This is a Progressive Web App (PWA) and a small **recipe library**: log in, impo
 - **Edit & delete** — update a recipe's title, yield, description, ingredients, and your private note; delete with a confirmation.
 - **Add to Bring** — a per-recipe action on the detail page that hands the recipe to the Bring widget.
 - **Languages (English / Deutsch)** — the UI is fully translated (pick a language under Account, or on the login screen). Imports are written in your language (photo/HTML extraction writes it directly; JSON-LD imports keep the page's original text and store a translation alongside). Recipes are shown in your language when a version in it exists; otherwise the edit screen offers **Translate with AI**. See `backend/api/i18n.py` and `frontend-react/src/i18n/`.
+- **PDF export** — a PDF button on each recipe (and on public share pages) produces a printable A4 PDF with the photo, servings-scaled ingredients, numbered steps and note, in your language. On phones it opens the share sheet (save to Files, print, send); on desktop it downloads. Rendered server-side by `GET /recipes/{uuid}.pdf` (`backend/api/recipe_pdf.py`, fpdf2 + a subset of DejaVu Sans).
 - **Works Offline** — install as a PWA for offline access.
 - **Secure** — your OpenAI API key stays server-side; you authenticate to the backend with a JWT.
 

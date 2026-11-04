@@ -147,3 +147,42 @@ def all_variants(stored: Dict[str, Any]) -> List[Dict[str, Any]]:
         if isinstance(v, dict):
             variants.append(v)
     return variants
+
+
+# Server-rendered strings (currently the PDF export). Keyed by language; every
+# language must define every key — enforced by tests/test_recipe_pdf.py.
+BACKEND_STRINGS: Dict[str, Dict[str, str]] = {
+    "en": {
+        "ingredients": "Ingredients",
+        "instructions": "Instructions",
+        "note": "Note",
+        "servings": "servings",
+        "uses": "Uses",
+        "tags": "Tags",
+        "source": "Source",
+        "page": "Page {page} of {pages}",
+        "exported": "Exported from {app} on {date}",
+        "app": "My Recipes",
+        "untitled": "Untitled recipe",
+    },
+    "de": {
+        "ingredients": "Zutaten",
+        "instructions": "Zubereitung",
+        "note": "Notiz",
+        "servings": "Portionen",
+        "uses": "Benötigt",
+        "tags": "Tags",
+        "source": "Quelle",
+        "page": "Seite {page} von {pages}",
+        "exported": "Exportiert aus {app} am {date}",
+        "app": "Meine Rezepte",
+        "untitled": "Rezept ohne Titel",
+    },
+}
+
+
+def backend_text(lang: Optional[str], key: str, **params: Any) -> str:
+    """A server-rendered string in ``lang`` (falls back to English)."""
+    table = BACKEND_STRINGS.get(lang or "", BACKEND_STRINGS[DEFAULT_LANGUAGE])
+    template = table.get(key) or BACKEND_STRINGS[DEFAULT_LANGUAGE][key]
+    return template.format(**params) if params else template

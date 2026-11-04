@@ -8,6 +8,7 @@ import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
+import { ExportPdfButton } from '@/components/ExportPdfButton'
 import { parseServings, servingsUnit, formatIngredient } from '@/lib/scaling'
 import { useI18n } from '@/i18n'
 
@@ -91,6 +92,7 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
         <span className="text-sm font-semibold text-primary">{t('common.recipe')}</span>
         <div className="flex items-center gap-2">
           <KeepAwakeButton />
+          <ExportPdfButton uuid={uuid} servings={servings} iconOnly />
           {isOwner ? (
             <Button size="sm" variant="outline" onClick={() => navigate(`/recipes/${uuid}`)}>
               {t('public.openInMine')}
