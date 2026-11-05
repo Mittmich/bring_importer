@@ -160,6 +160,33 @@ def list_users():
         conn.close()
 
 
+def set_admin(email, revoke=False):
+    """Grant (or with ``revoke`` remove) admin rights; refuses to remove the last admin."""
+    conn = get_db_connection()
+    try:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+        if "is_admin" not in cols:
+            print("Error: the database has no is_admin column yet — start the app once first.")
+            return False
+        user = conn.execute(
+            "SELECT id, is_admin FROM users WHERE email = ? COLLATE NOCASE", (email,)
+        ).fetchone()
+        if user is None:
+            print(f"Error: no user with email {email}.")
+            return False
+        if revoke:
+            admins = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1").fetchone()[0]
+            if user["is_admin"] and admins <= 1:
+                print("Error: refusing to remove the last admin.")
+                return False
+        conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (0 if revoke else 1, user["id"]))
+        conn.commit()
+        print(f"{'Revoked admin from' if revoke else 'Granted admin to'}: {email}")
+        return True
+    finally:
+        conn.close()
+
+
 def check_db():
     """Check if database exists and has the required tables."""
     if not os.path.exists(DB_PATH):
@@ -208,6 +235,11 @@ def main():
     # List users command
     subparsers.add_parser("list", help="List all users")
 
+    # Admin rights
+    admin_parser = subparsers.add_parser("admin", help="Grant admin rights to a user")
+    admin_parser.add_argument("email", help="User email")
+    admin_parser.add_argument("--revoke", action="store_true", help="Remove admin rights instead")
+
     args = parser.parse_args()
 
     # Check database before proceeding
@@ -220,6 +252,9 @@ def main():
         remove_user(args.email)
     elif args.command == "list":
         list_users()
+    elif args.command == "admin":
+        if not set_admin(args.email, args.revoke):
+            sys.exit(1)
     else:
         parser.print_help()
 

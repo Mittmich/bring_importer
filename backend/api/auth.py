@@ -2,10 +2,15 @@
 
 The router in ``api/routers/auth.py`` exposes ``POST /token`` (login).
 The dependency ``get_current_user`` is reused by ``api/routers/recipes.py``
-to gate mutating endpoints.
+to gate mutating endpoints; ``get_current_admin`` gates ``api/routers/admin.py``.
+
+Sessions are revocable: every JWT carries the user's ``token_version`` as
+``ver``. Bumping the version (password reset, disable, "log out everywhere")
+invalidates every token issued before. Tokens without ``ver`` (issued before
+this existed) count as version 0, so they stay valid until the first bump.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import jwt
@@ -14,7 +19,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from passlib.context import CryptContext
 
-from api.config import ALGORITHM, SECRET_KEY
+from api.config import ACCESS_TOKEN_EXPIRE_MINUTES, ALGORITHM, SECRET_KEY
 from api.db import get_db_connection
 from api.models import UserInDB
 
@@ -49,7 +54,15 @@ def get_user(email: str) -> Optional[UserInDB]:
     conn.close()
 
     if user:
-        return UserInDB(email=user["email"], password="", hashed_password=user["hashed_password"])
+        return UserInDB(
+            email=user["email"],
+            password="",
+            hashed_password=user["hashed_password"],
+            id=user["id"],
+            is_admin=bool(user["is_admin"]),
+            disabled=bool(user["disabled"]),
+            token_version=int(user["token_version"] or 0),
+        )
     return None
 
 
@@ -73,22 +86,44 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
+def utc_now() -> str:
+    """Current UTC time as an ISO-8601 string (the format stored in the DB)."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def issue_access_token(user: UserInDB) -> str:
+    """A login JWT for ``user``, bound to their current ``token_version``."""
+    return create_access_token(
+        data={"sub": user.email, "ver": user.token_version},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
+
+
+def _user_from_token(token: str) -> Optional[UserInDB]:
+    """The active user a token belongs to, or None (bad/expired/revoked/disabled)."""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-    except jwt.PyJWTError as err:
-        raise credentials_exception from err
+    except jwt.PyJWTError:
+        return None
+    email = payload.get("sub")
+    if not email:
+        return None
     user = get_user(email=email)
+    if user is None or user.disabled:
+        return None
+    if int(payload.get("ver", 0)) != user.token_version:
+        return None
+    return user
+
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserInDB:
+    user = _user_from_token(token)
     if user is None:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -96,16 +131,28 @@ async def get_current_user_optional(
     token: Optional[str] = Depends(oauth2_scheme_optional),
 ) -> Optional[UserInDB]:
     """Like ``get_current_user`` but returns ``None`` instead of raising 401."""
-    if not token:
-        return None
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email: Optional[str] = payload.get("sub")
-        if email is None:
-            return None
-    except jwt.PyJWTError:
-        return None
-    return get_user(email=email)
+    return _user_from_token(token) if token else None
+
+
+async def get_current_admin(
+    current_user: UserInDB = Depends(get_current_user),  # noqa: B008
+) -> UserInDB:
+    """``get_current_user`` restricted to admins (403 otherwise)."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admins only")
+    return current_user
+
+
+def record_login(user_id: int) -> None:
+    conn = get_db_connection()
+    conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (utc_now(), user_id))
+    conn.commit()
+    conn.close()
+
+
+def bump_token_version(cursor, user_id: int) -> None:
+    """Revoke every session of ``user_id`` (within the caller's transaction)."""
+    cursor.execute("UPDATE users SET token_version = token_version + 1 WHERE id = ?", (user_id,))
 
 
 def update_password(email: str, new_password: str) -> None:
@@ -121,11 +168,11 @@ def update_password(email: str, new_password: str) -> None:
 
 
 def get_profile(email: str) -> Optional[dict]:
-    """Return ``{email, display_name, language}`` for the user, or None if unknown."""
+    """Return ``{email, display_name, language, is_admin}`` for the user, or None."""
     conn = get_db_connection()
     cursor = conn.cursor()
     row = cursor.execute(
-        "SELECT email, display_name, language FROM users WHERE email = ?", (email,)
+        "SELECT email, display_name, language, is_admin FROM users WHERE email = ?", (email,)
     ).fetchone()
     conn.close()
     if row is None:
@@ -134,6 +181,7 @@ def get_profile(email: str) -> Optional[dict]:
         "email": row["email"],
         "display_name": row["display_name"] or "",
         "language": row["language"],
+        "is_admin": bool(row["is_admin"]),
     }
 
 

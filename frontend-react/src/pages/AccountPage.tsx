@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRight, Tag, Users } from 'lucide-react'
+import { ChevronRight, Shield, Tag, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { getUserEmail, logout } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
@@ -12,6 +12,7 @@ import { useI18n } from '@/i18n'
 export function AccountPage() {
   const email = getUserEmail()
   const { t } = useI18n()
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: api.getProfile })
 
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-[#F8FAFC]">
@@ -38,6 +39,16 @@ export function AccountPage() {
           <span className="text-sm font-medium text-foreground">{t('account.manageTags')}</span>
           <ChevronRight className="w-4 h-4 text-muted-foreground/50 ml-auto" />
         </Link>
+        {profile?.is_admin && (
+          <Link
+            to="/admin"
+            className="flex items-center gap-3 bg-white rounded-xl border border-border p-5 hover:bg-muted/40 transition-colors"
+          >
+            <Shield className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium text-foreground">{t('account.admin')}</span>
+            <ChevronRight className="w-4 h-4 text-muted-foreground/50 ml-auto" />
+          </Link>
+        )}
 
         <LanguageCard />
 

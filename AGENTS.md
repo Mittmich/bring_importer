@@ -129,7 +129,8 @@ curl -s http://localhost:8001/health   # or whichever health endpoint exists
 
 ### Users / auth
 
-- Users are seeded from `users.json` and managed via `./manage_users.py`. Do **not** add self-registration.
+- Users are seeded from `users.json` and managed via `./manage_users.py` or the in-app admin area (`api/routers/admin.py`). Sign-up happens **only** through admin-issued one-time links (`api/auth_links.py`) — do **not** add open self-registration.
+- Sessions are revocable via `users.token_version` (the JWT `ver` claim). Anything that should log a user out (password reset, disable) must call `bump_token_version`.
 - Passwords are hashed via `generate_password.py` — never store plaintext, never log them.
 
 ## Common tasks — quick recipes
