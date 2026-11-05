@@ -1,13 +1,11 @@
 import * as React from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { tagColor, tagChipStyle } from '@/lib/tagColors'
+import { tagChipStyle } from '@/lib/tagColors'
 import { useI18n } from '@/i18n'
 
 interface TagChipProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 'color'> {
   name: string
-  /** Explicit colour; when null/undefined a stable default is derived from the name. */
-  color?: string | null
   /** Renders a remove (×) button and calls this when clicked. */
   onRemove?: () => void
   /** Dims the chip to indicate an unselected/toggleable state. */
@@ -15,12 +13,10 @@ interface TagChipProps extends Omit<React.HTMLAttributes<HTMLSpanElement>, 'colo
 }
 
 /**
- * A coloured tag pill used everywhere tags appear (list rows, detail, editor,
- * management page). Colour resolution lives in `tagColors` so every chip stays
- * consistent.
+ * The tag pill used everywhere tags appear (list rows, detail, editor,
+ * management page). All tags share one colour (`TAG_COLOR`).
  */
-export function TagChip({ name, color, onRemove, muted, className, ...props }: TagChipProps) {
-  const resolved = tagColor(name, color)
+export function TagChip({ name, onRemove, muted, className, ...props }: TagChipProps) {
   const { t } = useI18n()
   return (
     <span
@@ -29,7 +25,7 @@ export function TagChip({ name, color, onRemove, muted, className, ...props }: T
         muted && 'opacity-55',
         className,
       )}
-      style={tagChipStyle(resolved)}
+      style={tagChipStyle()}
       {...props}
     >
       {name}

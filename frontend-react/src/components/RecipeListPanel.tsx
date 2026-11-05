@@ -8,7 +8,7 @@ import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { RecipeCover } from '@/components/RecipeCover'
 import { BulkAddToCookbookModal } from '@/components/BulkAddToCookbookModal'
 import { TagChip } from '@/components/ui/tag-chip'
-import { tagColor } from '@/lib/tagColors'
+import { TAG_COLOR } from '@/lib/tagColors'
 import { relativeDate } from '@/lib/format'
 import { useI18n } from '@/i18n'
 
@@ -159,7 +159,6 @@ export function RecipeListPanel({ activeUuid }: Props) {
 
           {(tagsExpanded ? filterTags : filterTags.filter((t) => selectedTags.includes(t.name))).map((t) => {
             const active = selectedTags.includes(t.name)
-            const resolved = tagColor(t.name, t.color)
             return (
               <button
                 key={t.name}
@@ -167,8 +166,8 @@ export function RecipeListPanel({ activeUuid }: Props) {
                 className="text-xs px-2 py-1 rounded-full border font-medium transition-colors"
                 style={
                   active
-                    ? { backgroundColor: resolved, color: '#fff', borderColor: resolved }
-                    : { backgroundColor: '#fff', color: resolved, borderColor: resolved }
+                    ? { backgroundColor: TAG_COLOR, color: '#fff', borderColor: TAG_COLOR }
+                    : { backgroundColor: '#fff', color: TAG_COLOR, borderColor: TAG_COLOR }
                 }
               >
                 {t.name}
@@ -295,7 +294,7 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
         {recipe.tags && recipe.tags.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 mt-1.5">
             {recipe.tags.slice(0, MAX_ROW_TAGS).map((t) => (
-              <TagChip key={t.name} name={t.name} color={t.color} />
+              <TagChip key={t.name} name={t.name} />
             ))}
             {recipe.tags.length > MAX_ROW_TAGS && (
               <span className="text-xs text-muted-foreground">
