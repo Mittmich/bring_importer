@@ -8,7 +8,7 @@
  */
 export const en = {
   // --- Common ---
-  'common.appName': 'My Recipes',
+  'common.appName': 'Zestry',
   'common.loading': 'Loading…',
   'common.save': 'Save',
   'common.saving': 'Saving…',

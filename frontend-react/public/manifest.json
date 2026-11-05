@@ -1,11 +1,11 @@
 {
-  "name": "Recipe to Bring Importer",
-  "short_name": "Recipe2Bring",
-  "description": "Upload recipe photos and import ingredients to Bring shopping list",
+  "name": "Zestry",
+  "short_name": "Zestry",
+  "description": "Your recipes from photos, websites or your own notes — shared with friends and sent to your Bring! shopping list.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#6366f1",
+  "theme_color": "#f08a24",
   "icons": [
     {
       "src": "/images/images/icon-192.png",
@@ -14,19 +14,19 @@
       "purpose": "any"
     },
     {
-      "src": "/images/images/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
       "src": "/images/images/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/images/images/icon-512.png",
+      "src": "/images/images/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/images/images/icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

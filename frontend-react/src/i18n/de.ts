@@ -3,7 +3,7 @@ import type { MessageKey } from './en'
 /** German UI strings. Typed against the English keys — a missing key fails the build. */
 export const de: Record<MessageKey, string> = {
   // --- Common ---
-  'common.appName': 'Meine Rezepte',
+  'common.appName': 'Zestry',
   'common.loading': 'Wird geladen…',
   'common.save': 'Speichern',
   'common.saving': 'Wird gespeichert…',

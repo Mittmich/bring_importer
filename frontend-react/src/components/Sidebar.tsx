@@ -5,6 +5,7 @@ import { getUserEmail, logout } from '@/hooks/useAuth'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useI18n, type MessageKey } from '@/i18n'
+import { BrandMark } from '@/components/BrandMark'
 
 function NavBadge({ count }: { count: number }) {
   if (count <= 0) return null
@@ -34,7 +35,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
     <aside className="hidden md:flex flex-col w-[220px] min-w-[220px] border-r border-border bg-white">
       <div className="px-4 py-5 border-b border-border">
         <span className="text-sm font-bold text-foreground flex items-center gap-2">
-          <span className="w-2 h-2 rounded-sm bg-primary inline-block" />
+          <BrandMark className="w-6 h-6" />
           {t('common.appName')}
         </span>
       </div>

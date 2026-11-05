@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 
-/** Every tag uses the app's primary indigo — tags aren't individually coloured. */
-export const TAG_COLOR = '#6366f1'
+/** Every tag uses the app's primary orange — tags aren't individually coloured. */
+export const TAG_COLOR = '#bf560b'
 
 /**
  * Inline styles for a soft, legible chip: a faint tint behind colour-toned
