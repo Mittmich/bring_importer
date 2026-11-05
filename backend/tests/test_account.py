@@ -14,7 +14,13 @@ def test_change_password_updates_login(client, auth_headers, seed_user):
         headers=auth_headers,
         json={"current_password": "correctpassword", "new_password": "brandnewpass1"},
     )
-    assert resp.status_code == 204
+    assert resp.status_code == 200
+    new_token = resp.json()["access_token"]
+
+    # The old session is revoked; the returned token works.
+    assert client.get("/account/profile", headers=auth_headers).status_code == 401
+    fresh = {"Authorization": f"Bearer {new_token}"}
+    assert client.get("/account/profile", headers=fresh).status_code == 200
 
     # New password works; old one no longer does.
     assert _login(client, seed_user["email"], "brandnewpass1").status_code == 200

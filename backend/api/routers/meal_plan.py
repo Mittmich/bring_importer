@@ -16,10 +16,10 @@ import uuid as uuid_mod
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
 
 from api import google_calendar as gcal
 from api.auth import get_current_user, get_user_id
+from api.bring_page import recipe_page
 from api.config import app_origin
 from api.db import get_db_connection
 from api.i18n import localize_recipe, localized_title, request_language
@@ -282,22 +282,7 @@ async def shopping_list_html(token: str):
         "recipeYield": "",
         "description": "Consolidated shopping list for the week's meal plan.",
     }
-    html = (
-        "<!DOCTYPE html>\n"
-        '<html lang="en">\n'
-        "<head>\n"
-        '  <meta charset="UTF-8">\n'
-        f"  <title>{name}</title>\n"
-        '  <script type="application/ld+json">\n'
-        f"  {json.dumps(jsonld, ensure_ascii=False)}\n"
-        "  </script>\n"
-        "</head>\n"
-        "<body>\n"
-        f"  <h1>{name}</h1>\n"
-        "</body>\n"
-        "</html>"
-    )
-    return HTMLResponse(content=html)
+    return recipe_page(name, jsonld, "en")
 
 
 def _week_entries(cursor, user_id: int, start: str, end: str):

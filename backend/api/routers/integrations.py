@@ -10,6 +10,7 @@
 
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import quote
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException
@@ -77,7 +78,7 @@ async def callback(
     origin = app_origin()
 
     def fail(reason: str) -> RedirectResponse:
-        return RedirectResponse(url=f"{origin}/plan?google=error&reason={reason}")
+        return RedirectResponse(url=f"{origin}/plan?google=error&reason={quote(reason[:100])}")
 
     if error:
         return fail(error)

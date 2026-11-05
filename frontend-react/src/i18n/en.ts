@@ -83,7 +83,7 @@ export const en = {
   'account.confirmPassword': 'Confirm new password',
   'account.passwordTooShort': 'New password must be at least 8 characters',
   'account.passwordMismatch': 'New passwords do not match',
-  'account.passwordChanged': 'Password changed.',
+  'account.passwordChanged': 'Password changed. Your other devices have been logged out.',
 
   // --- Import ---
   'import.photoTitle': 'Import from photo',

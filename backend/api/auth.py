@@ -66,9 +66,22 @@ def get_user(email: str) -> Optional[UserInDB]:
     return None
 
 
+_dummy_hash: Optional[str] = None
+
+
+def _burn_password_check(password: str) -> None:
+    """Spend the same bcrypt time as a real check, so response timing doesn't
+    reveal whether an email has an account."""
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = get_password_hash("not-a-real-password")
+    verify_password(password, _dummy_hash)
+
+
 def authenticate_user(email: str, password: str):
     user = get_user(email)
     if not user:
+        _burn_password_check(password)
         return False
     if not verify_password(password, user.hashed_password):
         return False
@@ -104,6 +117,10 @@ def _user_from_token(token: str) -> Optional[UserInDB]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     except jwt.PyJWTError:
+        return None
+    # Other JWTs signed with the same key (e.g. the Google OAuth ``state``,
+    # which carries ``purpose``) must never work as a session.
+    if "purpose" in payload:
         return None
     email = payload.get("sub")
     if not email:
@@ -156,11 +173,12 @@ def bump_token_version(cursor, user_id: int) -> None:
 
 
 def update_password(email: str, new_password: str) -> None:
-    """Set a new bcrypt-hashed password for the user with ``email``."""
+    """Set a new bcrypt-hashed password for ``email`` and revoke all their sessions."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "UPDATE users SET hashed_password = ? WHERE email = ?",
+        "UPDATE users SET hashed_password = ?, token_version = token_version + 1 "
+        "WHERE email = ?",
         (get_password_hash(new_password), email),
     )
     conn.commit()

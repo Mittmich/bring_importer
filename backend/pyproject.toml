@@ -7,26 +7,28 @@ name = "recipe-parser-api"
 version = "0.1.0"
 description = "Recipe Parser API for Bring Importer PWA"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license = "MIT"
 authors = [
     {name = "Recipe App Developer", email = "example@example.com"}
 ]
 
 dependencies = [
-    "fastapi>=0.100.0",
+    "fastapi>=0.120.0",
     "uvicorn[standard]>=0.22.0",
     "pydantic>=2.0.0",
     "pydantic[email]>=2.0.0",
-    "python-multipart>=0.0.6", # For form data handling
-    "python-jose[cryptography]>=3.3.0", # For JWT handling
+    "python-multipart>=0.0.31", # For form data handling
     "passlib[bcrypt]>=1.7.4", # For password hashing
     "bcrypt<4.0", # passlib 1.7.4 is incompatible with bcrypt >= 4.0; pin until passlib is upgraded
     "requests>=2.28.2",
     "httpx>=0.24.0",
+    # The CA bundle behind every outbound TLS call. >= 2026.10.18 drops the
+    # eMudhra "emSign ECC Root CA - G3" root (compromised intermediates, PYSEC-2026-4320).
+    "certifi>=2026.10.18",
     "openai>=1.0.0",
     "python-dotenv>=1.0.0",
-    "pyjwt>=2.9.0",
+    "pyjwt>=2.15.0",
     "beautifulsoup4>=4.13.4",
     "rapidfuzz>=3.9.7",
     "fpdf2>=2.8",
@@ -55,7 +57,7 @@ py-modules = ["run", "manage_users", "generate_password"]
 
 [tool.black]
 line-length = 100
-target-version = ["py38", "py39", "py310"]
+target-version = ["py310", "py311", "py312"]
 
 [tool.isort]
 profile = "black"

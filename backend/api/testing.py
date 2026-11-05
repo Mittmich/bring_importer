@@ -147,6 +147,15 @@ def install() -> None:
 
     _httpx.AsyncClient = _patched_async_client  # type: ignore
 
+    # The SSRF guard resolves host names before fetching; the stubbed URLs use
+    # made-up hosts, so pretend every host resolves to a public address.
+    from api import safe_fetch as _safe_fetch
+
+    async def _public_resolve(host, port):
+        return ["93.184.215.14"]
+
+    _safe_fetch.resolve_host = _public_resolve  # type: ignore
+
     # Auto-seed a test user on first import. This is the user the E2E
     # tests log in as. Only happens when RECIPE_TEST_MOCKS=1.
     from passlib.context import CryptContext

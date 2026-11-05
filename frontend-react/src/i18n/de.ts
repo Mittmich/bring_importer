@@ -79,7 +79,7 @@ export const de: Record<MessageKey, string> = {
   'account.confirmPassword': 'Neues Passwort bestätigen',
   'account.passwordTooShort': 'Das neue Passwort muss mindestens 8 Zeichen lang sein',
   'account.passwordMismatch': 'Die neuen Passwörter stimmen nicht überein',
-  'account.passwordChanged': 'Passwort geändert.',
+  'account.passwordChanged': 'Passwort geändert. Deine anderen Geräte wurden abgemeldet.',
 
   // --- Import ---
   'import.photoTitle': 'Aus Foto importieren',

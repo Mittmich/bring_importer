@@ -8,7 +8,7 @@ import json
 import sqlite3
 import time
 import uuid as uuid_mod
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -354,12 +354,8 @@ CANONICAL_URL_HTML_NO_JSONLD = """\
 
 
 def _fake_httpx_response(html: str):
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.text = html
-    mock_resp.content = html.encode("utf-8")
-    mock_resp.raise_for_status = MagicMock()
-    return mock_resp
+    """What ``fetch_page`` returns: ``(final_url, text)``."""
+    return ("https://example.test/recipe", html)
 
 
 @pytest.mark.integration
@@ -367,12 +363,7 @@ def test_import_url_with_jsonld_happy_path(client, auth_headers, mocked_openai, 
     """A page with a clean JSON-LD block imports via the JSON-LD path."""
     fake = _fake_httpx_response(CANONICAL_URL_HTML_WITH_JSONLD)
 
-    with patch("api.routers.recipes.httpx.AsyncClient") as ClientCls:
-        instance = MagicMock()
-        instance.__aenter__ = AsyncMock(return_value=instance)
-        instance.__aexit__ = AsyncMock(return_value=None)
-        instance.get = AsyncMock(return_value=fake)
-        ClientCls.return_value = instance
+    with patch("api.routers.recipes.fetch_page", AsyncMock(return_value=fake)):
 
         resp = client.post(
             "/recipes/import-url",
@@ -409,12 +400,7 @@ def test_import_url_falls_back_to_openai_when_no_jsonld(
     """A page without JSON-LD routes through the OpenAI text fallback."""
     fake = _fake_httpx_response(CANONICAL_URL_HTML_NO_JSONLD)
 
-    with patch("api.routers.recipes.httpx.AsyncClient") as ClientCls:
-        instance = MagicMock()
-        instance.__aenter__ = AsyncMock(return_value=instance)
-        instance.__aexit__ = AsyncMock(return_value=None)
-        instance.get = AsyncMock(return_value=fake)
-        ClientCls.return_value = instance
+    with patch("api.routers.recipes.fetch_page", AsyncMock(return_value=fake)):
 
         resp = client.post(
             "/recipes/import-url",
@@ -436,19 +422,14 @@ def test_import_url_unauthenticated_returns_401(client, mocked_openai):
 
 
 @pytest.mark.integration
-def test_import_url_fetch_failure_returns_422(client, auth_headers, mocked_openai):
+def test_import_url_fetch_failure_returns_422(client, auth_headers, mocked_openai, fake_web):
     """A network error returns 422 with a user-readable message, not 500."""
     import httpx as httpx_mod
 
-    with patch("api.routers.recipes.httpx.AsyncClient") as ClientCls:
-        instance = MagicMock()
-        instance.__aenter__ = AsyncMock(return_value=instance)
-        instance.__aexit__ = AsyncMock(return_value=None)
-        instance.get = AsyncMock(
-            side_effect=httpx_mod.ConnectError("dns blew up", request=MagicMock())
-        )
-        ClientCls.return_value = instance
+    def boom(request):
+        raise httpx_mod.ConnectError("connection refused", request=request)
 
+    with fake_web(boom):
         resp = client.post(
             "/recipes/import-url",
             headers=auth_headers,
