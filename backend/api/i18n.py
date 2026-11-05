@@ -164,6 +164,7 @@ BACKEND_STRINGS: Dict[str, Dict[str, str]] = {
         "exported": "Exported from {app} on {date}",
         "app": "My Recipes",
         "untitled": "Untitled recipe",
+        "copy_title": "{title} (copy)",
     },
     "de": {
         "ingredients": "Zutaten",
@@ -177,6 +178,7 @@ BACKEND_STRINGS: Dict[str, Dict[str, str]] = {
         "exported": "Exportiert aus {app} am {date}",
         "app": "Meine Rezepte",
         "untitled": "Rezept ohne Titel",
+        "copy_title": "{title} (Kopie)",
     },
 }
 

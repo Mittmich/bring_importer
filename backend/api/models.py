@@ -75,6 +75,21 @@ class RecipeUpdate(BaseModel):
     base_updated_at: Optional[str] = None
 
 
+class ManualRecipe(BaseModel):
+    """Body for ``POST /recipes`` — a recipe entered by hand."""
+
+    title: str
+    ingredients: List[Ingredient] = []
+    instructions: List[InstructionStep] = []
+    recipeYield: str = ""
+    description: Optional[str] = None
+    note: Optional[str] = None
+    # Language the content is written in (default: request/profile language).
+    language: Optional[str] = None
+    # Ingredients typed one per line ("500 g flour"); appended after ``ingredients``.
+    ingredients_text: Optional[str] = None
+
+
 class TranslateRequest(BaseModel):
     """Body for ``POST /recipes/{uuid}/translate``."""
 

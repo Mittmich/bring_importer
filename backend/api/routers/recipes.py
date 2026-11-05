@@ -2,6 +2,8 @@
 
 - ``POST /recipes/parse`` — auth required; image → OpenAI → store → uuid.
 - ``POST /recipes/import-url`` — auth required; URL → JSON-LD/OpenAI → store → uuid.
+- ``POST /recipes`` — auth required; store a recipe entered by hand → uuid.
+- ``POST /recipes/{uuid}/clone`` — auth required; copy a visible recipe → uuid.
 - ``GET /recipes`` — auth required; list the current user's recipes.
 - ``PUT /recipes/{uuid}`` — auth required; edit structured fields.
 - ``DELETE /recipes/{uuid}`` — auth required; 204 on success.
@@ -33,15 +35,18 @@ from api.auth import get_current_user, get_current_user_optional, get_user_id, g
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
 from api.i18n import (
+    backend_text,
     localize_recipe,
     localized_title,
     normalize_language,
     request_language,
     variant_language,
 )
+from api.ingredient_lines import parse_ingredient_lines
 from api.models import (
     Ingredient,
     InstructionStep,
+    ManualRecipe,
     Recipe,
     RecipeResponse,
     RecipeUpdate,
@@ -82,6 +87,8 @@ def _store_recipe(
     source: Dict[str, str],
     note: str = "",
     translations: Optional[Dict[str, Any]] = None,
+    has_image: bool = False,
+    tags: Optional[List[str]] = None,
 ) -> None:
     """Persist a parsed recipe with the standard shape and metadata."""
     schema_recipe: Dict[str, Any] = {
@@ -102,8 +109,8 @@ def _store_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO recipes (uuid, user_id, title, recipe_json, note, source) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO recipes (uuid, user_id, title, recipe_json, note, source, has_image) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             recipe_uuid,
             user_id,
@@ -111,8 +118,11 @@ def _store_recipe(
             json.dumps(schema_recipe),
             note,
             json.dumps(source),
+            int(has_image),
         ),
     )
+    if tags:
+        _set_recipe_tags(cursor, user_id, recipe_uuid, tags)
     conn.commit()
     conn.close()
 
@@ -302,6 +312,57 @@ async def import_url(
         source={"kind": "url", "value": url},
         note=body.note or "",
         translations=translations,
+    )
+    return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
+
+
+@router.post("", response_model=RecipeResponse)
+async def create_recipe(
+    body: ManualRecipe,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    """Store a recipe entered by hand (no LLM involved).
+
+    Only a title is required; the client typically creates a stub and then
+    fills it in with the regular editor (``PUT /recipes/{uuid}``).
+    """
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="Title is required")
+    if body.language is not None and normalize_language(body.language) is None:
+        raise HTTPException(status_code=422, detail="Unsupported language")
+
+    ingredients = [
+        *body.ingredients,
+        *parse_ingredient_lines(body.ingredients_text or ""),
+    ]
+    n_ingredients = len(ingredients)
+    recipe = Recipe(
+        title=title,
+        ingredients=ingredients,
+        # Drop step → ingredient links that point past the ingredient list.
+        instructions=[
+            step.model_copy(
+                update={"ingredients": [i for i in step.ingredients if 0 <= i < n_ingredients]}
+            )
+            for step in body.instructions
+        ],
+        recipeYield=body.recipeYield.strip(),
+        description=body.description,
+        datePublished=datetime.now().strftime("%Y-%m-%d"),
+        inLanguage=_target_language(body.language, lang, user_id),
+    )
+    recipe_uuid = str(uuid_mod.uuid4())
+    _store_recipe(
+        recipe_uuid=recipe_uuid,
+        user_id=user_id,
+        recipe=recipe,
+        source={"kind": "manual", "value": ""},
+        note=(body.note or "").strip(),
     )
     return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
 
@@ -1158,9 +1219,13 @@ async def clone_recipe(
     recipe_uuid: str,
     current_user: User = Depends(get_current_user),  # noqa: B008
 ):
-    """Clone a public recipe into the current user's collection.
+    """Copy a recipe into the current user's collection.
 
-    Returns 404 if the recipe doesn't exist or is not public.
+    Allowed for public recipes and for recipes the caller can view (own, or
+    shared via a cookbook); anything else is a 404. Content, translations and
+    the hero image are copied. When the caller owns the original this is a
+    "duplicate": the title gets a " (copy)" suffix and the note and tags are
+    copied as well (they're the owner's own).
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -1168,21 +1233,44 @@ async def clone_recipe(
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "SELECT recipe_json, source, is_public FROM recipes WHERE uuid = ?",
-        (recipe_uuid,),
-    )
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        row = cursor.execute(
+            "SELECT recipe_json, source, note, is_public, user_id FROM recipes WHERE uuid = ?",
+            (recipe_uuid,),
+        ).fetchone()
+        role = effective_role(cursor, user_id, recipe_uuid) if row else "none"
+        tag_names = (
+            [t["name"] for t in _tags_for(cursor, [recipe_uuid]).get(recipe_uuid, [])]
+            if row
+            else []
+        )
+    finally:
+        conn.close()
 
-    if not row or not row["is_public"]:
+    if not row or not (row["is_public"] or role_at_least(role, "viewer")):
         raise HTTPException(status_code=404, detail="Recipe not found or not public")
+    is_duplicate = row["user_id"] == user_id
 
     data = json.loads(row["recipe_json"])
     source = json.loads(row["source"]) if row["source"] else {"kind": "shared", "value": ""}
+    translations = data.get("translations") or None
+
+    title = data.get("name") or "Untitled"
+    if is_duplicate:
+        # Each variant's title is suffixed in its own language.
+        title = backend_text(normalize_language(data.get("inLanguage")), "copy_title", title=title)
+        if translations:
+            translations = {
+                code: (
+                    {**variant, "name": backend_text(code, "copy_title", title=variant["name"])}
+                    if isinstance(variant, dict) and variant.get("name")
+                    else variant
+                )
+                for code, variant in translations.items()
+            }
 
     recipe = Recipe(
-        title=data.get("name", "Untitled"),
+        title=title,
         ingredients=[Ingredient(**ing) for ing in data.get("ingredients", [])],
         instructions=[InstructionStep(**step) for step in data.get("instructions", [])],
         recipeYield=data.get("recipeYield", "4 servings"),
@@ -1191,12 +1279,21 @@ async def clone_recipe(
         inLanguage=data.get("inLanguage"),
     )
     new_uuid = str(uuid_mod.uuid4())
+
+    image = recipe_images.image_path(recipe_uuid)
+    if image:
+        with open(image, "rb") as fh:
+            recipe_images.save_image(new_uuid, fh.read())
+
     _store_recipe(
         recipe_uuid=new_uuid,
         user_id=user_id,
         recipe=recipe,
         source=source,
-        translations=data.get("translations"),
+        note=(row["note"] or "") if is_duplicate else "",
+        translations=translations,
+        has_image=bool(image),
+        tags=tag_names if is_duplicate else None,
     )
     return RecipeResponse(uuid=new_uuid, url=f"/recipes/{new_uuid}.json")
 

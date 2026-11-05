@@ -442,4 +442,4 @@ def test_clone_keeps_translations(client, auth_headers, mocked_openai, tmp_db_pa
     new_uuid = client.post(f"/recipes/{uuid}/clone", headers=auth_headers).json()["uuid"]
     stored = _stored(tmp_db_path, new_uuid)
     assert stored["inLanguage"] == "en"
-    assert stored["translations"]["de"]["name"] == "Test-Pfannkuchen"
+    assert stored["translations"]["de"]["name"] == "Test-Pfannkuchen (Kopie)"  # own → duplicate

@@ -5,6 +5,7 @@ import { Search, ChevronRight, ChevronDown, Plus, BookHeart } from 'lucide-react
 import { api, type RecipeListItem } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { RecipeCover } from '@/components/RecipeCover'
 import { BulkAddToCookbookModal } from '@/components/BulkAddToCookbookModal'
 import { TagChip } from '@/components/ui/tag-chip'
 import { tagColor } from '@/lib/tagColors'
@@ -123,7 +124,7 @@ export function RecipeListPanel({ activeUuid }: Props) {
           onClick={onImport}
           className="flex items-center gap-1.5 text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
         >
-          <Plus className="w-4 h-4" /> {t('common.import')}
+          <Plus className="w-4 h-4" /> {t('common.add')}
         </button>
       </div>
 
@@ -265,19 +266,14 @@ function RecipeRow({ recipe, isActive }: { recipe: RecipeListItem; isActive: boo
         isActive ? 'bg-primary/5' : 'hover:bg-muted/40',
       )}
     >
-      {/* Reserve the thumbnail box up front for recipes that have an image
-          (known from the list payload) so the picture doesn't shift the row
-          when its bytes finish loading. */}
-      {recipe.has_image && (
-        <div
-          className={cn(
-            'w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 mr-3 border border-border/50 bg-muted',
-            !thumbSrc && 'animate-pulse',
-          )}
-        >
-          {thumbSrc && <img src={thumbSrc} alt="" className="w-full h-full object-cover" />}
-        </div>
-      )}
+      {/* Every row gets a thumbnail: the photo (pulsing until its bytes load),
+          or the recipe's gradient when it has none. */}
+      <RecipeCover
+        seed={recipe.uuid}
+        src={thumbSrc}
+        loading={!!recipe.has_image}
+        className="w-14 h-14 rounded-lg flex-shrink-0 mr-3 border border-border/50"
+      />
       <div className="min-w-0 flex-1">
         <p
           className={cn(

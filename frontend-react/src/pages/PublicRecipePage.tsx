@@ -5,6 +5,7 @@ import { ChevronDown, ExternalLink, LogIn, BookmarkPlus } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { isAuthenticated } from '@/hooks/useAuth'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { RecipeCover } from '@/components/RecipeCover'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
@@ -122,11 +123,13 @@ function PublicRecipeView({ uuid, recipe, isOwner, loggedIn, cloneMutation }: Vi
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
           {/* Hero image banner */}
-          {heroSrc && (
-            <div className="w-full aspect-video bg-muted overflow-hidden rounded-xl border border-border">
-              <img src={heroSrc} alt={recipe.name} className="w-full h-full object-cover" />
-            </div>
-          )}
+          <RecipeCover
+            seed={uuid}
+            src={heroSrc}
+            loading={!!recipe.has_image}
+            alt={recipe.name}
+            className={`w-full rounded-xl border border-border ${recipe.has_image ? 'aspect-video' : 'aspect-[4/1]'}`}
+          />
 
           {/* Hero card */}
           <div className="bg-white rounded-xl border border-border px-6 py-6">

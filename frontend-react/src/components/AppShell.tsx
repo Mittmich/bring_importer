@@ -7,8 +7,9 @@ import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { ImportPhotoModal } from './ImportPhotoModal'
 import { ImportUrlModal } from './ImportUrlModal'
+import { AddRecipeModal, ManualRecipeModal } from './AddRecipeModal'
 
-type ImportMode = 'none' | 'photo' | 'url'
+type ImportMode = 'none' | 'choose' | 'photo' | 'url' | 'manual'
 
 /**
  * Keep the UI language in step with the signed-in user's profile: a language
@@ -40,8 +41,14 @@ export function AppShell() {
     navigate(`/recipes/${uuid}`)
   }
 
+  function handleManualDone(uuid: string) {
+    setImportMode('none')
+    // A hand-entered recipe is just a stub: continue in the editor.
+    navigate(`/recipes/${uuid}/edit`)
+  }
+
   function openImport() {
-    setImportMode('photo')
+    setImportMode('choose')
   }
 
   return (
@@ -54,6 +61,17 @@ export function AppShell() {
       </div>
       <BottomNav />
 
+      <AddRecipeModal
+        open={importMode === 'choose'}
+        onOpenChange={(o) => setImportMode(o ? 'choose' : 'none')}
+        onChoose={setImportMode}
+      />
+      <ManualRecipeModal
+        open={importMode === 'manual'}
+        onOpenChange={(o) => setImportMode(o ? 'manual' : 'none')}
+        onBack={() => setImportMode('choose')}
+        onDone={handleManualDone}
+      />
       <ImportPhotoModal
         open={importMode === 'photo'}
         onOpenChange={(o) => setImportMode(o ? 'photo' : 'none')}

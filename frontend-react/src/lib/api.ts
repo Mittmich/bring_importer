@@ -395,6 +395,20 @@ export const api = {
     }
   },
 
+  /** Create a recipe by hand; `ingredients_text` is one ingredient per line. */
+  createRecipe(body: {
+    title: string
+    recipeYield?: string
+    language?: string
+    ingredients_text?: string
+  }) {
+    return request<{ uuid: string; url: string }>('/recipes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  /** Copy a recipe the user can see into their collection (duplicate when it's their own). */
   cloneRecipe(uuid: string) {
     return request<{ uuid: string; url: string }>(`/recipes/${uuid}/clone`, { method: 'POST' })
   },
