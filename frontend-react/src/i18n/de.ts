@@ -113,17 +113,6 @@ export const de: Record<MessageKey, string> = {
   'add.urlHint': 'Link zu einer Rezeptseite einfügen',
   'add.manual': 'Selbst schreiben',
   'add.manualHint': 'Mit einem leeren Rezept beginnen',
-  'add.back': 'Zurück',
-  'manual.titleLabel': 'Titel',
-  'manual.titlePlaceholder': 'z. B. Omas Gulasch',
-  'manual.servings': 'Portionen',
-  'manual.language': 'Sprache',
-  'manual.ingredients': 'Zutaten',
-  'manual.ingredientsOptional': '(eine pro Zeile, optional)',
-  'manual.ingredientsPlaceholder': '500 g Rindfleisch\n2 Zwiebeln\n1 EL Paprikapulver',
-  'manual.ingredientsHint': 'Mengen werden automatisch erkannt. Die Schritte folgen im Editor.',
-  'manual.create': 'Erstellen & bearbeiten',
-  'manual.failed': 'Das Rezept konnte nicht erstellt werden.',
 
   // --- Home ---
   'home.search': 'Rezepte & Zutaten suchen…',
@@ -190,6 +179,10 @@ export const de: Record<MessageKey, string> = {
 
   // --- Edit recipe ---
   'edit.title': 'Rezept bearbeiten',
+  'edit.newTitle': 'Neues Rezept',
+  'edit.discardDraft': 'Dieses neue Rezept verwerfen?',
+  'edit.newLanguage': 'Sprache des Rezepts',
+  'edit.newLanguageHint': 'Die Sprache, in der du dieses Rezept schreibst.',
   'edit.saveFailed': 'Speichern fehlgeschlagen.',
   'edit.photo': 'Foto',
   'edit.photoHint': 'Optional · wird oben im Rezept angezeigt · automatisch im Querformat zugeschnitten',

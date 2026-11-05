@@ -83,6 +83,8 @@ def test_create_manual_recipe_full(client, auth_headers, tmp_db_path):
             "recipeYield": "2 servings",
             "description": "Fluffy.",
             "note": "Kids love them.",
+            "tags": ["Breakfast", "breakfast", "Sweet"],
+            "is_public": True,
             "ingredients": [{"amount": "200 g", "name": "flour"}, {"amount": "2", "name": "eggs"}],
             "instructions": [{"text": "Mix.", "ingredients": [0, 1, 5, -1]}],
         },
@@ -93,6 +95,8 @@ def test_create_manual_recipe_full(client, auth_headers, tmp_db_path):
     assert stored["recipe"]["recipeYield"] == "2 servings"
     assert stored["recipe"]["instructions"] == [{"text": "Mix.", "ingredients": [0, 1]}]
     assert stored["note"] == "Kids love them."
+    detail = client.get(f"/recipes/{resp.json()['uuid']}.json").json()  # public → anonymous ok
+    assert sorted(t["name"] for t in detail["tags"]) == ["Breakfast", "Sweet"]
 
 
 @pytest.mark.integration

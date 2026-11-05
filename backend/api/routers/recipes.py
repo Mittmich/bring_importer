@@ -89,6 +89,7 @@ def _store_recipe(
     translations: Optional[Dict[str, Any]] = None,
     has_image: bool = False,
     tags: Optional[List[str]] = None,
+    is_public: bool = False,
 ) -> None:
     """Persist a parsed recipe with the standard shape and metadata."""
     schema_recipe: Dict[str, Any] = {
@@ -109,8 +110,9 @@ def _store_recipe(
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO recipes (uuid, user_id, title, recipe_json, note, source, has_image) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO recipes "
+        "(uuid, user_id, title, recipe_json, note, source, has_image, is_public) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (
             recipe_uuid,
             user_id,
@@ -119,6 +121,7 @@ def _store_recipe(
             note,
             json.dumps(source),
             int(has_image),
+            int(is_public),
         ),
     )
     if tags:
@@ -324,8 +327,8 @@ async def create_recipe(
 ):
     """Store a recipe entered by hand (no LLM involved).
 
-    Only a title is required; the client typically creates a stub and then
-    fills it in with the regular editor (``PUT /recipes/{uuid}``).
+    Only a title is required. The editor sends the whole draft on first save
+    (content, tags, sharing flag); the photo follows via ``PUT .../image``.
     """
     user_id = get_user_id(current_user.email)
     if user_id is None:
@@ -363,6 +366,8 @@ async def create_recipe(
         recipe=recipe,
         source={"kind": "manual", "value": ""},
         note=(body.note or "").strip(),
+        tags=body.tags,
+        is_public=body.is_public,
     )
     return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
 

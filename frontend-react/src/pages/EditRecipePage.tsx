@@ -92,9 +92,11 @@ function SortableRow({
 
 export function EditRecipePage() {
   const { uuid } = useParams<{ uuid: string }>()
+  // `/recipes/new`: an unsaved draft — nothing exists server-side until Save.
+  const isNew = !uuid
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { t, tx } = useI18n()
+  const { t, tx, lang } = useI18n()
 
   const { data: recipe, isLoading } = useQuery({
     queryKey: ['recipe', uuid],
@@ -103,7 +105,9 @@ export function EditRecipePage() {
   })
 
   const [title, setTitle] = useState('')
-  const [yield_, setYield] = useState('')
+  const [yield_, setYield] = useState(() => (isNew ? `4 ${t('recipe.servings')}` : ''))
+  // Language a new draft is written in (existing recipes use LanguageSection).
+  const [newLang, setNewLang] = useState<Language>(lang)
   const [description, setDescription] = useState('')
   const [ingredients, setIngredients] = useState<IngredientRow[]>([])
   const [instructions, setInstructions] = useState<StepRow[]>([])
@@ -199,15 +203,47 @@ export function EditRecipePage() {
     setTags((prev) => prev.filter((t) => t !== name))
   }
 
+  const strippedIngredients = () =>
+    ingredients.map((ing) => ({ amount: ing.amount, name: ing.name }))
+  const strippedInstructions = () =>
+    instructions.map((step) => ({ text: step.text, ingredients: step.ingredients }))
+
+  // First save of a draft: create it in one go, then attach the photo.
+  async function createDraft(): Promise<string> {
+    const created = await api.createRecipe({
+      title: title.trim(),
+      recipeYield: yield_,
+      description,
+      note,
+      language: newLang,
+      ingredients: strippedIngredients(),
+      instructions: strippedInstructions(),
+      tags,
+      is_public: isPublic,
+    })
+    if (newImage) await api.setRecipeImage(created.uuid, newImage.split(',')[1])
+    return created.uuid
+  }
+
+  const isDirty =
+    isNew &&
+    !!(title.trim() || description.trim() || note.trim() || ingredients.length || instructions.length || tags.length || newImage)
+
+  function goBack() {
+    if (isDirty && !window.confirm(t('edit.discardDraft'))) return
+    navigate(-1)
+  }
+
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<string> => {
+      if (isNew) return createDraft()
       await api.updateRecipe(uuid!, {
         title,
         recipeYield: yield_,
         description,
         // Strip the client-side _id before sending.
-        ingredients: ingredients.map((ing) => ({ amount: ing.amount, name: ing.name })),
-        instructions: instructions.map((step) => ({ text: step.text, ingredients: step.ingredients })),
+        ingredients: strippedIngredients(),
+        instructions: strippedInstructions(),
         note,
         is_public: isPublic,
         training_verified: verified,
@@ -223,11 +259,17 @@ export function EditRecipePage() {
       } else if (imageRemoved && recipe?.has_image) {
         await api.deleteRecipeImage(uuid!)
       }
+      return uuid!
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['recipe', uuid] })
+    onSuccess: (savedUuid) => {
+      queryClient.invalidateQueries({ queryKey: ['recipe', savedUuid] })
       queryClient.invalidateQueries({ queryKey: ['recipes'] })
       queryClient.invalidateQueries({ queryKey: ['tags'] })
+      if (isNew) {
+        // Replace the draft entry, so Back from the new recipe skips the editor.
+        navigate(`/recipes/${savedUuid}`, { replace: true })
+        return
+      }
       // Pop the edit entry so the stack collapses back to the recipe detail
       // (which we came from) with the list behind it. Swiping back then goes
       // to the list, not back into the editor or the recipe again. Fall back
@@ -333,16 +375,18 @@ export function EditRecipePage() {
       {/* Top bar */}
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-border">
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" /> {t('common.back')}
         </button>
-        <span className="flex-1 text-sm font-semibold text-foreground truncate">{t('edit.title')}</span>
+        <span className="flex-1 text-sm font-semibold text-foreground truncate">
+          {isNew ? t('edit.newTitle') : t('edit.title')}
+        </span>
         <Button
           size="sm"
           onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || (isNew && !title.trim())}
         >
           {saveMutation.isPending ? t('common.saving') : t('common.save')}
         </Button>
@@ -363,6 +407,16 @@ export function EditRecipePage() {
               declaredLang={declaredLang}
               onDeclare={setDeclaredLang}
             />
+          )}
+
+          {isNew && (
+            <div className="bg-white rounded-xl border border-border p-5 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <Label htmlFor="new-language">{t('edit.newLanguage')}</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('edit.newLanguageHint')}</p>
+              </div>
+              <LanguageSelect id="new-language" value={newLang} onChange={setNewLang} className="shrink-0" />
+            </div>
           )}
 
           {/* Hero image */}
@@ -434,6 +488,7 @@ export function EditRecipePage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={t('edit.titlePlaceholder')}
+                autoFocus={isNew}
               />
             </div>
 

@@ -88,6 +88,8 @@ class ManualRecipe(BaseModel):
     language: Optional[str] = None
     # Ingredients typed one per line ("500 g flour"); appended after ``ingredients``.
     ingredients_text: Optional[str] = None
+    tags: List[str] = []
+    is_public: bool = False
 
 
 class TranslateRequest(BaseModel):

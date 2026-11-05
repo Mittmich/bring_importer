@@ -54,6 +54,7 @@ export default function App() {
             <Route path="plan" element={<WeeklyPlanPage />} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:uuid" element={<RecipesPage />} />
+            <Route path="recipes/new" element={<EditRecipePage />} />
             <Route path="recipes/:uuid/edit" element={<EditRecipePage />} />
             <Route path="cookbooks" element={<CookbooksPage />} />
             <Route path="cookbooks/:id" element={<CookbookDetailPage />} />
