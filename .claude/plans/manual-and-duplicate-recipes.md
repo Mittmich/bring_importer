@@ -56,3 +56,12 @@ updated: 2026-11-05
   the list, home shelves, cookbook grid, recipe view and public page. tsc + build pass;
   eslint stays at the 18-error baseline.
 - Not done: visual check in a browser (no browser tooling in this session).
+
+## Follow-up (2026-11-05): manual → editor draft
+
+User feedback: the "Write it yourself" form was too many clicks. Now the chooser goes
+straight to `/recipes/new`, the editor in draft mode (language picker instead of the
+translation section; Save disabled until there's a title; Back asks before discarding a
+non-empty draft). First Save → `POST /recipes` with the whole draft (now also `tags`,
+`is_public`) → photo upload → replaces history with the new recipe. `ManualRecipeModal`
+and its strings are gone; `ingredients_text` stays as an API convenience.

@@ -116,17 +116,6 @@ export const en = {
   'add.urlHint': 'Paste a link to a recipe page',
   'add.manual': 'Write it yourself',
   'add.manualHint': 'Start from a blank recipe',
-  'add.back': 'Back',
-  'manual.titleLabel': 'Title',
-  'manual.titlePlaceholder': "e.g. Grandma's goulash",
-  'manual.servings': 'Servings',
-  'manual.language': 'Language',
-  'manual.ingredients': 'Ingredients',
-  'manual.ingredientsOptional': '(one per line, optional)',
-  'manual.ingredientsPlaceholder': '500 g beef\n2 onions\n1 tbsp paprika',
-  'manual.ingredientsHint': 'Amounts are recognised automatically. Steps follow in the editor.',
-  'manual.create': 'Create & edit',
-  'manual.failed': 'Could not create the recipe.',
 
   // --- Home ---
   'home.search': 'Search recipes & ingredients…',
@@ -193,6 +182,10 @@ export const en = {
 
   // --- Edit recipe ---
   'edit.title': 'Edit recipe',
+  'edit.newTitle': 'New recipe',
+  'edit.discardDraft': 'Discard this new recipe?',
+  'edit.newLanguage': 'Recipe language',
+  'edit.newLanguageHint': 'The language you write this recipe in.',
   'edit.saveFailed': 'Save failed.',
   'edit.photo': 'Photo',
   'edit.photoHint': 'Optional · shown at the top of the recipe · auto-cropped to landscape',

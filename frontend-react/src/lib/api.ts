@@ -395,11 +395,18 @@ export const api = {
     }
   },
 
-  /** Create a recipe by hand; `ingredients_text` is one ingredient per line. */
+  /** Create a recipe by hand (the editor's first save of a new draft). */
   createRecipe(body: {
     title: string
     recipeYield?: string
+    description?: string
+    note?: string
     language?: string
+    ingredients?: Ingredient[]
+    instructions?: InstructionStep[]
+    tags?: string[]
+    is_public?: boolean
+    /** One ingredient per line, split into amount/name server-side. */
     ingredients_text?: string
   }) {
     return request<{ uuid: string; url: string }>('/recipes', {
