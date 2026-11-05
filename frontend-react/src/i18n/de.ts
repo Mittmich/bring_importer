@@ -312,12 +312,11 @@ export const de: Record<MessageKey, string> = {
   // --- Tags ---
   'tags.back': 'Konto',
   'tags.title': 'Tags',
-  'tags.subtitle': 'Benenne Tags um, ändere ihre Farbe oder lösche sie. Änderungen gelten für alle Rezepte.',
+  'tags.subtitle': 'Benenne Tags um oder lösche sie. Änderungen gelten für alle Rezepte.',
   'tags.empty': 'Noch keine Tags. Füge einem Rezept Tags hinzu, dann erscheinen sie hier.',
   'tags.confirmDelete': 'Tag „{name}“ löschen? Er wird von allen Rezepten entfernt.',
   'tags.deleteLabel': 'Tag {name} löschen',
   'tags.renameLabel': 'Tag {name} umbenennen',
-  'tags.colorLabel': 'Farbe {color} wählen',
   'tags.removeLabel': 'Tag {name} entfernen',
 
   // --- Weekly plan ---

@@ -263,7 +263,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
           {recipe.tags && recipe.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-4">
               {recipe.tags.map((t) => (
-                <TagChip key={t.name} name={t.name} color={t.color} />
+                <TagChip key={t.name} name={t.name} />
               ))}
             </div>
           )}

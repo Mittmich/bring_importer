@@ -312,12 +312,11 @@ export const en = {
   // --- Tags ---
   'tags.back': 'Account',
   'tags.title': 'Tags',
-  'tags.subtitle': 'Rename, recolour, or delete your tags. Changes apply to every recipe.',
+  'tags.subtitle': 'Rename or delete your tags. Changes apply to every recipe.',
   'tags.empty': "No tags yet. Add tags to a recipe and they'll show up here.",
   'tags.confirmDelete': 'Delete the tag "{name}"? It will be removed from all recipes.',
   'tags.deleteLabel': 'Delete tag {name}',
   'tags.renameLabel': 'Rename tag {name}',
-  'tags.colorLabel': 'Set colour {color}',
   'tags.removeLabel': 'Remove tag {name}',
 
   // --- Weekly plan ---

@@ -4,7 +4,7 @@ import { ChevronRight, Plus, Search, Utensils } from 'lucide-react'
 import { api, type RecipeListItem, type TagInfo } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { RecipeCover } from '@/components/RecipeCover'
-import { tagColor } from '@/lib/tagColors'
+import { TAG_COLOR } from '@/lib/tagColors'
 import { Button } from '@/components/ui/button'
 import { relativeDate } from '@/lib/format'
 import { useI18n } from '@/i18n'
@@ -100,7 +100,7 @@ function TagShelf({ tag, onSeeAll }: { tag: TagInfo; onSeeAll: () => void }) {
   return (
     <Shelf
       title={tag.name}
-      dotColor={tagColor(tag.name, tag.color)}
+      dotColor={TAG_COLOR}
       count={data?.total}
       seeAll={onSeeAll}
       recipes={recipes}

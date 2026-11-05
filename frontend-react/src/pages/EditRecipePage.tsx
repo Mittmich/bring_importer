@@ -524,12 +524,9 @@ export function EditRecipePage() {
               {/* Selected tags */}
               {tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-1">
-                  {tags.map((t) => {
-                    const info = allTags.find((a) => a.name.toLowerCase() === t.toLowerCase())
-                    return (
-                      <TagChip key={t} name={t} color={info?.color} onRemove={() => removeTag(t)} />
-                    )
-                  })}
+                  {tags.map((t) => (
+                    <TagChip key={t} name={t} onRemove={() => removeTag(t)} />
+                  ))}
                 </div>
               )}
 
@@ -555,7 +552,7 @@ export function EditRecipePage() {
                     .filter((t) => !tags.some((sel) => sel.toLowerCase() === t.name.toLowerCase()))
                     .map((t) => (
                       <button key={t.id} type="button" onClick={() => addTag(t.name)}>
-                        <TagChip name={t.name} color={t.color} muted />
+                        <TagChip name={t.name} muted />
                       </button>
                     ))}
                 </div>

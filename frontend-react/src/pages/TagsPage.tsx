@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Check, Trash2 } from 'lucide-react'
+import { ArrowLeft, Trash2 } from 'lucide-react'
 import { api, type TagInfo } from '@/lib/api'
 import { Input } from '@/components/ui/input'
 import { TagChip } from '@/components/ui/tag-chip'
-import { TAG_PALETTE, tagColor } from '@/lib/tagColors'
-import { cn } from '@/lib/utils'
 import { useI18n } from '@/i18n'
 
 export function TagsPage() {
@@ -55,7 +53,7 @@ function TagRow({ tag }: { tag: TagInfo }) {
   }
 
   const update = useMutation({
-    mutationFn: (body: { name?: string; color?: string | null }) => api.updateTag(tag.id, body),
+    mutationFn: (body: { name: string }) => api.updateTag(tag.id, body),
     onSuccess: () => {
       setError(null)
       invalidate()
@@ -78,12 +76,10 @@ function TagRow({ tag }: { tag: TagInfo }) {
     update.mutate({ name: trimmed })
   }
 
-  const activeColor = tagColor(tag.name, tag.color)
-
   return (
     <div className="bg-white rounded-xl border border-border p-4 space-y-3">
       <div className="flex items-center gap-3">
-        <TagChip name={name || tag.name} color={tag.color} />
+        <TagChip name={name || tag.name} />
         <span className="text-xs text-muted-foreground">
           {tp('common.recipes', tag.count)}
         </span>
@@ -114,27 +110,6 @@ function TagRow({ tag }: { tag: TagInfo }) {
         aria-label={t('tags.renameLabel', { name: tag.name })}
       />
       {error && <p className="text-xs text-destructive">{error}</p>}
-
-      <div className="flex flex-wrap gap-1.5">
-        {TAG_PALETTE.map((swatch) => {
-          const selected = activeColor.toLowerCase() === swatch.toLowerCase()
-          return (
-            <button
-              key={swatch}
-              type="button"
-              onClick={() => update.mutate({ color: swatch })}
-              aria-label={t('tags.colorLabel', { color: swatch })}
-              className={cn(
-                'h-6 w-6 rounded-full flex items-center justify-center ring-offset-2 transition-shadow',
-                selected && 'ring-2 ring-foreground/30',
-              )}
-              style={{ backgroundColor: swatch }}
-            >
-              {selected && <Check className="w-3.5 h-3.5 text-white" />}
-            </button>
-          )
-        })}
-      </div>
     </div>
   )
 }
