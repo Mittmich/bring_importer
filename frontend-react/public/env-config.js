@@ -1,4 +1,4 @@
-// Environment configuration for Recipe to Bring
+// Environment configuration for Zestry
 
 // This file is processed by nginx's server-side rendering
 // Values in {{ENV_VARIABLE}} format will be replaced with actual environment variables

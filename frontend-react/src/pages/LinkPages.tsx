@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LanguageSelect } from '@/components/LanguageSelect'
 import { useI18n } from '@/i18n'
+import { BrandMark } from '@/components/BrandMark'
 
 const MIN_PASSWORD = 8
 
@@ -41,7 +42,7 @@ function Shell({ title, subtitle, children }: { title: string; subtitle?: string
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <span className="inline-flex items-center gap-2 text-lg font-bold text-foreground">
-            <span className="w-2 h-2 rounded-sm bg-primary inline-block" />
+            <BrandMark className="w-8 h-8" />
             {t('common.appName')}
           </span>
           <h1 className="text-base font-semibold text-foreground mt-4">{title}</h1>

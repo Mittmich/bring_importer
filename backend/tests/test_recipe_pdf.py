@@ -128,7 +128,7 @@ def test_build_document_scales_and_localizes():
     assert doc.steps[0].uses == ["300 g Mehl", "3 Eier"]
     assert doc.steps[1].uses == ["Salz"]
     assert doc.labels["ingredients"] == "Zutaten"
-    assert doc.exported == "Exportiert aus Meine Rezepte am 05.11.2026"
+    assert doc.exported == "Exportiert aus Zestry am 05.11.2026"
 
 
 def test_build_document_defaults_and_english_labels():

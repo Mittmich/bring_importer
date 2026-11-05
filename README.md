@@ -1,4 +1,6 @@
-# Recipe to Bring Importer
+# Zestry
+
+A recipe app that turns photos, web pages or hand-written recipes into a shared collection and a Bring! shopping list.
 
 This is a Progressive Web App (PWA) and a small **recipe library**: log in, import recipes (from a photo or a webpage URL), and your personal library becomes the home surface. Each recipe can be edited, deleted, or sent to your Bring shopping list.
 

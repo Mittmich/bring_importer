@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LanguageSelect } from '@/components/LanguageSelect'
 import { useI18n } from '@/i18n'
+import { BrandMark } from '@/components/BrandMark'
 
 export function LoginPage() {
   const navigate = useNavigate()
@@ -34,7 +35,7 @@ export function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <span className="inline-flex items-center gap-2 text-lg font-bold text-foreground">
-            <span className="w-2 h-2 rounded-sm bg-primary inline-block" />
+            <BrandMark className="w-8 h-8" />
             {t('common.appName')}
           </span>
           <p className="text-sm text-muted-foreground mt-2">{t('login.subtitle')}</p>
