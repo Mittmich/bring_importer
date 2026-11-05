@@ -1,0 +1,86 @@
+# Grant (or revoke) admin rights in the deployed app — triggered on demand.
+#
+# Admins get the in-app admin area (Account → Admin): all users, sign-up links,
+# password-reset links, disabling and deleting users. Use this workflow once to
+# make yourself the first admin; after that, admins can promote others in the app.
+#
+# Runs `manage_users.py admin <email> [--revoke]` inside the running backend
+# container on Lightsail, against the live SQLite database. The user must exist.
+#
+# Trigger: Actions tab → "Grant admin" → Run workflow → enter the email.
+#
+# Required secrets: LIGHTSAIL_SSH_KEY / LIGHTSAIL_HOST / LIGHTSAIL_USER / LIGHTSAIL_APP_PATH.
+
+name: Grant admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: "Email of an existing user"
+        required: true
+        type: string
+      revoke:
+        description: "Remove admin rights instead of granting them"
+        required: false
+        type: boolean
+        default: false
+
+# Don't let two user-management runs race on the same SQLite file.
+concurrency:
+  group: manage-users
+  cancel-in-progress: false
+
+jobs:
+  grant-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate input
+        env:
+          EMAIL: ${{ inputs.email }}
+        run: |
+          if ! printf '%s' "$EMAIL" | grep -Eq '^[^[:space:]@]+@[^[:space:]@]+$'; then
+            echo "::error::'$EMAIL' doesn't look like an email address."
+            exit 1
+          fi
+
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+
+      - name: Add Lightsail host to known_hosts
+        run: ssh-keyscan -H ${{ secrets.LIGHTSAIL_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Update admin rights in the backend container
+        env:
+          EMAIL: ${{ inputs.email }}
+          REVOKE: ${{ inputs.revoke }}
+          SSH_TARGET: ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}
+          APP_PATH: ${{ secrets.LIGHTSAIL_APP_PATH }}
+        run: |
+          # base64 so the email survives the SSH command string untouched.
+          EMAIL_B64=$(printf '%s' "$EMAIL" | base64 -w0)
+          FLAG=""
+          if [ "$REVOKE" = "true" ]; then FLAG="--revoke"; fi
+
+          ssh "$SSH_TARGET" \
+            "APP_PATH='$APP_PATH' E64='$EMAIL_B64' FLAG='$FLAG' bash -s" <<'REMOTE'
+          set -euo pipefail
+          EMAIL=$(printf '%s' "$E64" | base64 -d)
+          cd "$APP_PATH"
+          # shellcheck disable=SC2086  # FLAG is empty or a single literal flag
+          sudo docker compose -f docker-compose.yml exec -T backend \
+            python3 manage_users.py admin "$EMAIL" $FLAG
+          REMOTE
+
+      - name: Summary
+        env:
+          EMAIL: ${{ inputs.email }}
+          REVOKE: ${{ inputs.revoke }}
+        run: |
+          if [ "$REVOKE" = "true" ]; then
+            echo "Done — '$EMAIL' is no longer an admin."
+          else
+            echo "Done — '$EMAIL' is now an admin. Reload the app and open Account → Admin."
+          fi

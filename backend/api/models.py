@@ -21,6 +21,11 @@ class User(BaseModel):
 
 class UserInDB(User):
     hashed_password: str
+    id: int = 0
+    is_admin: bool = False
+    disabled: bool = False
+    # Must match the JWT's ``ver`` claim; bumping it revokes all sessions.
+    token_version: int = 0
 
 
 class RecipeCreate(BaseModel):

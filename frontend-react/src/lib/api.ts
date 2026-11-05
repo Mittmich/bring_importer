@@ -142,6 +142,8 @@ export interface Profile {
   display_name: string
   /** Preferred UI/recipe language code, or null if never chosen. */
   language: string | null
+  /** May open the admin area (/admin). */
+  is_admin?: boolean
 }
 
 /** Friendly name for a person: their display name if set, else their email. */
@@ -277,6 +279,44 @@ export interface Recipe {
   translation_available?: boolean
 }
 
+/** A user as the admin area lists them. */
+export interface AdminUser {
+  id: number
+  email: string
+  display_name: string
+  is_admin: boolean
+  disabled: boolean
+  /** ISO timestamps; null for users created before this was tracked / never logged in. */
+  created_at: string | null
+  last_login_at: string | null
+  /** Email of the admin whose invite they used. */
+  invited_by: string | null
+  recipe_count: number
+  /** The admin looking at the list. */
+  is_self: boolean
+}
+
+export type InviteStatus = 'active' | 'used' | 'expired' | 'revoked'
+
+export interface Invite {
+  id: number
+  /** Locked to this address, or null for an open invite. */
+  email: string | null
+  note: string
+  created_at: string
+  expires_at: string
+  created_by: string | null
+  used_by: string | null
+  used_at: string | null
+  status: InviteStatus
+}
+
+/** What a one-time link is for (public, before signing up / resetting). */
+export interface LinkInfo {
+  kind: 'signup' | 'reset'
+  email: string | null
+}
+
 export const api = {
   login(email: string, password: string) {
     const form = new URLSearchParams({ username: email, password })
@@ -332,6 +372,59 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     })
+  },
+
+  // --- One-time links (public) ---
+
+  describeLink(token: string) {
+    return request<LinkInfo>(`/auth/links/${encodeURIComponent(token)}`)
+  },
+
+  signup(body: { token: string; email: string; password: string; display_name?: string; language?: string }) {
+    return request<{ access_token: string }>('/auth/signup', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  resetPassword(token: string, password: string) {
+    return request<{ access_token: string }>('/auth/reset', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    })
+  },
+
+  // --- Admin ---
+
+  adminListUsers() {
+    return request<AdminUser[]>('/admin/users')
+  },
+
+  adminUpdateUser(id: number, body: { is_admin?: boolean; disabled?: boolean }) {
+    return request<void>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+
+  adminLogoutUser(id: number) {
+    return request<void>(`/admin/users/${id}/logout`, { method: 'POST' })
+  },
+
+  adminResetLink(id: number) {
+    return request<{ token: string; expires_at: string; email: string }>(`/admin/users/${id}/reset-link`, {
+      method: 'POST',
+    })
+  },
+
+  adminDeleteUser(id: number, confirmEmail: string) {
+    return request<void>(`/admin/users/${id}?confirm=${encodeURIComponent(confirmEmail)}`, { method: 'DELETE' })
+  },
+
+  adminListInvites() {
+    return request<Invite[]>('/admin/invites')
+  },
+
+  adminCreateInvite(body: { email?: string; note?: string; expires_in_days: number }) {
+    return request<Invite & { token: string }>('/admin/invites', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  adminRevokeInvite(id: number) {
+    return request<void>(`/admin/invites/${id}`, { method: 'DELETE' })
   },
 
   getProfile() {

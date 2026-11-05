@@ -15,6 +15,8 @@ import { CookbooksPage } from '@/pages/CookbooksPage'
 import { CookbookDetailPage } from '@/pages/CookbookDetailPage'
 import { PublicRecipePage } from '@/pages/PublicRecipePage'
 import { WeeklyPlanPage } from '@/pages/WeeklyPlanPage'
+import { AdminPage } from '@/pages/AdminPage'
+import { ResetPasswordPage, SignupPage } from '@/pages/LinkPages'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -42,6 +44,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/share/:uuid" element={<PublicRecipePage />} />
+          <Route path="/signup/:token" element={<SignupPage />} />
+          <Route path="/reset/:token" element={<ResetPasswordPage />} />
           <Route
             path="/"
             element={
@@ -61,6 +65,7 @@ export default function App() {
             <Route path="account" element={<AccountPage />} />
             <Route path="account/tags" element={<TagsPage />} />
             <Route path="account/friends" element={<FriendsPage />} />
+            <Route path="admin" element={<AdminPage />} />
             <Route path="import" element={<Navigate to="/" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

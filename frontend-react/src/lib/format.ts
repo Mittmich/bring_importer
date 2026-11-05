@@ -19,3 +19,11 @@ export function relativeDate(dateStr: string | undefined, lang: string): string 
   }
   return ''
 }
+
+/** An absolute date + time ("12 Nov 2026, 10:00") in the given language. */
+export function formatDateTime(dateStr: string | null | undefined, lang: string): string {
+  if (!dateStr) return ''
+  const d = new Date(dateStr)
+  if (isNaN(d.getTime())) return ''
+  return new Intl.DateTimeFormat(lang, { dateStyle: 'medium', timeStyle: 'short' }).format(d)
+}

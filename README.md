@@ -13,13 +13,14 @@ This is a Progressive Web App (PWA) and a small **recipe library**: log in, impo
 - **Add recipes three ways** — "Add recipe" offers *From a photo*, *From a website* or *Write it yourself*. Writing it yourself opens the editor on an unsaved draft (`/recipes/new`); the first Save creates it (`POST /recipes`, which also accepts ingredients one per line via `ingredients_text`, split by `backend/api/ingredient_lines.py`).
 - **Duplicate** — the recipe's "⋯" menu (with PDF export, sharing, public link and delete) can duplicate a recipe: your own become "… (copy)" with photo, note and tags; recipes shared with you or public ones become your own copy. `POST /recipes/{uuid}/clone`.
 - **Gradient covers** — recipes without a photo get a warm gradient (stable per recipe) in lists, cards and the recipe view.
-- **PDF export** — a PDF option on each recipe (in the "⋯" menu on each recipe (and on public share pages) produces a printable A4 PDF with the photo, servings-scaled ingredients, numbered steps and note, in your language. On phones it opens the share sheet (save to Files, print, send); on desktop it downloads. Rendered server-side by `GET /recipes/{uuid}.pdf` (`backend/api/recipe_pdf.py`, fpdf2 + a subset of DejaVu Sans).
+- **PDF export** — "Export PDF" in each recipe's "⋯" menu (and a PDF button on public share pages) produces a printable A4 PDF with the photo, servings-scaled ingredients, numbered steps and note, in your language. On phones it opens the share sheet (save to Files, print, send); on desktop it downloads. Rendered server-side by `GET /recipes/{uuid}.pdf` (`backend/api/recipe_pdf.py`, fpdf2 + a subset of DejaVu Sans).
+- **Admin control plane** — admins get *Account → Admin*: all users with usage stats (recipes, sign-up date, last login, who invited them), one-time **sign-up links** (optionally locked to an email, 1–30 days), one-time **password-reset links** (24 h), disabling/enabling accounts, *log out everywhere*, promoting admins and deleting users with all their data. Links are shown once and stored only as a hash; the app sends no email, so you pass links on yourself. See [Users & admins](#users--admins).
 - **Works Offline** — install as a PWA for offline access.
 - **Secure** — your OpenAI API key stays server-side; you authenticate to the backend with a JWT.
 
 ## How to Use
 
-1. Log in at `/login.html` (your account is provisioned by the app admin via `manage_users.py`).
+1. Log in at `/login` with the account an admin created for you (via a sign-up link, or `manage_users.py`).
 2. The home page (`index.html`) is your recipe library: shows recent recipes with a "See all" link, plus two import actions.
 3. **Import from photo**: choose / take a photo → preview the parsed recipe → "Save to library" or "Add to Bring".
 4. **Import from URL**: paste a recipe page URL (and an optional note) → preview → "Save to library" or "Add to Bring".
@@ -33,6 +34,19 @@ This is a Progressive Web App (PWA) and a small **recipe library**: log in, impo
 - When JSON-LD is missing, the cleaned page body is sent to **OpenAI** (gpt-4o-mini) for text extraction. The OpenAI request includes the source URL; no extra metadata is shared.
 - Recipe **translation** (on JSON-LD import into another language, or "Translate with AI" in the editor) sends the recipe's title, description, yield, ingredients and steps to the configured translation provider (`TRANSLATION_PROVIDER`, default OpenAI).
 - Photo imports always call OpenAI's vision model; the image is resized to ≤1200×1200 JPEG at quality 0.85 before upload.
+
+## Users & admins
+
+- **Becoming the first admin:** run the *Grant admin* workflow (Actions → Grant admin → your email). It calls
+  `manage_users.py admin <email>` in the backend container. After that, promote further admins in the app.
+  Nobody can demote, disable or delete themselves, and the last admin can't be demoted.
+- **New users** sign up through an admin's sign-up link (`/signup/<token>`); there is no open registration.
+  The *Add user* workflow (shared default password) still works as a fallback.
+- **Forgotten passwords:** an admin creates a reset link (`/reset/<token>`, 24 h, single use) and sends it.
+  Using it sets the new password and logs the user out on every other device.
+- **Sessions are revocable:** every login token carries the user's `token_version`; disabling, a password
+  reset or *Log out everywhere* bumps it, which invalidates all earlier tokens immediately.
+- Locally: `cd backend && uv run python manage_users.py admin you@example.com [--revoke]`.
 
 ## Setup & Installation
 

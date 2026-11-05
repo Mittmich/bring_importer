@@ -56,7 +56,12 @@ def test_change_password_requires_auth(client):
 @pytest.mark.integration
 def test_profile_default_and_update(client, auth_headers, seed_user):
     prof = client.get("/account/profile", headers=auth_headers).json()
-    assert prof == {"email": seed_user["email"], "display_name": "", "language": None}
+    assert prof == {
+        "email": seed_user["email"],
+        "display_name": "",
+        "language": None,
+        "is_admin": False,
+    }
 
     resp = client.put(
         "/account/profile", headers=auth_headers, json={"display_name": "  Chef Mike  "}

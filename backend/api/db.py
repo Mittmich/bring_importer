@@ -48,6 +48,43 @@ def init_db():
     # "not chosen yet": the client falls back to the browser language.
     if "language" not in _user_cols:
         cursor.execute("ALTER TABLE users ADD COLUMN language TEXT")
+    # Admin control plane (see .claude/plans/admin-control-plane.md):
+    # is_admin / disabled flags; token_version is embedded in JWTs as ``ver`` so
+    # bumping it revokes every session; created_at is NULL for pre-existing users
+    # (SQLite can't ADD COLUMN with a non-constant default).
+    if "is_admin" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+    if "disabled" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
+    if "token_version" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0")
+    if "created_at" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP")
+    if "last_login_at" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP")
+    if "invited_by" not in _user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN invited_by INTEGER")
+
+    # One-time links: admin-issued sign-up invites and password resets. Only a
+    # SHA-256 of the token is stored, so the table never holds a usable link.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS auth_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL CHECK(kind IN ('signup', 'reset')),
+        token_hash TEXT UNIQUE NOT NULL,
+        email TEXT,
+        user_id INTEGER,
+        note TEXT,
+        created_by INTEGER,
+        created_at TIMESTAMP NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used_at TIMESTAMP,
+        used_by INTEGER,
+        revoked_at TIMESTAMP
+    )
+    """
+    )
 
     # Create recipes table
     cursor.execute(
