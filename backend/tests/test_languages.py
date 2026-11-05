@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -199,16 +199,8 @@ def test_parse_falls_back_to_profile_language(client, auth_headers, mocked_opena
 
 
 def _fake_get(html: str):
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.text = html
-    resp.content = html.encode()
-    resp.raise_for_status = MagicMock()
-    instance = MagicMock()
-    instance.__aenter__ = AsyncMock(return_value=instance)
-    instance.__aexit__ = AsyncMock(return_value=None)
-    instance.get = AsyncMock(return_value=resp)
-    return instance
+    """A stand-in for ``fetch_page`` returning ``html``."""
+    return AsyncMock(return_value=("https://example.test/recipe", html))
 
 
 JSONLD_PAGE = (
@@ -222,7 +214,7 @@ def test_import_url_jsonld_keeps_original_and_stores_translation(
     client, auth_headers, mocked_openai, tmp_db_path
 ):
     with (
-        patch("api.routers.recipes.httpx.AsyncClient", return_value=_fake_get(JSONLD_PAGE)),
+        patch("api.routers.recipes.fetch_page", _fake_get(JSONLD_PAGE)),
         patch(
             "api.routers.recipes.translate_recipe_content",
             return_value=(GERMAN_VARIANT, "en"),
@@ -246,7 +238,7 @@ def test_import_url_jsonld_translation_failure_still_imports(
     client, auth_headers, mocked_openai, tmp_db_path
 ):
     with (
-        patch("api.routers.recipes.httpx.AsyncClient", return_value=_fake_get(JSONLD_PAGE)),
+        patch("api.routers.recipes.fetch_page", _fake_get(JSONLD_PAGE)),
         patch(
             "api.routers.recipes.translate_recipe_content",
             side_effect=TranslationError("boom"),
@@ -264,7 +256,7 @@ def test_import_url_jsonld_translation_failure_still_imports(
 
 @pytest.mark.integration
 def test_import_url_html_fallback_gets_language(client, auth_headers, mocked_openai):
-    with patch("api.routers.recipes.httpx.AsyncClient", return_value=_fake_get("<p>no jsonld</p>")):
+    with patch("api.routers.recipes.fetch_page", _fake_get("<p>no jsonld</p>")):
         resp = client.post(
             "/recipes/import-url",
             headers=auth_headers,

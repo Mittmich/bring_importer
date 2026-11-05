@@ -23,15 +23,15 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from api import recipe_images
 from api.access import accessible_recipes_sql, effective_role, role_at_least
 from api.auth import get_current_user, get_current_user_optional, get_user_id, get_user_language
+from api.bring_page import recipe_page
 from api.data_collection import collect_image_extraction
 from api.db import get_db_connection
 from api.i18n import (
@@ -64,6 +64,7 @@ from api.recipe_extraction import (
     parse_recipe_with_openai,
 )
 from api.recipe_pdf import build_document, content_disposition, pdf_filename, render_pdf
+from api.safe_fetch import FetchError, fetch_page
 from api.search import match_score, recipe_haystack
 from api.translation import (
     TranslationError,
@@ -222,7 +223,8 @@ async def import_url(
     """Import a recipe from a public URL.
 
     Flow:
-      1. Server-side fetch with a real User-Agent (10 s timeout, 5 MB cap).
+      1. Server-side fetch with a real User-Agent (10 s timeout, 5 MB cap), public
+         addresses only (``api/safe_fetch.py``).
       2. Try JSON-LD extraction (covers ~3/5 of mainstream sites).
          On hit, uses two LLM calls to produce structured ingredients +
          instruction-ingredient mappings.
@@ -242,33 +244,16 @@ async def import_url(
     if not url:
         raise HTTPException(status_code=422, detail="URL is required")
 
-    # 1. Fetch.
+    # 1. Fetch (public addresses only; see api/safe_fetch.py).
     try:
-        async with httpx.AsyncClient(
-            timeout=FETCH_TIMEOUT_SECONDS,
-            follow_redirects=True,
+        _, html_body = await fetch_page(
+            url,
             headers={"User-Agent": USER_AGENT, "Accept": "text/html,*/*"},
-        ) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=f"The page at that URL returned HTTP {e.response.status_code}.",
-        ) from e
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Couldn't fetch that URL ({type(e).__name__}). Check the link and try again.",
-        ) from e
-
-    if len(response.content) > MAX_FETCH_BYTES:
-        raise HTTPException(
-            status_code=422,
-            detail="The page is too large to import (>5 MB).",
+            timeout=FETCH_TIMEOUT_SECONDS,
+            max_bytes=MAX_FETCH_BYTES,
         )
-
-    html_body = response.text
+    except FetchError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     # 2. JSON-LD first.
     recipe = None
@@ -543,22 +528,7 @@ async def get_recipe_html(
             {"@type": "HowToStep", "text": text} for text in instruction_texts
         ]
 
-    html = (
-        "<!DOCTYPE html>\n"
-        f'<html lang="{html_lang}">\n'
-        "<head>\n"
-        '  <meta charset="UTF-8">\n'
-        f"  <title>{name}</title>\n"
-        '  <script type="application/ld+json">\n'
-        f"  {json.dumps(jsonld, ensure_ascii=False)}\n"
-        "  </script>\n"
-        "</head>\n"
-        "<body>\n"
-        f"  <h1>{name}</h1>\n"
-        "</body>\n"
-        "</html>"
-    )
-    return HTMLResponse(content=html)
+    return recipe_page(name, jsonld, html_lang)
 
 
 def _normalize_tag(name: str) -> str:

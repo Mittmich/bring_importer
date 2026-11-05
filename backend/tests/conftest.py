@@ -100,6 +100,16 @@ def app(tmp_db_path, monkeypatch):
     return api.app
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """Failed-attempt counters are process-global; start each test clean."""
+    from api import rate_limit
+
+    rate_limit.reset_all()
+    yield
+    rate_limit.reset_all()
+
+
 @pytest.fixture
 def client(app):
     """FastAPI ``TestClient`` bound to the per-test app."""
@@ -160,3 +170,38 @@ def mocked_openai():
             "jsonld": mock_jsonld,
             "html_text": mock_html,
         }
+
+
+@pytest.fixture
+def fake_web(monkeypatch):
+    """Serve outbound fetches from a handler instead of the network.
+
+    ``with fake_web(handler):`` routes ``api.safe_fetch``'s httpx client through
+    ``httpx.MockTransport(handler)`` and makes every host resolve to a public
+    address (``resolve`` overrides that per host name).
+    """
+    import contextlib
+
+    import httpx
+
+    from api import safe_fetch
+
+    @contextlib.contextmanager
+    def _install(handler, resolve=None):
+        real_client = httpx.AsyncClient
+        transport = httpx.MockTransport(handler)
+
+        def client_factory(*args, **kwargs):
+            kwargs["transport"] = transport
+            return real_client(*args, **kwargs)
+
+        async def fake_resolve(host, port):
+            return (resolve or {}).get(host, ["93.184.215.14"])
+
+        with (
+            patch.object(safe_fetch.httpx, "AsyncClient", client_factory),
+            patch.object(safe_fetch, "resolve_host", fake_resolve),
+        ):
+            yield
+
+    return _install

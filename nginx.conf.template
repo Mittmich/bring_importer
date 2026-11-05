@@ -13,6 +13,17 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
+    server_tokens off;
+
+    # Security headers for every response (pages, assets and /api). Locations
+    # below must not use add_header, or nginx drops these for that location.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    # Sign-up / reset links carry their token in the path; never leak it in Referer.
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Permissions-Policy "geolocation=(), microphone=(), payment=()" always;
+
     root /usr/share/nginx/html;
     index index.html;
 
@@ -28,12 +39,12 @@ server {
         sub_filter '{{GOOGLE_CLIENT_ID}}' '${GOOGLE_CLIENT_ID}';
         sub_filter_once off;
         sub_filter_types application/javascript text/plain;
-        add_header Cache-Control no-store;
+        expires epoch;
     }
 
     # PWA files must not be cached — browsers need to check for updates on every load
     location ~ ^/(sw\.js|manifest\.json|registerSW\.js|workbox-.+\.js)$ {
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        expires epoch;
         try_files $uri =404;
     }
 

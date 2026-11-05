@@ -367,11 +367,14 @@ export const api = {
     return request<void>(`/recipes/${uuid}`, { method: 'DELETE' })
   },
 
-  changePassword(currentPassword: string, newPassword: string) {
-    return request<void>('/account/password', {
+  /** Changes the password. The server logs out every other session and returns
+   *  a fresh token for this one, which replaces the stored token. */
+  async changePassword(currentPassword: string, newPassword: string) {
+    const res = await request<{ access_token: string }>('/account/password', {
       method: 'POST',
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     })
+    localStorage.setItem('auth_token', res.access_token)
   },
 
   // --- One-time links (public) ---

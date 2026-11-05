@@ -10,11 +10,11 @@
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
-from api import auth_links
+from api import auth_links, rate_limit
 from api.auth import (
     authenticate_user,
     bump_token_version,
@@ -43,9 +43,21 @@ router = APIRouter(tags=["auth"])
 
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):  # noqa: B008
+async def login_for_access_token(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),  # noqa: B008
+):
+    """Log in. Repeated failures for one account or one address get a 429."""
+    email_key = f"login-email:{form_data.username.strip().lower()}"
+    ip_key = f"login-ip:{rate_limit.client_ip(request)}"
+    rate_limit.refuse_if_limited(
+        (email_key, rate_limit.LOGIN_FAILURES_PER_EMAIL),
+        (ip_key, rate_limit.LOGIN_FAILURES_PER_IP),
+    )
     user = authenticate_user(form_data.username, form_data.password)
     if not user:
+        rate_limit.record_failure(email_key)
+        rate_limit.record_failure(ip_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -53,6 +65,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
         )
     if user.disabled:
         raise HTTPException(status_code=403, detail="This account has been disabled.")
+    rate_limit.clear(email_key)
     record_login(user.id)
     return {"access_token": issue_access_token(user), "token_type": "bearer"}
 
@@ -62,14 +75,15 @@ class ChangePasswordBody(BaseModel):
     new_password: str
 
 
-@router.post("/account/password", include_in_schema=False, status_code=204)
+@router.post("/account/password", include_in_schema=False, response_model=Token)
 async def change_password(
     body: ChangePasswordBody,
     current_user: UserInDB = Depends(get_current_user),  # noqa: B008
 ):
     """Change the current user's password after re-verifying the current one.
 
-    No session invalidation: existing JWTs keep working until they expire.
+    Logs out every other session (the token version is bumped) and returns a
+    fresh token for this one.
     """
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(status_code=403, detail="Current password is incorrect")
@@ -79,7 +93,9 @@ async def change_password(
             detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters",
         )
     update_password(current_user.email, body.new_password)
-    return None
+    user = get_user(current_user.email)
+    assert user is not None
+    return {"access_token": issue_access_token(user), "token_type": "bearer"}
 
 
 class ProfileBody(BaseModel):
@@ -129,6 +145,21 @@ async def update_profile(
 INVALID_LINK = "This link is invalid or has expired."
 
 
+def _link_ip_key(request: Request) -> str:
+    return f"link-ip:{rate_limit.client_ip(request)}"
+
+
+def _guard_links(request: Request) -> None:
+    """429 once an address has tried too many invalid links (token guessing)."""
+    rate_limit.refuse_if_limited((_link_ip_key(request), rate_limit.LINK_FAILURES_PER_IP))
+
+
+def _invalid_link(request: Request) -> HTTPException:
+    """The vague 404 for a bad link, counted towards the address's limit."""
+    rate_limit.record_failure(_link_ip_key(request))
+    return HTTPException(status_code=404, detail=INVALID_LINK)
+
+
 def _check_password(password: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise HTTPException(
@@ -138,22 +169,23 @@ def _check_password(password: str) -> None:
 
 
 @router.get("/auth/links/{token}", include_in_schema=False)
-async def describe_link(token: str):
+async def describe_link(token: str, request: Request):
     """``{kind, email}`` for a usable link (email: the invite's locked address or
     the reset target), else 404."""
+    _guard_links(request)
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         link = auth_links.find_usable(cursor, token)
         if link is None:
-            raise HTTPException(status_code=404, detail=INVALID_LINK)
+            raise _invalid_link(request)
         email = link["email"]
         if link["kind"] == "reset":
             target = cursor.execute(
                 "SELECT email FROM users WHERE id = ?", (link["user_id"],)
             ).fetchone()
             if target is None:
-                raise HTTPException(status_code=404, detail=INVALID_LINK)
+                raise _invalid_link(request)
             email = target["email"]
         return {"kind": link["kind"], "email": email}
     finally:
@@ -169,8 +201,9 @@ class SignupBody(BaseModel):
 
 
 @router.post("/auth/signup", response_model=Token, include_in_schema=False)
-async def signup(body: SignupBody):
+async def signup(body: SignupBody, request: Request):
     """Create an account from an invite link and log it in."""
+    _guard_links(request)
     email = body.email.strip().lower()
     if "@" not in email or len(email) > 254 or " " in email:
         raise HTTPException(status_code=422, detail="Enter a valid email address")
@@ -182,7 +215,7 @@ async def signup(body: SignupBody):
         cursor = conn.cursor()
         link = auth_links.find_usable(cursor, body.token, kind="signup")
         if link is None:
-            raise HTTPException(status_code=404, detail=INVALID_LINK)
+            raise _invalid_link(request)
         if link["email"] and link["email"].lower() != email:
             raise HTTPException(
                 status_code=422, detail="This invite is for a different email address"
@@ -208,7 +241,7 @@ async def signup(body: SignupBody):
         user_id = cursor.lastrowid
         if not auth_links.mark_used(cursor, link["id"], user_id):
             conn.rollback()
-            raise HTTPException(status_code=404, detail=INVALID_LINK)
+            raise _invalid_link(request)
         conn.commit()
     finally:
         conn.close()
@@ -225,8 +258,9 @@ class ResetBody(BaseModel):
 
 
 @router.post("/auth/reset", response_model=Token, include_in_schema=False)
-async def reset_password(body: ResetBody):
+async def reset_password(body: ResetBody, request: Request):
     """Set a new password from a reset link; logs out every other session."""
+    _guard_links(request)
     _check_password(body.password)
     conn = get_db_connection()
     try:
@@ -240,9 +274,9 @@ async def reset_password(body: ResetBody):
             else None
         )
         if link is None or target is None or target["disabled"]:
-            raise HTTPException(status_code=404, detail=INVALID_LINK)
+            raise _invalid_link(request)
         if not auth_links.mark_used(cursor, link["id"], link["user_id"]):
-            raise HTTPException(status_code=404, detail=INVALID_LINK)
+            raise _invalid_link(request)
         cursor.execute(
             "UPDATE users SET hashed_password = ? WHERE id = ?",
             (get_password_hash(body.password), link["user_id"]),

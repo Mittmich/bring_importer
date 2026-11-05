@@ -112,6 +112,11 @@ curl -s http://localhost:8001/health   # or whichever health endpoint exists
 - Errors returned to the client should use `HTTPException` with a meaningful `status_code` and `detail`.
 - The OpenAI call streams / parses structured output — when changing the prompt, keep JSON parsing robust (handle partial/malformed responses).
 - The Bring integration hits the Bring API with user-scoped credentials — be careful not to cross-contaminate users' lists.
+- **Fetching user-supplied URLs:** always go through `api/safe_fetch.fetch_page` (SSRF guard: public addresses only, redirects re-checked, size cap). Never call `httpx`/`requests` on a user URL directly.
+- **HTML served by the API** (e.g. the Bring pages) shares the SPA's origin, where the JWT lives. Build it with `api/bring_page.recipe_page` (escaping + script-safe JSON-LD + CSP), never with raw f-strings.
+- **JWTs:** anything other than a session token that is signed with `SECRET_KEY` must carry a `purpose` claim; `_user_from_token` rejects those as sessions.
+- **Brute-force limits** for login and one-time links live in `api/rate_limit.py`.
+- Keep `certifi` (the CA bundle for all outbound TLS) current; `pip-audit` flags distrusted roots such as the eMudhra `emSign ECC Root CA - G3` (PYSEC-2026-4320).
 
 ### Frontend (`frontend/`)
 
