@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Check, Pencil, Trash2, Utensils, X } from 'lucide-react'
 import { api, type RecipeListItem } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { RecipeCover } from '@/components/RecipeCover'
 import { CookbookMembersSection } from '@/components/CookbookMembersSection'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -220,19 +221,13 @@ function RecipeCard({
         </button>
       )}
       <NavLink to={`/recipes/${recipe.uuid}`} className="block">
-        <div className="aspect-video bg-muted overflow-hidden">
-          {src ? (
-            <img
-              src={src}
-              alt=""
-              className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-primary/5 text-primary/30">
-              <Utensils className="w-6 h-6" />
-            </div>
-          )}
-        </div>
+        <RecipeCover
+          seed={recipe.uuid}
+          src={src}
+          loading={!!recipe.has_image}
+          className="aspect-video"
+          imgClassName="transition-transform duration-200 group-hover:scale-105"
+        />
         <div className="p-2.5">
           <p className="text-sm font-medium text-foreground truncate">{recipe.title}</p>
           {recipe.owned === false && (recipe.owner_name || recipe.owner_email) && (

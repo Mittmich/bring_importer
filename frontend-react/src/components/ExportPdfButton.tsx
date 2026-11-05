@@ -1,7 +1,5 @@
-import { useState } from 'react'
 import { FileDown, Loader2 } from 'lucide-react'
-import { api } from '@/lib/api'
-import { saveOrShare } from '@/lib/download'
+import { useExportPdf } from '@/hooks/useExportPdf'
 import { Button } from '@/components/ui/button'
 import { useI18n } from '@/i18n'
 
@@ -22,19 +20,7 @@ export function ExportPdfButton({
   className?: string
 }) {
   const { t } = useI18n()
-  const [busy, setBusy] = useState(false)
-
-  async function exportPdf() {
-    setBusy(true)
-    try {
-      const { blob, filename } = await api.downloadRecipePdf(uuid, servings)
-      await saveOrShare(blob, filename)
-    } catch {
-      window.alert(t('recipe.pdfFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, exportPdf } = useExportPdf(uuid, servings)
 
   const icon = busy ? (
     <Loader2 className={`animate-spin ${iconOnly ? 'w-4 h-4' : 'w-3.5 h-3.5 mr-1'}`} />

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookHeart, ChevronDown, ExternalLink, Languages, Pencil, Share2, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, BookHeart, Check, ChevronDown, Copy, ExternalLink, FileDown, Languages, Link2, MoreHorizontal, Pencil, Trash2, UserPlus } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { AddToCookbookModal } from '@/components/AddToCookbookModal'
@@ -10,7 +10,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TagChip } from '@/components/ui/tag-chip'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
-import { ExportPdfButton } from '@/components/ExportPdfButton'
+import { useExportPdf } from '@/hooks/useExportPdf'
+import { RecipeCover } from '@/components/RecipeCover'
+import { Menu, MenuItem, MenuSeparator } from '@/components/ui/menu'
 import { parseServings, servingsUnit, formatIngredient } from '@/lib/scaling'
 import { nativeName, useI18n } from '@/i18n'
 
@@ -39,12 +41,61 @@ export function RecipeDetail({ uuid, recipe }: Props) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Own recipe → a "(copy)" duplicate; someone else's → your own copy of it.
+  const duplicateMutation = useMutation({
+    mutationFn: () => api.cloneRecipe(uuid),
+    onSuccess: (copy) => {
+      queryClient.invalidateQueries({ queryKey: ['recipes'] })
+      navigate(`/recipes/${copy.uuid}`)
+    },
+    onError: () => window.alert(t('recipe.duplicateFailed')),
+  })
+
   const heroSrc = useRecipeImage(recipe.image_url)
 
   const baseServings = parseServings(recipe.recipeYield)
   const unit = servingsUnit(recipe.recipeYield, t('recipe.servings'))
   const [servings, setServings] = useState(baseServings)
   const scale = servings / baseServings
+  const pdf = useExportPdf(uuid, servings)
+
+  // Secondary actions, shared by the mobile top bar and the desktop action row.
+  const moreMenu = (
+    <Menu label={t('recipe.moreActions')} trigger={<MoreHorizontal className="w-4 h-4" />}>
+      <MenuItem
+        icon={<Copy />}
+        onSelect={() => duplicateMutation.mutate()}
+        disabled={duplicateMutation.isPending}
+      >
+        {duplicateMutation.isPending
+          ? t('recipe.duplicating')
+          : isOwner
+            ? t('recipe.duplicate')
+            : t('recipe.saveCopy')}
+      </MenuItem>
+      <MenuItem icon={<FileDown />} onSelect={pdf.exportPdf} disabled={pdf.busy}>
+        {pdf.busy ? t('recipe.exportingPdf') : t('recipe.exportPdfLabel')}
+      </MenuItem>
+      {isOwner && (
+        <MenuItem icon={<UserPlus />} onSelect={() => setShareOpen(true)}>
+          {t('recipe.shareWithFriend')}
+        </MenuItem>
+      )}
+      {recipe.is_public && (
+        <MenuItem icon={<Link2 />} onSelect={handleShare}>
+          {t('recipe.copyLink')}
+        </MenuItem>
+      )}
+      {isOwner && (
+        <>
+          <MenuSeparator />
+          <MenuItem icon={<Trash2 />} destructive onSelect={() => setConfirmDelete(true)}>
+            {t('recipe.deleteRecipe')}
+          </MenuItem>
+        </>
+      )}
+    </Menu>
+  )
 
   const deleteMutation = useMutation({
     mutationFn: () => api.deleteRecipe(uuid),
@@ -73,34 +124,29 @@ export function RecipeDetail({ uuid, recipe }: Props) {
         </button>
         <span className="flex-1" />
         <KeepAwakeButton />
-        <ExportPdfButton uuid={uuid} servings={servings} iconOnly />
-        <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)} aria-label={t('recipe.addToCookbook')}>
-          <BookHeart className="w-4 h-4" />
-        </Button>
-        {isOwner && (
-          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)} aria-label={t('recipe.shareWithFriend')}>
-            <UserPlus className="w-4 h-4" />
-          </Button>
-        )}
-        {recipe.is_public && (
-          <Button variant="outline" size="sm" onClick={handleShare}>
-            <Share2 className="w-4 h-4" />
-          </Button>
-        )}
         {canEdit && (
-          <Button variant="outline" size="sm" onClick={() => navigate(`/recipes/${uuid}/edit`)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate(`/recipes/${uuid}/edit`)}
+            aria-label={t('common.edit')}
+          >
             <Pencil className="w-4 h-4" />
           </Button>
         )}
+        {moreMenu}
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {/* Hero image banner */}
-        {heroSrc && (
-          <div className="w-full aspect-video bg-muted overflow-hidden">
-            <img src={heroSrc} alt={recipe.name} className="w-full h-full object-cover" />
-          </div>
-        )}
+        {/* No photo → a gradient band (shorter, so it doesn't push the recipe down). */}
+        <RecipeCover
+          seed={uuid}
+          src={heroSrc}
+          loading={!!recipe.has_image}
+          alt={recipe.name}
+          className={recipe.has_image ? 'w-full aspect-video' : 'w-full aspect-[5/2] md:aspect-[4/1]'}
+        />
 
         {/* Not available in the UI language: say so, and offer translation to editors. */}
         {recipe.translation_available === false && (
@@ -172,7 +218,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
             <p className="text-base text-muted-foreground mb-4 leading-relaxed">{recipe.description}</p>
           )}
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <a
               href={bringImportUrl}
               target="_blank"
@@ -182,20 +228,9 @@ export function RecipeDetail({ uuid, recipe }: Props) {
               {t('recipe.addToBring')}
             </a>
             <KeepAwakeButton className="hidden md:flex" />
-            <ExportPdfButton uuid={uuid} servings={servings} className="hidden md:flex" />
             <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)}>
               <BookHeart className="w-3.5 h-3.5 mr-1" /> {t('recipe.cookbook')}
             </Button>
-            {isOwner && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShareOpen(true)}
-                className="hidden md:flex"
-              >
-                <UserPlus className="w-3.5 h-3.5 mr-1" /> {t('common.share')}
-              </Button>
-            )}
             {canEdit && (
               <Button
                 variant="outline"
@@ -206,12 +241,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                 <Pencil className="w-3.5 h-3.5 mr-1" /> {t('common.edit')}
               </Button>
             )}
-            {recipe.is_public && (
-              <Button variant="outline" size="sm" onClick={handleShare} className="hidden md:flex">
-                <Share2 className="w-3.5 h-3.5 mr-1" />
-                {copied ? t('recipe.copied') : t('recipe.link')}
-              </Button>
-            )}
+            <div className="hidden md:block">{moreMenu}</div>
             {isOwner &&
               (confirmDelete ? (
                 <>
@@ -227,16 +257,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                     {t('common.cancel')}
                   </Button>
                 </>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setConfirmDelete(true)}
-                  className="hidden md:flex text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </Button>
-              ))}
+              ) : null)}
           </div>
 
           {recipe.tags && recipe.tags.length > 0 && (
@@ -313,37 +334,19 @@ export function RecipeDetail({ uuid, recipe }: Props) {
             </div>
           )}
 
-          {/* Mobile delete */}
-          <div className={`md:hidden pt-2 ${isOwner ? '' : 'hidden'}`}>
-            {confirmDelete ? (
-              <div className="flex gap-2">
-                <Button
-                  variant="destructive"
-                  className="flex-1"
-                  onClick={() => deleteMutation.mutate()}
-                  disabled={deleteMutation.isPending}
-                >
-                  {deleteMutation.isPending ? t('common.deleting') : t('recipe.confirmDelete')}
-                </Button>
-                <Button variant="outline" onClick={() => setConfirmDelete(false)}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            ) : (
-              <Button
-                variant="outline"
-                className="w-full text-muted-foreground"
-                onClick={() => setConfirmDelete(true)}
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> {t('recipe.deleteRecipe')}
-              </Button>
-            )}
-          </div>
         </div>
       </div>
 
       <AddToCookbookModal open={cookbookOpen} onOpenChange={setCookbookOpen} recipeUuid={uuid} />
       <ShareRecipeModal open={shareOpen} onOpenChange={setShareOpen} recipeUuid={uuid} />
+      {copied && (
+        <div
+          role="status"
+          className="fixed left-1/2 -translate-x-1/2 bottom-24 md:bottom-6 z-50 flex items-center gap-2 rounded-lg bg-foreground text-background text-sm px-4 py-2.5 shadow-lg"
+        >
+          <Check className="w-4 h-4" /> {t('recipe.copied')}
+        </div>
+      )}
     </div>
   )
 }

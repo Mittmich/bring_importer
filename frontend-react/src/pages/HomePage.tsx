@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useOutletContext } from 'react-router-dom'
 import { ChevronRight, Plus, Search, Utensils } from 'lucide-react'
 import { api, type RecipeListItem, type TagInfo } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
+import { RecipeCover } from '@/components/RecipeCover'
 import { tagColor } from '@/lib/tagColors'
 import { Button } from '@/components/ui/button'
 import { relativeDate } from '@/lib/format'
@@ -45,7 +46,7 @@ export function HomePage() {
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold text-foreground">{t('nav.recipes')}</h1>
             <Button variant="outline" size="sm" onClick={onImport}>
-              <Plus className="w-4 h-4 mr-1.5" /> {t('common.import')}
+              <Plus className="w-4 h-4 mr-1.5" /> {t('common.add')}
             </Button>
           </div>
           <button
@@ -158,19 +159,13 @@ function RecipeCard({ recipe }: { recipe: RecipeListItem }) {
       to={`/recipes/${recipe.uuid}`}
       className="w-40 flex-shrink-0 snap-start group"
     >
-      <div className="w-40 aspect-video rounded-xl overflow-hidden bg-muted border border-border/60 mb-1.5">
-        {src ? (
-          <img
-            src={src}
-            alt=""
-            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-primary/5 text-primary/30">
-            <Utensils className="w-6 h-6" />
-          </div>
-        )}
-      </div>
+      <RecipeCover
+        seed={recipe.uuid}
+        src={src}
+        loading={!!recipe.has_image}
+        className="w-40 aspect-video rounded-xl border border-border/60 mb-1.5"
+        imgClassName="transition-transform duration-200 group-hover:scale-105"
+      />
       <p className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
         {recipe.title}
       </p>
