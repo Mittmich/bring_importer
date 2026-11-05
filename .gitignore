@@ -20,3 +20,8 @@ backend/htmlcov/
 .mypy_cache/
 backend/_spike_url_import.py
 backend/.coveragerc
+
+# Cloudflare origin certificate (stored as GitHub secrets, never committed)
+origin.crt
+origin.key
+*.key

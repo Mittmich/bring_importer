@@ -11,6 +11,8 @@
 #   LIGHTSAIL_APP_PATH    — absolute path to the repo on the instance (e.g. /home/ubuntu/bring_importer)
 #   OPENAI_API_KEY        — passed into the container via .env
 #   SECRET_KEY            — JWT signing secret; passed into the container via .env
+#   ORIGIN_CERT / ORIGIN_KEY — optional Cloudflare Origin CA certificate + key (PEM)
+#                           for nginx; enables Cloudflare SSL mode "Full (strict)"
 #   GOOGLE_CLIENT_ID      — Google OAuth client id (Calendar sync); via .env
 #   GOOGLE_CLIENT_SECRET  — Google OAuth client secret (Calendar sync); via .env
 
@@ -105,6 +107,49 @@ jobs:
         run: |
           ssh ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }} \
             'cd ${{ secrets.LIGHTSAIL_APP_PATH }} && sudo docker compose -f docker-compose.yml build --pull && sudo docker compose -f docker-compose.yml down && sudo docker compose -f docker-compose.yml up -d'
+
+      # The Cloudflare Origin CA certificate (secrets ORIGIN_CERT / ORIGIN_KEY) lets
+      # Cloudflare verify this server in SSL mode "Full (strict)". It replaces the
+      # self-signed certificate in the nginx-certs volume; nginx -t guards the swap
+      # and the previous certificate is restored if nginx rejects the new one.
+      - name: Install Cloudflare origin certificate
+        env:
+          ORIGIN_CERT: ${{ secrets.ORIGIN_CERT }}
+          ORIGIN_KEY: ${{ secrets.ORIGIN_KEY }}
+          SSH_TARGET: ${{ secrets.LIGHTSAIL_USER }}@${{ secrets.LIGHTSAIL_HOST }}
+          APP_PATH: ${{ secrets.LIGHTSAIL_APP_PATH }}
+        run: |
+          if [ -z "$ORIGIN_CERT" ] || [ -z "$ORIGIN_KEY" ]; then
+            echo "No origin certificate secrets set; keeping the existing certificate."
+            exit 0
+          fi
+          put() {
+            printf '%s\n' "$2" | ssh "$SSH_TARGET" \
+              "cd '$APP_PATH' && sudo docker compose -f docker-compose.yml exec -T nginx sh -c 'umask 077 && cat > /etc/nginx/certs/$1.new'"
+          }
+          put server.crt "$ORIGIN_CERT"
+          put server.key "$ORIGIN_KEY"
+          ssh "$SSH_TARGET" "cd '$APP_PATH' && sudo docker compose -f docker-compose.yml exec -T nginx sh -s" <<'EOF'
+          set -e
+          cd /etc/nginx/certs
+          for f in server.crt server.key; do
+            if [ -f "$f" ]; then cp "$f" "$f.bak"; fi
+            mv "$f.new" "$f"
+          done
+          chmod 644 server.crt
+          chmod 600 server.key
+          if nginx -t; then
+            nginx -s reload
+            echo "Origin certificate installed."
+          else
+            for f in server.crt server.key; do
+              if [ -f "$f.bak" ]; then mv "$f.bak" "$f"; fi
+            done
+            nginx -s reload
+            echo "nginx rejected the new certificate; restored the previous one." >&2
+            exit 1
+          fi
+          EOF
 
       - name: Print deployment success
         run: echo "Deployment to AWS Lightsail completed."
