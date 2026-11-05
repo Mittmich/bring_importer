@@ -29,6 +29,7 @@ dependencies = [
     "pyjwt>=2.9.0",
     "beautifulsoup4>=4.13.4",
     "rapidfuzz>=3.9.7",
+    "fpdf2>=2.8",
 ]
 
 [project.optional-dependencies]

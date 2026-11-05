@@ -14,7 +14,7 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${config.apiUrl}${path}`, {
     ...init,
     headers: {
@@ -34,8 +34,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(res.status, body?.detail ?? `HTTP ${res.status}`)
   }
+  return res
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await send(path, init)
   if (res.status === 204) return undefined as T
   return res.json()
+}
+
+/** The filename from a Content-Disposition header (prefers the RFC 5987 UTF-8 form). */
+function dispositionFilename(header: string | null, fallback: string): string {
+  if (!header) return fallback
+  const utf8 = header.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8) {
+    try {
+      return decodeURIComponent(utf8[1])
+    } catch {
+      // fall through to the ASCII name
+    }
+  }
+  return header.match(/filename="([^"]+)"/i)?.[1] ?? fallback
 }
 
 /** A tag as it appears embedded on a recipe — name plus optional explicit colour. */
@@ -364,6 +383,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ url, note, language }),
     })
+  },
+
+  /** Render the recipe as a PDF (in the UI language, scaled to `servings`). */
+  async downloadRecipePdf(uuid: string, servings?: number) {
+    const qs = servings ? `?servings=${servings}` : ''
+    const res = await send(`/recipes/${uuid}.pdf${qs}`)
+    return {
+      blob: await res.blob(),
+      filename: dispositionFilename(res.headers.get('Content-Disposition'), 'recipe.pdf'),
+    }
   },
 
   cloneRecipe(uuid: string) {

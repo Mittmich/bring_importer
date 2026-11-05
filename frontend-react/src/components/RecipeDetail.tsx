@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { TagChip } from '@/components/ui/tag-chip'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
+import { ExportPdfButton } from '@/components/ExportPdfButton'
 import { parseServings, servingsUnit, formatIngredient } from '@/lib/scaling'
 import { nativeName, useI18n } from '@/i18n'
 
@@ -72,6 +73,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
         </button>
         <span className="flex-1" />
         <KeepAwakeButton />
+        <ExportPdfButton uuid={uuid} servings={servings} iconOnly />
         <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)} aria-label={t('recipe.addToCookbook')}>
           <BookHeart className="w-4 h-4" />
         </Button>
@@ -180,6 +182,7 @@ export function RecipeDetail({ uuid, recipe }: Props) {
               {t('recipe.addToBring')}
             </a>
             <KeepAwakeButton className="hidden md:flex" />
+            <ExportPdfButton uuid={uuid} servings={servings} className="hidden md:flex" />
             <Button variant="outline" size="sm" onClick={() => setCookbookOpen(true)}>
               <BookHeart className="w-3.5 h-3.5 mr-1" /> {t('recipe.cookbook')}
             </Button>

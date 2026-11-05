@@ -39,6 +39,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Lets a cross-origin frontend (e.g. Vite dev server) read the PDF filename.
+    expose_headers=["Content-Disposition"],
 )
 
 
