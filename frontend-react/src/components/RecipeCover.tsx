@@ -1,14 +1,15 @@
 import { cn } from '@/lib/utils'
 
-// Warm "food" gradients for recipes without a photo. Literal class strings so
-// Tailwind's JIT picks them up.
+// Citrus gradients from the Zestry palette for recipes without a photo:
+// peach, apricot, honey, tangerine, blood orange and a lime-peel accent.
+// Literal class strings so Tailwind's JIT picks them up.
 const GRADIENTS = [
-  'from-amber-200 via-orange-300 to-red-400',
-  'from-yellow-200 via-amber-300 to-orange-400',
-  'from-rose-200 via-pink-300 to-red-400',
-  'from-lime-200 via-emerald-300 to-teal-400',
-  'from-orange-200 via-rose-300 to-fuchsia-400',
-  'from-sky-200 via-indigo-300 to-violet-400',
+  'from-[#ffe2ba] via-[#f8b26a] to-[#f08a24]', // peach → zest orange
+  'from-[#fff2e3] via-[#ffd29e] to-[#f5a04a]', // cream → apricot
+  'from-[#fff0c7] via-[#f9cf72] to-[#e9a23b]', // honey
+  'from-[#ffd3a8] via-[#f08a24] to-[#bf560b]', // tangerine → burnt orange
+  'from-[#ffe0d1] via-[#f7a582] to-[#e06b3f]', // blood orange
+  'from-[#f3f6e6] via-[#d3e3b4] to-[#93b56c]', // lime peel
 ]
 
 /** A stable gradient for `seed` (the recipe uuid), so a recipe keeps its colours. */
