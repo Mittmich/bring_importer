@@ -38,12 +38,12 @@ FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
 FONT_FAMILY = "DejaVu"
 FONT_FILES = {"": "DejaVuSans.ttf", "B": "DejaVuSans-Bold.ttf"}
 
-# Layout (mm) and colours (RGB) — the app's indigo accent on a neutral palette.
+# Layout (mm) and colours (RGB) — Zestry's orange accent on the app's neutral palette.
 MARGIN = 18
-ACCENT = (99, 102, 241)
+ACCENT = (191, 86, 11)  # #bf560b, the UI primary
 TEXT = (15, 23, 42)
 MUTED = (100, 116, 139)
-RULE = (226, 232, 240)
+RULE = (248, 196, 140)  # #f8c48c, a light apricot
 MAX_IMAGE_HEIGHT = 85
 AMOUNT_COL = 28
 
