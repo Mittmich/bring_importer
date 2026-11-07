@@ -14,7 +14,9 @@ import { FriendsPage } from '@/pages/FriendsPage'
 import { CookbooksPage } from '@/pages/CookbooksPage'
 import { CookbookDetailPage } from '@/pages/CookbookDetailPage'
 import { PublicRecipePage } from '@/pages/PublicRecipePage'
-import { WeeklyPlanPage } from '@/pages/WeeklyPlanPage'
+import { MenuPage } from '@/pages/MenuPage'
+import { CookModePage } from '@/pages/CookModePage'
+import { MenusOnly, PlannerSwitch } from '@/components/PlannerRoutes'
 import { AdminPage } from '@/pages/AdminPage'
 import { ResetPasswordPage, SignupPage } from '@/pages/LinkPages'
 
@@ -55,7 +57,9 @@ export default function App() {
             }
           >
             <Route index element={<HomePage />} />
-            <Route path="plan" element={<WeeklyPlanPage />} />
+            <Route path="plan" element={<PlannerSwitch />} />
+            <Route path="menus/:id" element={<MenusOnly><MenuPage /></MenusOnly>} />
+            <Route path="menus/:id/cook" element={<MenusOnly><CookModePage /></MenusOnly>} />
             <Route path="recipes" element={<RecipesPage />} />
             <Route path="recipes/:uuid" element={<RecipesPage />} />
             <Route path="recipes/new" element={<EditRecipePage />} />
