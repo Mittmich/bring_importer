@@ -413,3 +413,88 @@ def test_empty_menu_pdf_and_isolation(client, auth_headers, tmp_db_path):
     assert client.get(f"/menus/{menu['id']}/plan.pdf", headers=auth_headers).status_code == 200
     eve = _other_user(tmp_db_path)
     assert client.get(f"/menus/{menu['id']}/plan.pdf", headers=eve).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PDF timeline: window, overnight/long steps, oven-only clashes
+# ---------------------------------------------------------------------------
+
+
+def _plan(steps):
+    return {
+        "courses": [
+            {"id": 1, "name": "Main", "recipe_title": "Stew", "serve": 20 * 60, "position": 0}
+        ],
+        "steps": [
+            {
+                "id": i,
+                "course_id": 1,
+                "name": f"s{i}",
+                "day": 0,
+                "lead": 0,
+                "at": None,
+                "hands": True,
+                "equipment": "",
+                "temp": None,
+                **s,
+            }
+            for i, s in enumerate(steps, 1)
+        ],
+    }
+
+
+def test_long_passive_steps_do_not_widen_the_window():
+    from api.menu_pdf import day_window, timeline_bars
+
+    plan = _plan(
+        [
+            {"duration": 30, "lead": 60},  # 18:30-19:00, hands-on
+            {"duration": 600, "lead": 0, "hands": False},  # 10:00-20:00, resting
+        ]
+    )
+    lo, hi = day_window(plan)
+    assert lo == 17 * 60 and hi == 20 * 60 + 30
+    resting = next(b for b in timeline_bars(plan) if b.step["id"] == 2)
+    assert resting.clipped and resting.start == lo and resting.end == 20 * 60
+
+
+def test_overnight_steps_carry_into_the_day():
+    from api.menu_pdf import overnight_end, timeline_bars
+
+    plan = _plan(
+        [
+            {"day": -1, "at": 22 * 60, "duration": 20 * 60, "hands": False},  # until 18:00
+            {"day": -1, "at": 20 * 60, "duration": 60},  # done the day before
+            {"duration": 30, "lead": 0},
+        ]
+    )
+    assert overnight_end(plan["steps"][0]) == 18 * 60
+    assert overnight_end(plan["steps"][1]) is None
+    bars = {b.step["id"]: b for b in timeline_bars(plan)}
+    assert bars[1].overnight and bars[1].clipped and bars[1].end == 18 * 60
+    assert 2 not in bars
+
+
+def test_only_oven_temperatures_clash():
+    from api.menu_pdf import oven_clashes
+
+    plan = _plan(
+        [
+            {"duration": 60, "lead": 0, "equipment": "oven", "temp": 200},
+            {"duration": 60, "lead": 0, "equipment": "oven", "temp": 160},
+            {"duration": 60, "lead": 0, "equipment": "oven", "temp": 200},
+            {"duration": 60, "lead": 0, "equipment": "stove"},
+            {"duration": 60, "lead": 0, "equipment": "stove"},
+        ]
+    )
+    pairs = {(a, b) for a, b, _, _ in oven_clashes(plan)}
+    assert pairs == {(1, 2), (2, 3)}  # same temperature and stoves never clash
+
+
+def test_pdf_has_a_timeline_page(client, auth_headers, mocked_openai, drafted):
+    uuid = _recipe(client, auth_headers, mocked_openai)
+    menu = _menu(client, auth_headers)
+    client.post(f"/menus/{menu['id']}/courses", headers=auth_headers, json={"recipe_uuid": uuid})
+    pdf = client.get(f"/menus/{menu['id']}/plan.pdf", headers=auth_headers).content
+    # The timeline is an A4 landscape page (842 x 595 pt) after the portrait run sheet.
+    assert b"/MediaBox [0 0 841.89 595.28]" in pdf

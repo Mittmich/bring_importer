@@ -380,7 +380,9 @@ function PlanSummary({ menu }: { menu: Menu }) {
   const stats = planStats(menu)
   const clashes = findClashes(menu)
   const buckets = workload(menu)
-  const scale = 110 / 60 // px per minute; one cook = 30 min per half hour
+  // Bars scale to the busiest half hour (several people may cook at once).
+  const peak = Math.max(30, ...buckets.map((b) => b.total))
+  const scale = 110 / peak
   const courses = sortedCourses(menu)
 
   return (
@@ -401,9 +403,6 @@ function PlanSummary({ menu }: { menu: Menu }) {
       ) : (
         <>
           <div className="relative flex items-end gap-0.5 h-[110px] border-b border-border">
-            <div className="absolute left-0 right-0 border-t border-dashed border-destructive text-[10px] text-destructive text-right" style={{ bottom: 30 * scale }}>
-              {t('menus.oneCook')}
-            </div>
             {buckets.map((b) => (
               <div key={b.start} className="flex-1 min-w-0 flex flex-col-reverse" title={`${hhmm(b.start)}: ${b.total} min`}>
                 {courses.map((c) =>
@@ -421,7 +420,6 @@ function PlanSummary({ menu }: { menu: Menu }) {
               </span>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">{t('menus.busyHint')}</p>
           <div className="flex flex-wrap gap-3 mt-2 text-xs">
             {courses.map((c) => (
               <span key={c.id} className="inline-flex items-center gap-1.5">

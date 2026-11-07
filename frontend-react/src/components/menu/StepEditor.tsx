@@ -199,9 +199,7 @@ export function StepEditor({
           <div key={i} className="flex gap-2 text-xs text-destructive bg-destructive/10 rounded-md px-2.5 py-2">
             <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
             <span>
-              {c.kind === 'oven'
-                ? t('menus.clashOven', { other: other.name, a: step.temp ?? '', b: other.temp ?? '' })
-                : t('menus.clashHands', { other: other.name })}{' '}
+              {t('menus.clashOven', { other: other.name, a: step.temp ?? '', b: other.temp ?? '' })}{' '}
               ({hhmm(c.start)}–{hhmm(c.end)})
             </span>
           </div>

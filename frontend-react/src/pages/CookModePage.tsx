@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Check } from 'lucide-react'
+import { ArrowLeft, Check, Moon } from 'lucide-react'
 import { useMenu } from '@/hooks/useMenu'
 import { KeepAwakeButton } from '@/components/KeepAwakeButton'
 import {
   courseColor,
+  dayBeforeSteps,
   dayOfSteps,
   dayRange,
   durationLabel,
   formatMenuDate,
   hhmm,
   nowMinutes,
+  overnightEnd,
   sortedCourses,
   stepEnd,
   stepStart,
@@ -42,7 +44,14 @@ export function CookModePage() {
   const steps = dayOfSteps(menu).filter((s) => !s.done)
   const active = steps.filter((s) => stepStart(menu, s) <= now && now < stepEnd(menu, s))
   const doing = active.filter((s) => s.hands)
-  const background = active.filter((s) => !s.hands)
+  // Overnight steps from the day before still running this morning count too.
+  const overnight = dayBeforeSteps(menu)
+    .filter((s) => !s.done && (overnightEnd(s) ?? 0) > now)
+    .map((s) => ({ step: s, end: overnightEnd(s) ?? 0 }))
+  const background = [
+    ...overnight,
+    ...active.filter((s) => !s.hands).map((s) => ({ step: s, end: stepEnd(menu, s) })),
+  ]
   const overdue = steps.filter((s) => stepEnd(menu, s) <= now && s.hands)
   const next = steps.filter((s) => stepStart(menu, s) > now).slice(0, 4)
   const nextServe = sortedCourses(menu)
@@ -148,13 +157,14 @@ export function CookModePage() {
           {background.length === 0 ? (
             <p className="text-sm text-muted-foreground py-1">{t('menus.nothingRunning')}</p>
           ) : (
-            background.map((s) => (
+            background.map(({ step: s, end }) => (
               <div key={s.id} className="flex items-center justify-between gap-2 py-2 border-b border-border/60 text-sm">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: courseColor(menu, s.course_id) }} />
                   <span className="truncate">{s.name}</span>
+                  {s.day === -1 && <Moon className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />}
                 </span>
-                <span className="font-semibold tabular-nums">{durationLabel(Math.ceil(stepEnd(menu, s) - now))}</span>
+                <span className="font-semibold tabular-nums">{durationLabel(Math.ceil(end - now))}</span>
               </div>
             ))
           )}
