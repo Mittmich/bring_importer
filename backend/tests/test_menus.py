@@ -498,3 +498,183 @@ def test_pdf_has_a_timeline_page(client, auth_headers, mocked_openai, drafted):
     pdf = client.get(f"/menus/{menu['id']}/plan.pdf", headers=auth_headers).content
     # The timeline is an A4 landscape page (842 x 595 pt) after the portrait run sheet.
     assert b"/MediaBox [0 0 841.89 595.28]" in pdf
+
+
+# ---------------------------------------------------------------------------
+# Instructions for the AI and "Edit with AI"
+# ---------------------------------------------------------------------------
+
+
+def test_instructions_reach_the_draft(client, auth_headers, mocked_openai, drafted):
+    uuid = _recipe(client, auth_headers, mocked_openai)
+    menu = _menu(client, auth_headers)
+    body = client.post(
+        f"/menus/{menu['id']}/courses",
+        headers=auth_headers,
+        json={"recipe_uuid": uuid, "instructions": "Dough the day before"},
+    ).json()
+    assert drafted.call_args.args[2] == "Dough the day before"
+    cid = body["courses"][0]["id"]
+    resp = client.post(
+        f"/menus/{menu['id']}/courses/{cid}/redraft",
+        headers=auth_headers,
+        json={"instructions": "No oven"},
+    )
+    assert resp.status_code == 200
+    assert drafted.call_args.args[2] == "No oven"
+    too_long = client.post(
+        f"/menus/{menu['id']}/courses/{cid}/redraft",
+        headers=auth_headers,
+        json={"instructions": "x" * 501},
+    )
+    assert too_long.status_code == 422
+
+
+def test_instructions_go_into_the_prompt():
+    from api import prep_steps
+
+    with patch.object(prep_steps, "_get_client") as get:
+        parse = get.return_value.beta.chat.completions.parse
+        parse.return_value.choices = [
+            type("C", (), {"message": type("M", (), {"parsed": None})()})()
+        ]
+        prep_steps.draft_prep_steps(
+            {"name": "Soup", "instructions": [{"text": "Cook."}]}, None, "  use   the slow cooker "
+        )
+    user_msg = parse.call_args.kwargs["messages"][1]["content"]
+    assert user_msg.endswith("The cook's instructions (follow them): use the slow cooker")
+
+
+def _revision(courses):
+    from api.prep_steps import _RevPlan
+
+    plan = _RevPlan.model_validate({"courses": courses})
+    return type("C", (), {"message": type("M", (), {"parsed": plan})()})()
+
+
+def _rev_step(name, **kw):
+    return {
+        "name": name,
+        "duration_minutes": kw.get("duration", 30),
+        "hands_on": kw.get("hands", True),
+        "equipment": kw.get("equipment", ""),
+        "oven_temp_c": kw.get("temp"),
+        "make_day_before": kw.get("day_before", False),
+        "ready_minutes_before_serving": kw.get("lead", 0),
+        "day_before_start_minutes": kw.get("at"),
+    }
+
+
+def test_revise_replaces_changed_courses_only(client, auth_headers, mocked_openai, drafted):
+    from api import prep_steps
+
+    uuid = _recipe(client, auth_headers, mocked_openai)
+    menu = _menu(client, auth_headers)
+    client.post(f"/menus/{menu['id']}/courses", headers=auth_headers, json={"recipe_uuid": uuid})
+    body = client.post(
+        f"/menus/{menu['id']}/courses", headers=auth_headers, json={"recipe_uuid": uuid}
+    ).json()
+    first, second = body["courses"]
+    answer = _revision(
+        [
+            {
+                "course_id": second["id"],
+                "serve_minutes": 21 * 60 + 32,
+                "steps": [
+                    _rev_step("Marinate", day_before=True, at=20 * 60, duration=600, hands=False),
+                    _rev_step("Grill", lead=5),
+                ],
+            },
+            {"course_id": 99999, "serve_minutes": 0, "steps": [_rev_step("Hack")]},
+        ]
+    )
+    with patch.object(prep_steps, "_get_client") as get:
+        parse = get.return_value.beta.chat.completions.parse
+        parse.return_value.choices = [answer]
+        resp = client.post(
+            f"/menus/{menu['id']}/revise",
+            headers=auth_headers,
+            json={"request": "Serve dessert at 21:30, marinate overnight"},
+        )
+    assert resp.status_code == 200, resp.text
+    sent = parse.call_args.kwargs["messages"][1]["content"]
+    assert "Serve dessert at 21:30" in sent and f'"course_id": {first["id"]}' in sent
+    body = resp.json()
+    courses = {c["id"]: c for c in body["courses"]}
+    assert courses[first["id"]]["serve"] == first["serve"]
+    assert courses[second["id"]]["serve"] == 21 * 60 + 30
+    by_course = {}
+    for s in body["steps"]:
+        by_course.setdefault(s["course_id"], []).append(s)
+    assert [s["name"] for s in by_course[first["id"]]] == ["Make dough", "Bake", "Plate"]
+    marinate, grill = by_course[second["id"]]
+    assert marinate["day"] == -1 and marinate["at"] == 20 * 60 and marinate["hands"] is False
+    assert grill["day"] == 0 and grill["lead"] == 5 and grill["at"] is None
+    assert len(body["courses"]) == 2
+
+
+def test_revise_failure_leaves_plan_alone(client, auth_headers, mocked_openai, drafted):
+    from api import prep_steps
+
+    uuid = _recipe(client, auth_headers, mocked_openai)
+    menu = _menu(client, auth_headers)
+    before = client.post(
+        f"/menus/{menu['id']}/courses", headers=auth_headers, json={"recipe_uuid": uuid}
+    ).json()
+    with patch.object(prep_steps, "_get_client", side_effect=RuntimeError("down")):
+        resp = client.post(
+            f"/menus/{menu['id']}/revise", headers=auth_headers, json={"request": "Faster"}
+        )
+    assert resp.status_code == 502
+    after = client.get(f"/menus/{menu['id']}", headers=auth_headers).json()
+    assert after["steps"] == before["steps"]
+    # A course the AI returns without steps is never wiped.
+    with patch.object(prep_steps, "_get_client") as get:
+        cid = before["courses"][0]["id"]
+        get.return_value.beta.chat.completions.parse.return_value.choices = [
+            _revision([{"course_id": cid, "serve_minutes": 1200, "steps": []}])
+        ]
+        resp = client.post(
+            f"/menus/{menu['id']}/revise", headers=auth_headers, json={"request": "Faster"}
+        )
+    assert resp.status_code == 200
+    assert resp.json()["steps"] == before["steps"]
+
+
+def test_revise_validation_and_isolation(client, auth_headers, mocked_openai, drafted, tmp_db_path):
+    menu = _menu(client, auth_headers)
+    url = f"/menus/{menu['id']}/revise"
+    assert client.post(url, headers=auth_headers, json={"request": ""}).status_code == 422
+    assert client.post(url, headers=auth_headers, json={"request": "x" * 501}).status_code == 422
+    # Empty menu: nothing to edit.
+    assert client.post(url, headers=auth_headers, json={"request": "Faster"}).status_code == 400
+    eve = _other_user(tmp_db_path)
+    assert client.post(url, headers=eve, json={"request": "Faster"}).status_code == 404
+
+
+def test_reorder_and_rename_courses(client, auth_headers, mocked_openai, drafted, tmp_db_path):
+    uuid = _recipe(client, auth_headers, mocked_openai)
+    menu = _menu(client, auth_headers)
+    url = f"/menus/{menu['id']}/courses"
+    for _ in range(3):
+        body = client.post(url, headers=auth_headers, json={"recipe_uuid": uuid}).json()
+    a, b, c = [x["id"] for x in body["courses"]]
+
+    resp = client.put(f"{url}/order", headers=auth_headers, json={"course_ids": [c, a, b]})
+    assert resp.status_code == 200, resp.text
+    assert [x["id"] for x in resp.json()["courses"]] == [c, a, b]
+    assert [x["position"] for x in resp.json()["courses"]] == [0, 1, 2]
+
+    # Missing, duplicate or foreign ids are rejected.
+    for bad in ([a, b], [a, a, b], [a, b, c, 99999]):
+        assert (
+            client.put(f"{url}/order", headers=auth_headers, json={"course_ids": bad}).status_code
+            == 400
+        )
+    eve = _other_user(tmp_db_path)
+    assert (
+        client.put(f"{url}/order", headers=eve, json={"course_ids": [a, b, c]}).status_code == 404
+    )
+
+    renamed = client.patch(f"{url}/{a}", headers=auth_headers, json={"name": "  Amuse-bouche "})
+    assert [x["name"] for x in renamed.json()["courses"]][1] == "Amuse-bouche"

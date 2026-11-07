@@ -195,6 +195,19 @@ class MenuCourseCreate(BaseModel):
     recipe_uuid: str
     name: Optional[str] = Field(default=None, max_length=60)
     serve: Optional[int] = Field(default=None, ge=0, le=1439)
+    instructions: Optional[str] = Field(default=None, max_length=500)  # for the AI draft
+
+
+class MenuCourseOrder(BaseModel):
+    course_ids: List[int] = Field(min_length=1, max_length=50)
+
+
+class MenuRedraft(BaseModel):
+    instructions: Optional[str] = Field(default=None, max_length=500)
+
+
+class MenuRevise(BaseModel):
+    request: str = Field(min_length=1, max_length=500)
 
 
 class MenuCourseUpdate(BaseModel):

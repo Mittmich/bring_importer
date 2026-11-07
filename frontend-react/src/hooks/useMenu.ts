@@ -51,6 +51,14 @@ export function useMenu(id: number) {
       }))
       mutation.mutate(() => api.updateMenuCourse(id, courseId, patch))
     },
+    /** Put the courses in this order (every course id once). */
+    reorderCourses(courseIds: number[]) {
+      optimistic((m) => ({
+        ...m,
+        courses: m.courses.map((c) => ({ ...c, position: courseIds.indexOf(c.id) })),
+      }))
+      mutation.mutate(() => api.reorderMenuCourses(id, courseIds))
+    },
     updateMenu(patch: { title?: string; date?: string; guests?: number }) {
       optimistic((m) => ({
         ...m,

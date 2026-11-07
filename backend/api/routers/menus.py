@@ -11,7 +11,12 @@ menu is a 404.
 - ``PATCH /menus/{id}`` / ``DELETE /menus/{id}``.
 - ``POST /menus/{id}/courses`` — add a recipe as a course; drafts its prep steps.
 - ``PATCH|DELETE /menus/{id}/courses/{course_id}``.
-- ``POST /menus/{id}/courses/{course_id}/redraft`` — replace the course's steps with a new draft.
+- ``PUT /menus/{id}/courses/order`` — ``{"course_ids": [...]}``: all the menu's courses in
+  their new order.
+- ``POST /menus/{id}/courses/{course_id}/redraft`` — replace the course's steps with a new draft
+  (optional ``{"instructions": ...}`` for the AI, as on ``POST /courses``).
+- ``POST /menus/{id}/revise`` — ``{"request": ...}``: the AI edits the whole plan (serving
+  times and steps). 502 if it can't; the plan is then unchanged.
 - ``POST /menus/{id}/steps`` / ``PATCH|DELETE /menus/{id}/steps/{step_id}``.
 - ``POST /menus/{id}/shopping-list`` — merged ingredients for the guest count; the token
   works with the weekly plan's public Bring page (``/meal-plan/shopping-list/{token}.html``).
@@ -35,14 +40,23 @@ from api.menu_pdf import render_menu_pdf
 from api.models import (
     Ingredient,
     MenuCourseCreate,
+    MenuCourseOrder,
     MenuCourseUpdate,
     MenuCreate,
+    MenuRedraft,
+    MenuRevise,
     MenuStepCreate,
     MenuStepUpdate,
     MenuUpdate,
     User,
 )
-from api.prep_steps import DAY_BEFORE_START, PrepStepDraft, draft_prep_steps
+from api.prep_steps import (
+    DAY_BEFORE_START,
+    PlanRevisionError,
+    PrepStepDraft,
+    draft_prep_steps,
+    revise_plan,
+)
 from api.recipe_pdf import content_disposition, parse_servings, pdf_filename, scale_text
 from api.shopping_list import merge_ingredients
 
@@ -378,7 +392,7 @@ async def add_course(
         conn.close()
 
     # The LLM call can take a few seconds; keep it off the event loop and the DB.
-    steps = await run_in_threadpool(draft_prep_steps, localized, lang)
+    steps = await run_in_threadpool(draft_prep_steps, localized, lang, body.instructions)
 
     conn = db.get_db_connection()
     try:
@@ -392,6 +406,38 @@ async def add_course(
         course_id = cursor.lastrowid
         assert course_id is not None
         _insert_steps(cursor, menu_id, course_id, steps)
+        _touch(cursor, menu_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return _respond(menu_id, user_id, lang)
+
+
+@router.put("/{menu_id}/courses/order")
+async def reorder_courses(
+    menu_id: int,
+    body: MenuCourseOrder,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    """Put the courses in the given order (it must list each course exactly once)."""
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _owned_menu(cursor, menu_id, user_id)
+        ids = [
+            r["id"]
+            for r in cursor.execute(
+                "SELECT id FROM menu_courses WHERE menu_id = ?", (menu_id,)
+            ).fetchall()
+        ]
+        if sorted(body.course_ids) != sorted(ids):
+            raise HTTPException(status_code=400, detail="List every course of the menu once")
+        for position, course_id in enumerate(body.course_ids):
+            cursor.execute(
+                "UPDATE menu_courses SET position = ? WHERE id = ?", (position, course_id)
+            )
         _touch(cursor, menu_id)
         conn.commit()
     finally:
@@ -458,6 +504,7 @@ async def delete_course(
 async def redraft_course(
     menu_id: int,
     course_id: int,
+    body: Optional[MenuRedraft] = None,
     current_user: User = Depends(get_current_user),  # noqa: B008
     lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
@@ -473,7 +520,8 @@ async def redraft_course(
     finally:
         conn.close()
 
-    steps = await run_in_threadpool(draft_prep_steps, localized, lang)
+    instructions = body.instructions if body else None
+    steps = await run_in_threadpool(draft_prep_steps, localized, lang, instructions)
 
     conn = db.get_db_connection()
     try:
@@ -482,6 +530,49 @@ async def redraft_course(
         _course_recipe(cursor, menu_id, course_id)
         cursor.execute("DELETE FROM menu_steps WHERE course_id = ?", (course_id,))
         _insert_steps(cursor, menu_id, course_id, steps)
+        _touch(cursor, menu_id)
+        conn.commit()
+    finally:
+        conn.close()
+    return _respond(menu_id, user_id, lang)
+
+
+@router.post("/{menu_id}/revise")
+async def revise_menu_plan(
+    menu_id: int,
+    body: MenuRevise,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    """Let the AI edit the plan from the cook's request. Courses it changes get
+    their new serving time and steps (done marks reset); the rest stay as they are."""
+    user_id = _uid(current_user)
+    menu = _respond(menu_id, user_id, lang)
+    if not menu["courses"]:
+        raise HTTPException(status_code=400, detail="Add a course first")
+    try:
+        revisions = await run_in_threadpool(revise_plan, menu, body.request, lang)
+    except PlanRevisionError:
+        raise HTTPException(
+            status_code=502, detail="The AI could not edit the plan. Try again."
+        ) from None
+
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _owned_menu(cursor, menu_id, user_id)
+        for rev in revisions:
+            row = cursor.execute(
+                "SELECT id FROM menu_courses WHERE id = ? AND menu_id = ?",
+                (rev.course_id, menu_id),
+            ).fetchone()
+            if row is None:  # removed meanwhile
+                continue
+            cursor.execute(
+                "UPDATE menu_courses SET serve = ? WHERE id = ?", (rev.serve, rev.course_id)
+            )
+            cursor.execute("DELETE FROM menu_steps WHERE course_id = ?", (rev.course_id,))
+            _insert_steps(cursor, menu_id, rev.course_id, rev.steps)
         _touch(cursor, menu_id)
         conn.commit()
     finally:
