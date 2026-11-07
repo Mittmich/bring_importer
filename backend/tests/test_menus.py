@@ -458,8 +458,8 @@ def test_long_passive_steps_do_not_widen_the_window():
     assert resting.clipped and resting.start == lo and resting.end == 20 * 60
 
 
-def test_overnight_steps_carry_into_the_day():
-    from api.menu_pdf import overnight_end, timeline_bars
+def test_day_before_steps_get_their_own_timeline():
+    from api.menu_pdf import before_window, overnight_end, timeline_bars
 
     plan = _plan(
         [
@@ -470,9 +470,26 @@ def test_overnight_steps_carry_into_the_day():
     )
     assert overnight_end(plan["steps"][0]) == 18 * 60
     assert overnight_end(plan["steps"][1]) is None
-    bars = {b.step["id"]: b for b in timeline_bars(plan)}
-    assert bars[1].overnight and bars[1].clipped and bars[1].end == 18 * 60
-    assert 2 not in bars
+    # The cooking day shows only its own steps.
+    assert [b.step["id"] for b in timeline_bars(plan)] == [3]
+    # The day before: the long overnight step doesn't stretch the window, it is cut off.
+    lo, hi = before_window(plan)
+    assert (lo, hi) == (20 * 60, 22 * 60 + 30)
+    bars = {b.step["id"]: b for b in timeline_bars(plan, day=-1)}
+    assert bars[1].cut and not bars[1].clipped and bars[1].end == hi
+    assert not bars[2].cut and bars[2].end == 21 * 60
+
+
+def test_cut_bar_text_names_the_next_day():
+    from api.menu_pdf import _bar_text, timeline_bars
+
+    plan = _plan([{"day": -1, "at": 22 * 60, "duration": 20 * 60, "hands": False}])
+    (bar,) = timeline_bars(plan, day=-1)
+
+    def label(key, **p):
+        return f"{key}:{p.get('time')}"
+
+    assert _bar_text(plan, bar, label) == "22:00 – until_on_the_day:18:00"
 
 
 def test_only_oven_temperatures_clash():
@@ -498,6 +515,46 @@ def test_pdf_has_a_timeline_page(client, auth_headers, mocked_openai, drafted):
     pdf = client.get(f"/menus/{menu['id']}/plan.pdf", headers=auth_headers).content
     # The timeline is an A4 landscape page (842 x 595 pt) after the portrait run sheet.
     assert b"/MediaBox [0 0 841.89 595.28]" in pdf
+
+
+def _page_shapes(monkeypatch, plan, lang="en"):
+    """Render ``plan`` and return the orientation of each page in order."""
+    from api import menu_pdf
+
+    shapes = []
+    add_page = menu_pdf._RecipePDF.add_page
+
+    def record(self, *args, **kwargs):
+        shapes.append(kwargs.get("orientation") or "P")
+        return add_page(self, *args, **kwargs)
+
+    monkeypatch.setattr(menu_pdf._RecipePDF, "add_page", record)
+    assert menu_pdf.render_menu_pdf(plan, lang).startswith(b"%PDF-")
+    return shapes
+
+
+def test_pdf_parts_per_day_and_by_course(monkeypatch):
+    plan = _plan(
+        [
+            {"day": -1, "at": 20 * 60, "duration": 30},
+            {"duration": 30, "lead": 0, "equipment": "oven", "temp": 200},
+        ]
+    )
+    plan.update(title="Dinner", date=None, guests=4)
+    shapes = _page_shapes(monkeypatch, plan)
+    # Menu + day before, its timeline, on the day, its timeline, then timelines by course.
+    assert shapes == ["P", "L", "P", "L", "L"]
+
+    plan["steps"] = plan["steps"][1:]  # no day before: no extra part
+    assert _page_shapes(monkeypatch, plan, "de") == ["P", "L", "L"]
+
+
+def test_course_timeline_uses_its_own_window():
+    from api.menu_pdf import day_window
+
+    plan = _plan([{"duration": 10, "lead": 5}])  # 19:45-19:55, served 20:00
+    assert day_window(plan) == (17 * 60, 20 * 60 + 30)  # the whole menu starts by 17:00
+    assert day_window(plan, earliest=None) == (19 * 60, 21 * 60)
 
 
 # ---------------------------------------------------------------------------
