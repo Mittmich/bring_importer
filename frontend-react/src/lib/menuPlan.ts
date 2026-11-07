@@ -65,13 +65,20 @@ export function dayOfSteps(menu: Menu): MenuStep[] {
     .sort((a, b) => stepStart(menu, a) - stepStart(menu, b) || a.position - b.position)
 }
 
-export type Clash =
-  | { kind: 'oven'; a: MenuStep; b: MenuStep; start: number; end: number }
-  | { kind: 'hands'; a: MenuStep; b: MenuStep; start: number; end: number }
+/**
+ * An equipment clash on the cooking day. Several people may cook, so only shared
+ * equipment counts: the oven needed at two temperatures at once.
+ */
+export interface Clash {
+  kind: 'oven'
+  a: MenuStep
+  b: MenuStep
+  start: number
+  end: number
+}
 
-/** Overlaps on the cooking day: two oven temperatures, or two steps that both need you. */
 export function findClashes(menu: Menu): Clash[] {
-  const steps = dayOfSteps(menu)
+  const steps = dayOfSteps(menu).filter((s) => s.equipment === 'oven')
   const out: Clash[] = []
   for (let i = 0; i < steps.length; i++) {
     for (let j = i + 1; j < steps.length; j++) {
@@ -79,11 +86,7 @@ export function findClashes(menu: Menu): Clash[] {
       const b = steps[j]
       const start = Math.max(stepStart(menu, a), stepStart(menu, b))
       const end = Math.min(stepEnd(menu, a), stepEnd(menu, b))
-      if (end <= start) continue
-      if (a.equipment === 'oven' && b.equipment === 'oven' && a.temp !== b.temp) {
-        out.push({ kind: 'oven', a, b, start, end })
-      }
-      if (a.hands && b.hands) out.push({ kind: 'hands', a, b, start, end })
+      if (end > start && a.temp !== b.temp) out.push({ kind: 'oven', a, b, start, end })
     }
   }
   return out
@@ -93,15 +96,60 @@ export function clashesFor(clashes: Clash[], stepId: number): Clash[] {
   return clashes.filter((c) => c.a.id === stepId || c.b.id === stepId)
 }
 
-/** The cooking day's visible window: whole hours around all steps and serving times. */
+/** Steps that run by themselves for longer than this don't widen the timeline. */
+export const LONG_PASSIVE = 180
+
+export function isLongPassive(step: MenuStep): boolean {
+  return !step.hands && step.duration > LONG_PASSIVE
+}
+
+/**
+ * The cooking day's visible window: whole hours around the active steps and the
+ * serving times. Long passive steps (resting, marinating overnight) don't pull
+ * it back to the early morning; they're drawn cut off at the left edge instead.
+ */
 export function dayRange(menu: Menu): [number, number] {
   const steps = dayOfSteps(menu)
-  const starts = steps.map((s) => stepStart(menu, s))
-  const ends = [...steps.map((s) => stepEnd(menu, s)), ...menu.courses.map((c) => c.serve + 15)]
+  const anchors = steps.filter((s) => !isLongPassive(s)).map((s) => stepStart(menu, s))
   const serves = menu.courses.map((c) => c.serve)
-  const lo = Math.min(...starts, ...serves, 17 * 60)
+  const lo = Math.floor(Math.min(...anchors, ...serves, 17 * 60) / 60) * 60
+  const ends = [...steps.map((s) => stepEnd(menu, s)), ...serves.map((m) => m + 15)]
   const hi = Math.max(...ends, lo + 120)
-  return [Math.floor(lo / 60) * 60, Math.ceil(hi / 30) * 30]
+  return [lo, Math.ceil(hi / 30) * 30]
+}
+
+/** When a day-before step that runs overnight ends on the cooking day, else null. */
+export function overnightEnd(step: MenuStep): number | null {
+  if (step.day !== -1) return null
+  const end = (step.at ?? 18 * 60) + step.duration - 1440
+  return end > 0 ? end : null
+}
+
+/** A bar on the cooking-day timeline: steps of the day plus overnight steps still running. */
+export interface TimelineBar {
+  step: MenuStep
+  start: number
+  end: number
+  /** Starts before the window (or the day before): drawn cut off at the left edge. */
+  clipped: boolean
+  /** Started the day before. */
+  overnight: boolean
+}
+
+export function timelineBars(menu: Menu): TimelineBar[] {
+  const [lo] = dayRange(menu)
+  const bars: TimelineBar[] = []
+  for (const step of dayBeforeSteps(menu)) {
+    const end = overnightEnd(step)
+    if (end !== null && end > lo) bars.push({ step, start: lo, end, clipped: true, overnight: true })
+  }
+  for (const step of dayOfSteps(menu)) {
+    const start = stepStart(menu, step)
+    const end = start + step.duration
+    if (end <= lo) continue
+    bars.push({ step, start: Math.max(start, lo), end, clipped: start < lo, overnight: false })
+  }
+  return bars
 }
 
 export interface PlanEvent {

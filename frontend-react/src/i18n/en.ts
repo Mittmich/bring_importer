@@ -504,10 +504,8 @@ export const en = {
   'menus.eq.fridge': 'Fridge',
   'menus.ovenTemp': 'Oven (°C)',
   'menus.clashOven': 'The oven is also needed for “{other}” ({a}° vs {b}°)',
-  'menus.clashHands': 'You’re also busy with “{other}”',
   'menus.removeStep': 'Remove step',
   'menus.clash': 'clash',
-  'menus.you': 'You',
   'menus.dragHint': 'Drag bars to move them (5-minute steps).',
   'menus.phase.earlier': 'Earlier',
   'menus.phase.final': 'Final two hours',
@@ -519,9 +517,7 @@ export const en = {
   'menus.statOven': 'oven time',
   'menus.statClashes': 'clashes to resolve',
   'menus.statNoClashes': 'no clashes',
-  'menus.busyTitle': 'How busy you’ll be (hands-on minutes per half hour)',
-  'menus.oneCook': 'one cook',
-  'menus.busyHint': 'Bars above the dashed line mean more than one thing needs you in that half hour.',
+  'menus.busyTitle': 'How busy the kitchen is (hands-on minutes per half hour)',
   'menus.cookMode': 'Cook mode',
   'menus.serveIn': 'Serve {course} in {time}',
   'menus.allServed': 'All courses served 🎉',
@@ -537,6 +533,8 @@ export const en = {
   'menus.upNext': 'Up next',
   'menus.thatsAll': 'That’s everything.',
   'menus.inTime': 'in {time}',
+  'menus.since': 'since {time}',
+  'menus.sinceDayBefore': 'since {time} the day before',
 } as const
 
 export type MessageKey = keyof typeof en

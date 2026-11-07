@@ -178,6 +178,13 @@ BACKEND_STRINGS: Dict[str, Dict[str, str]] = {
         "stove": "stove",
         "fridge": "fridge",
         "untitled_menu": "Menu",
+        "timeline": "Timeline",
+        "until": "until {time}",
+        "since": "since {time}",
+        "since_day_before": "since {time} the day before",
+        "started_earlier": "started earlier (cut off)",
+        "oven_lane": "Oven",
+        "oven_clash": "oven needed at two temperatures",
     },
     "de": {
         "ingredients": "Zutaten",
@@ -205,6 +212,13 @@ BACKEND_STRINGS: Dict[str, Dict[str, str]] = {
         "stove": "Herd",
         "fridge": "Kühlschrank",
         "untitled_menu": "Menü",
+        "timeline": "Zeitachse",
+        "until": "bis {time}",
+        "since": "seit {time}",
+        "since_day_before": "seit {time} am Vortag",
+        "started_earlier": "früher begonnen (abgeschnitten)",
+        "oven_lane": "Ofen",
+        "oven_clash": "Ofen bei zwei Temperaturen gebraucht",
     },
 }
 

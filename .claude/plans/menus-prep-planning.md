@@ -70,3 +70,17 @@ B on mobile (switchable on desktop); C as "Start cooking".
 - Not verified: drafting with a real OpenAI key (only the fallback ran locally), dragging and
   editing by hand in a real browser, the Bring import with a real list.
 
+
+## Follow-up (2026-11-07): feedback after the first release
+
+- [x] Clashes only for shared equipment (oven at two temperatures). Several people cook, so
+  hands-on overlaps are no longer clashes; the "You" lane and the "one cook" line are gone and
+  the workload chart scales to its busiest half hour.
+- [x] PDF: a landscape timeline page (time axis, rows per step grouped by recipe, dashed
+  serving times, oven lane with clashes, legend), mirroring the on-screen timeline.
+- [x] Compact overnight / long steps: passive steps over 3 h don't widen the window and are drawn
+  cut off at the left edge ("since …", torn edge); day-before steps that run overnight show their
+  end time and, if they end inside the window, a bar "since … the day before". Cook mode lists
+  overnight steps still running in the morning.
+- Checks: 391 backend tests pass (4 new); lint/ty/eslint at baseline; build passes; screenshots
+  of the menu page and the PDF timeline with an overnight marinade and a 7 h passive step.

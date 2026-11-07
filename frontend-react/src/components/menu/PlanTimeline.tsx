@@ -1,15 +1,17 @@
 import { useRef, useState } from 'react'
 import type { Menu, MenuStep } from '@/lib/api'
+import { Moon } from 'lucide-react'
 import {
   courseColor,
   dayBeforeSteps,
-  dayOfSteps,
   dayRange,
   durationLabel,
   findClashes,
   hhmm,
+  overnightEnd,
   sortedCourses,
   stepStart,
+  timelineBars,
 } from '@/lib/menuPlan'
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/i18n'
@@ -20,8 +22,9 @@ const SNAP = 5
 /**
  * Gantt view of the cooking day: one row per step, grouped by course, with the
  * serving times as dashed lines. Drag a bar to move a step (5-minute steps; it
- * can't end after its course is served); click it to select it. The Oven and
- * You lanes mark clashes in red.
+ * can't end after its course is served); click it to select it. Long passive and
+ * overnight steps are cut off at the left edge (torn edge, "since …"). The Oven
+ * lane marks clashes in red.
  */
 export function PlanTimeline({
   menu,
@@ -43,7 +46,7 @@ export function PlanTimeline({
   const clashes = findClashes(menu)
   const clashing = new Set(clashes.flatMap((c) => [c.a.id, c.b.id]))
   const courses = sortedCourses(menu)
-  const day = dayOfSteps(menu)
+  const bars = timelineBars(menu)
   const before = dayBeforeSteps(menu)
 
   const drag = useRef<{ step: MenuStep; x0: number; w: number; start0: number; moved: boolean } | null>(null)
@@ -96,20 +99,26 @@ export function PlanTimeline({
     <div>
       {before.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3 text-xs">
-          <span className="text-muted-foreground mr-1">{t('menus.dayBefore')}:</span>
-          {before.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => onSelect(s.id)}
-              className={cn(
-                'rounded-md border px-2 py-1 bg-white',
-                selectedId === s.id ? 'border-primary bg-primary/5' : 'border-dashed border-border',
-              )}
-            >
-              <span className="font-semibold tabular-nums">{hhmm(stepStart(menu, s))}</span> {s.name} ·{' '}
-              {durationLabel(s.duration)}
-            </button>
-          ))}
+          <span className="text-muted-foreground mr-1 inline-flex items-center gap-1">
+            <Moon className="w-3.5 h-3.5" /> {t('menus.dayBefore')}:
+          </span>
+          {before.map((s) => {
+            const end = overnightEnd(s)
+            return (
+              <button
+                key={s.id}
+                onClick={() => onSelect(s.id)}
+                className={cn(
+                  'rounded-md border px-2 py-1 bg-white',
+                  selectedId === s.id ? 'border-primary bg-primary/5' : 'border-dashed border-border',
+                )}
+              >
+                <span className="font-semibold tabular-nums">{hhmm(stepStart(menu, s))}</span> {s.name} ·{' '}
+                {durationLabel(s.duration)}
+                {end !== null && <span className="text-muted-foreground"> → {hhmm(end)}</span>}
+              </button>
+            )
+          })}
         </div>
       )}
 
@@ -150,7 +159,7 @@ export function PlanTimeline({
 
           {courses.map((c) => {
             const color = courseColor(menu, c.id)
-            const rows = day.filter((s) => s.course_id === c.id)
+            const rows = bars.filter((b) => b.step.course_id === c.id)
             return (
               <div key={c.id}>
                 <div className="flex items-center h-8 pt-2">
@@ -159,42 +168,55 @@ export function PlanTimeline({
                     <span className="truncate">{c.name}</span>
                   </div>
                 </div>
-                {rows.map((s) => {
-                  const start = startOf(s)
+                {rows.map((b) => {
+                  const s = b.step
+                  const draggable = !b.clipped && s.day === 0
+                  const start = draggable ? startOf(s) : b.start
+                  const end = draggable ? start + s.duration : b.end
+                  const since = b.overnight
+                    ? t('menus.sinceDayBefore', { time: hhmm(stepStart(menu, s)) })
+                    : t('menus.since', { time: hhmm(stepStart(menu, s)) })
                   return (
                     <div key={s.id} className="flex items-center h-7">
-                      <div style={{ width: LABEL_W }} className="flex-shrink-0 text-xs truncate pr-2" title={s.name}>
-                        {s.name}
+                      <div style={{ width: LABEL_W }} className="flex-shrink-0 text-xs truncate pr-2 flex items-center gap-1" title={s.name}>
+                        {b.overnight && <Moon className="w-3 h-3 flex-shrink-0 text-muted-foreground" />}
+                        <span className="truncate">{s.name}</span>
                       </div>
                       <div className="relative flex-1 h-6">
                         <button
                           type="button"
-                          onPointerDown={(e) => onPointerDown(e, s)}
-                          onPointerMove={onPointerMove}
-                          onPointerUp={onPointerUp}
+                          onPointerDown={draggable ? (e) => onPointerDown(e, s) : undefined}
+                          onPointerMove={draggable ? onPointerMove : undefined}
+                          onPointerUp={draggable ? onPointerUp : undefined}
                           onClick={() => onSelect(s.id)}
                           onPointerCancel={() => {
                             drag.current = null
                             setPreview(null)
                           }}
-                          title={`${s.name} · ${durationLabel(s.duration)}`}
+                          title={`${s.name} · ${durationLabel(s.duration)}${b.clipped ? ` · ${since}` : ''}`}
                           className={cn(
-                            'absolute top-[3px] h-[18px] rounded-[5px] px-1.5 text-[10.5px] font-semibold whitespace-nowrap overflow-hidden text-left cursor-grab active:cursor-grabbing touch-none',
+                            'absolute top-[3px] h-[18px] rounded-[5px] px-1.5 text-[10.5px] font-semibold whitespace-nowrap overflow-hidden text-left',
+                            draggable ? 'cursor-grab active:cursor-grabbing touch-none' : 'cursor-pointer',
                             s.hands ? 'text-white' : 'text-foreground',
+                            b.clipped && 'rounded-l-none pl-3',
                             selectedId === s.id && 'outline outline-2 outline-offset-1 outline-foreground',
                             clashing.has(s.id) && 'ring-2 ring-destructive',
                           )}
                           style={{
                             left: pct(start),
-                            width: width(s.duration),
+                            width: width(end - start),
                             minWidth: 6,
                             background: s.hands
                               ? color
                               : `repeating-linear-gradient(135deg, ${color} 0 6px, color-mix(in srgb, ${color} 45%, white) 6px 12px)`,
                             textShadow: s.hands ? undefined : '0 0 3px white',
+                            // A torn left edge: the step started earlier than the window shows.
+                            clipPath: b.clipped
+                              ? 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 5px 75%, 0 50%, 5px 25%)'
+                              : undefined,
                           }}
                         >
-                          {hhmm(start)}–{hhmm(start + s.duration)}
+                          {b.clipped ? `${since} → ${hhmm(end)}` : `${hhmm(start)}–${hhmm(end)}`}
                         </button>
                       </div>
                     </div>
@@ -204,40 +226,27 @@ export function PlanTimeline({
             )
           })}
 
-          {/* Lanes */}
+          {/* Shared equipment */}
           <Lane label={`🔥 ${t('menus.eq.oven')}`} className="mt-3">
-            {day
-              .filter((s) => s.equipment === 'oven')
-              .map((s) => (
-                <span
-                  key={s.id}
-                  className="absolute top-[5px] h-[14px] rounded px-1 text-[10px] overflow-hidden whitespace-nowrap"
-                  style={{ left: pct(startOf(s)), width: width(s.duration), background: `color-mix(in srgb, ${courseColor(menu, s.course_id)} 30%, white)` }}
-                >
-                  {s.temp}°
-                </span>
-              ))}
-            {clashes
-              .filter((c) => c.kind === 'oven')
-              .map((c, i) => (
-                <span key={i} className="absolute top-0.5 h-5 rounded bg-destructive/25 border border-destructive" style={{ left: pct(c.start), width: width(c.end - c.start) }} />
-              ))}
-          </Lane>
-          <Lane label={`🙋 ${t('menus.you')}`} className="mt-1">
-            {day
-              .filter((s) => s.hands)
-              .map((s) => (
-                <span
-                  key={s.id}
-                  className="absolute top-[5px] h-[14px] rounded"
-                  style={{ left: pct(startOf(s)), width: width(s.duration), background: `color-mix(in srgb, ${courseColor(menu, s.course_id)} 30%, white)` }}
-                />
-              ))}
-            {clashes
-              .filter((c) => c.kind === 'hands')
-              .map((c, i) => (
-                <span key={i} className="absolute top-0.5 h-5 rounded bg-destructive/25 border border-destructive" style={{ left: pct(c.start), width: width(c.end - c.start) }} />
-              ))}
+            {bars
+              .filter((b) => b.step.equipment === 'oven')
+              .map((b) => {
+                const s = b.step
+                const start = !b.clipped && s.day === 0 ? startOf(s) : b.start
+                const end = !b.clipped && s.day === 0 ? start + s.duration : b.end
+                return (
+                  <span
+                    key={s.id}
+                    className="absolute top-[5px] h-[14px] rounded px-1 text-[10px] overflow-hidden whitespace-nowrap"
+                    style={{ left: pct(start), width: width(end - start), background: `color-mix(in srgb, ${courseColor(menu, s.course_id)} 30%, white)` }}
+                  >
+                    {s.temp}°
+                  </span>
+                )
+              })}
+            {clashes.map((c, i) => (
+              <span key={i} className="absolute top-0.5 h-5 rounded bg-destructive/25 border border-destructive" style={{ left: pct(c.start), width: width(c.end - c.start) }} />
+            ))}
           </Lane>
         </div>
       </div>
