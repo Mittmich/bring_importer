@@ -1,6 +1,7 @@
 """Recipe endpoints.
 
-- ``POST /recipes/parse`` — auth required; image → OpenAI → store → uuid.
+- ``POST /recipes/parse`` — auth required; 1–8 images of one recipe → OpenAI → store → uuid.
+- ``POST /recipes/import-document`` — auth required; PDF upload → OpenAI → store → uuid.
 - ``POST /recipes/import-url`` — auth required; URL → JSON-LD/OpenAI → store → uuid.
 - ``POST /recipes`` — auth required; store a recipe entered by hand → uuid.
 - ``POST /recipes/{uuid}/clone`` — auth required; copy a visible recipe → uuid.
@@ -17,13 +18,24 @@ Read endpoints are localized by the request language (``?lang=`` or
 """
 
 import json
+import logging
+import os
 import re
 import uuid as uuid_mod
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
@@ -58,9 +70,12 @@ from api.models import (
 from api.recipe_extraction import (
     IMAGE_MODEL,
     IMAGE_PROMPT_VERSION,
+    MAX_IMAGES,
+    MAX_PDF_BYTES,
     USER_AGENT,
     extract_recipe_from_html_text,
     extract_recipe_from_jsonld,
+    parse_recipe_from_pdf,
     parse_recipe_with_openai,
 )
 from api.recipe_pdf import build_document, content_disposition, pdf_filename, render_pdf
@@ -77,6 +92,8 @@ from api.translation import (
 # feed or wrapper page and not a single recipe.
 MAX_FETCH_BYTES = 5 * 1024 * 1024
 FETCH_TIMEOUT_SECONDS = 10.0
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
@@ -145,18 +162,22 @@ def _target_language(
 @router.post("/parse", response_model=RecipeResponse)
 async def parse_recipe(
     background_tasks: BackgroundTasks,
-    image: str = Form(...),
+    image: List[str] = Form(...),  # noqa: B008 - repeat the field for several photos
     language: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),  # noqa: B008
     lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
-    """Extract a recipe from a photo, written in the target language."""
+    """Extract a recipe from a photo, or from up to ``MAX_IMAGES`` photos of the
+    same recipe (send the ``image`` field once per photo, in order), written in
+    the target language."""
+    if len(image) > MAX_IMAGES:
+        raise HTTPException(status_code=422, detail=f"At most {MAX_IMAGES} photos per recipe")
     try:
         user_id = get_user_id(current_user.email)
         if user_id is None:
             raise HTTPException(status_code=401, detail="Unknown user")
         target = _target_language(language, lang, user_id)
-        recipe = parse_recipe_with_openai(image, target)
+        recipe = parse_recipe_with_openai(image[0] if len(image) == 1 else image, target)
         if target:
             recipe = recipe.model_copy(update={"inLanguage": target})
         recipe_uuid = str(uuid_mod.uuid4())
@@ -167,18 +188,62 @@ async def parse_recipe(
             source={"kind": "image", "value": ""},
         )
         # Opt-in: stash the image + raw extraction for the eval dataset. Runs
-        # after the response so it never adds latency to the import.
-        background_tasks.add_task(
-            collect_image_extraction,
-            recipe_uuid,
-            image,
-            recipe,
-            IMAGE_MODEL,
-            IMAGE_PROMPT_VERSION,
-        )
+        # after the response so it never adds latency to the import. Only
+        # single-photo imports: the dataset pairs one image with one recipe.
+        if len(image) == 1:
+            background_tasks.add_task(
+                collect_image_extraction,
+                recipe_uuid,
+                image[0],
+                recipe,
+                IMAGE_MODEL,
+                IMAGE_PROMPT_VERSION,
+            )
         return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error parsing recipe: {str(e)}") from e
+
+
+@router.post("/import-document", response_model=RecipeResponse)
+async def import_document(
+    file: UploadFile = File(...),  # noqa: B008
+    language: Optional[str] = Form(None),
+    note: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    """Extract a recipe from a PDF document (at most 15 MB), written in the
+    target language. Stored with ``source={"kind": "document", "value": filename}``."""
+    user_id = get_user_id(current_user.email)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Unknown user")
+    data = await file.read(MAX_PDF_BYTES + 1)
+    if len(data) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="The PDF is larger than 15 MB")
+    if not data.lstrip()[:5] == b"%PDF-":
+        raise HTTPException(status_code=422, detail="Only PDF documents can be imported")
+    filename = os.path.basename(file.filename or "") or "recipe.pdf"
+    target = _target_language(language, lang, user_id)
+    try:
+        recipe = await run_in_threadpool(parse_recipe_from_pdf, data, filename, target)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Document import failed")
+        raise HTTPException(
+            status_code=500, detail="Could not read a recipe from this document"
+        ) from e
+    if target:
+        recipe = recipe.model_copy(update={"inLanguage": target})
+    recipe_uuid = str(uuid_mod.uuid4())
+    _store_recipe(
+        recipe_uuid=recipe_uuid,
+        user_id=user_id,
+        recipe=recipe,
+        source={"kind": "document", "value": filename[:200]},
+        note=(note or "").strip(),
+    )
+    return RecipeResponse(uuid=recipe_uuid, url=f"/recipes/{recipe_uuid}.json")
 
 
 class ImportURLBody(BaseModel):

@@ -18,7 +18,8 @@ async function send(path: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${config.apiUrl}${path}`, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      // FormData (file uploads) sets its own multipart Content-Type with the boundary.
+      ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       // The backend localizes recipe content (titles, ingredients, steps) to this.
       'Accept-Language': getLanguage(),
       ...authHeaders(),
@@ -526,15 +527,28 @@ export const api = {
     return request<void>(`/recipes/${uuid}/image`, { method: 'DELETE' })
   },
 
-  /** Extract a recipe from a photo, written in `language` (default: UI language). */
-  parsePhoto(imageBase64: string, language?: string) {
-    const form = new URLSearchParams({ image: imageBase64 })
+  /**
+   * Extract a recipe from one or more photos of the same recipe (in order), written in
+   * `language` (default: UI language).
+   */
+  parsePhoto(imagesBase64: string | string[], language?: string) {
+    const form = new URLSearchParams()
+    for (const image of Array.isArray(imagesBase64) ? imagesBase64 : [imagesBase64]) form.append('image', image)
     if (language) form.set('language', language)
     return request<{ uuid: string; url: string }>('/recipes/parse', {
       method: 'POST',
       body: form,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
+  },
+
+  /** Extract a recipe from a PDF document, written in `language` (default: UI language). */
+  importDocument(file: File, language?: string, note?: string) {
+    const form = new FormData()
+    form.append('file', file)
+    if (language) form.append('language', language)
+    if (note) form.append('note', note)
+    return request<{ uuid: string; url: string }>('/recipes/import-document', { method: 'POST', body: form })
   },
 
   /** Import a recipe page, translated into `language` (default: UI language). */

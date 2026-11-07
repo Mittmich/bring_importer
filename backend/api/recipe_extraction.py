@@ -2,8 +2,12 @@
 
 Entry points:
 
-  - ``parse_recipe_with_openai(image_base64)``: calls OpenAI vision with
-    structured output to extract a ``Recipe`` directly from an image.
+  - ``parse_recipe_with_openai(images)``: calls OpenAI vision with structured
+    output to extract a ``Recipe`` from one image or several images of the same
+    recipe.
+
+  - ``parse_recipe_from_pdf(pdf_bytes)``: the same from a PDF document, sent to
+    the model as a native file input.
 
   - ``extract_recipe_from_jsonld(jsonld_obj)``: converts a parsed
     ``application/ld+json`` Recipe object into the new structured ``Recipe``
@@ -23,8 +27,9 @@ Entry points:
     JSON-LD extraction and the migration script.
 """
 
+import base64
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 from bs4 import BeautifulSoup
 from fastapi import HTTPException
@@ -203,50 +208,36 @@ def _map_ingredients_to_instructions(
 # ---------------------------------------------------------------------------
 
 
-def parse_recipe_with_openai(image_base64: str, language: Optional[str] = None) -> Recipe:
-    """Extract a structured recipe from a base64-encoded image.
+MAX_IMAGES = 8  # photos per import (one recipe spread over several pages/screenshots)
+MAX_PDF_BYTES = 15 * 1024 * 1024
 
-    With ``language``, the model writes the recipe in that language
-    (translating if the photo is in another one).
-    """
-    if "base64," in image_base64:
-        image_base64 = image_base64.split("base64,")[1]
 
+def _strip_data_url(image_base64: str) -> str:
+    return image_base64.split("base64,", 1)[1] if "base64," in image_base64 else image_base64
+
+
+def _extract_recipe(
+    system: str, content: List[Dict[str, Any]], language: Optional[str], max_tokens: int = 2000
+) -> Recipe:
+    """One structured-output call with ``content`` (text/image/file parts)."""
+    messages: List[Any] = [
+        {
+            "role": "system",
+            "content": (
+                system + " Ingredients are individual shopping-list items with amounts. "
+                "Instructions are ordered cooking steps. "
+                "In each instruction step, list the 0-based indices of ingredients "
+                "from the ingredient list that are used in that step."
+                + _language_instruction(language)
+            ),
+        },
+        {"role": "user", "content": content},
+    ]
     completion = _get_client().beta.chat.completions.parse(
         model=IMAGE_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You extract recipes from images and return structured data. "
-                    "Ingredients are individual shopping-list items with amounts. "
-                    "Instructions are ordered cooking steps. "
-                    "In each instruction step, list the 0-based indices of ingredients "
-                    "from the ingredient list that are used in that step."
-                    + _language_instruction(language)
-                ),
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": (
-                            "Extract the recipe from this image. "
-                            "Return all ingredients with their amounts and the ingredient's name "
-                            "separately. For each instruction step, include the indices of the "
-                            "ingredients used."
-                        ),
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
-                    },
-                ],
-            },
-        ],
+        messages=messages,
         response_format=_RecipeOutput,
-        max_completion_tokens=2000,
+        max_completion_tokens=max_tokens,
     )
 
     out = completion.choices[0].message.parsed
@@ -261,6 +252,81 @@ def parse_recipe_with_openai(image_base64: str, language: Optional[str] = None) 
         description=out.description,
         datePublished=datetime.now().strftime("%Y-%m-%d"),
         inLanguage=language,
+    )
+
+
+def parse_recipe_with_openai(
+    image_base64: Union[str, Sequence[str]], language: Optional[str] = None
+) -> Recipe:
+    """Extract a structured recipe from one or more base64-encoded images.
+
+    Several images are parts of the same recipe (e.g. two cookbook pages) and
+    go to the model in one call. With ``language``, the model writes the recipe
+    in that language (translating if the photo is in another one).
+    """
+    images = [image_base64] if isinstance(image_base64, str) else list(image_base64)
+    if not images or len(images) > MAX_IMAGES:
+        raise ValueError(f"Expected 1 to {MAX_IMAGES} images")
+    if len(images) == 1:
+        prompt = "Extract the recipe from this image. "
+    else:
+        prompt = (
+            f"These {len(images)} images, in order, show parts of ONE recipe (for example "
+            "consecutive pages, or ingredients and method on separate pictures). Combine them "
+            "into a single recipe; don't repeat ingredients or steps that appear twice. "
+        )
+    content: List[Dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": prompt + "Return all ingredients with their amounts and the ingredient's "
+            "name separately. For each instruction step, include the indices of the "
+            "ingredients used.",
+        }
+    ]
+    for image in images:
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{_strip_data_url(image)}"},
+            }
+        )
+    return _extract_recipe(
+        "You extract recipes from images and return structured data.",
+        content,
+        language,
+        max_tokens=2000 + 500 * (len(images) - 1),
+    )
+
+
+def parse_recipe_from_pdf(
+    pdf: bytes, filename: str = "recipe.pdf", language: Optional[str] = None
+) -> Recipe:
+    """Extract a structured recipe from a PDF document (text or scanned pages).
+
+    The PDF goes to the model as a native file input. If it holds several
+    recipes, the model takes the first complete one.
+    """
+    data = base64.b64encode(pdf).decode("ascii")
+    content: List[Dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                "Extract the recipe from this document. If it contains several recipes, "
+                "extract the first complete one. Return all ingredients with their amounts and "
+                "the ingredient's name separately. For each instruction step, include the "
+                "indices of the ingredients used."
+            ),
+        },
+        {
+            "type": "file",
+            "file": {"filename": filename, "file_data": f"data:application/pdf;base64,{data}"},
+        },
+    ]
+    return _extract_recipe(
+        "You extract recipes from documents and return structured data.",
+        content,
+        language,
+        max_tokens=3000,
     )
 
 

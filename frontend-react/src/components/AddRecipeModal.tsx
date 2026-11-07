@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
-import { Camera, ChevronRight, Link2, PenLine } from 'lucide-react'
+import { Camera, ChevronRight, FileText, Link2, PenLine } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { useI18n } from '@/i18n'
 
-export type AddSource = 'photo' | 'url' | 'manual'
+export type AddSource = 'photo' | 'document' | 'url' | 'manual'
 
-/** "Add a recipe" chooser: photo, website, or write it yourself. */
+/** "Add a recipe" chooser: photos, a PDF, a website, or write it yourself. */
 export function AddRecipeModal({
   open,
   onOpenChange,
@@ -26,6 +26,7 @@ export function AddRecipeModal({
         </DialogHeader>
         <div className="space-y-2.5">
           <SourceCard icon={<Camera />} title={t('add.photo')} hint={t('add.photoHint')} onClick={() => onChoose('photo')} />
+          <SourceCard icon={<FileText />} title={t('add.document')} hint={t('add.documentHint')} onClick={() => onChoose('document')} />
           <SourceCard icon={<Link2 />} title={t('add.url')} hint={t('add.urlHint')} onClick={() => onChoose('url')} />
           <SourceCard icon={<PenLine />} title={t('add.manual')} hint={t('add.manualHint')} onClick={() => onChoose('manual')} />
         </div>
