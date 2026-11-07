@@ -7,9 +7,10 @@ import { Sidebar } from './Sidebar'
 import { BottomNav } from './BottomNav'
 import { ImportPhotoModal } from './ImportPhotoModal'
 import { ImportUrlModal } from './ImportUrlModal'
+import { ImportDocumentModal } from './ImportDocumentModal'
 import { AddRecipeModal, type AddSource } from './AddRecipeModal'
 
-type ImportMode = 'none' | 'choose' | 'photo' | 'url'
+type ImportMode = 'none' | 'choose' | 'photo' | 'document' | 'url'
 
 /**
  * Keep the UI language in step with the signed-in user's profile: a language
@@ -74,6 +75,12 @@ export function AppShell() {
         open={importMode === 'photo'}
         onOpenChange={(o) => setImportMode(o ? 'photo' : 'none')}
         onSwitchToUrl={() => setImportMode('url')}
+        onDone={handleImportDone}
+      />
+      <ImportDocumentModal
+        open={importMode === 'document'}
+        onOpenChange={(o) => setImportMode(o ? 'document' : 'none')}
+        onSwitchToPhoto={() => setImportMode('photo')}
         onDone={handleImportDone}
       />
       <ImportUrlModal

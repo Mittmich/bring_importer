@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Camera, Loader2, Upload } from 'lucide-react'
+import { Camera, ImagePlus, Loader2, Upload, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
@@ -36,6 +36,9 @@ function downscaleImage(file: File): Promise<string> {
   })
 }
 
+/** Photos per recipe; matches the backend's MAX_IMAGES. */
+export const MAX_PHOTOS = 8
+
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -43,19 +46,22 @@ interface Props {
   onDone: (uuid: string) => void
 }
 
+/**
+ * Import from one or more photos of the same recipe (e.g. two cookbook pages):
+ * they are sent together, in order, and become one recipe.
+ */
 export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: Props) {
   const fileRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  const [photos, setPhotos] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { t, lang } = useI18n()
-  // Target language for the extracted recipe; defaults to the UI language.
   // Override of the target language; null = follow the UI language.
   const [langOverride, setLangOverride] = useState<Language | null>(null)
   const importLang = langOverride ?? lang
 
   function reset() {
-    setPreview(null)
+    setPhotos([])
     setError(null)
     setLoading(false)
     setLangOverride(null)
@@ -66,27 +72,39 @@ export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: 
     onOpenChange(false)
   }
 
-  async function handleFile(file: File) {
+  function pick(camera: boolean) {
+    const input = fileRef.current
+    if (!input) return
+    if (camera) input.capture = 'environment'
+    else input.removeAttribute('capture')
+    input.click()
+  }
+
+  async function handleFiles(files: File[]) {
     setError(null)
+    const room = MAX_PHOTOS - photos.length
+    if (files.length > room) setError(t('import.tooManyPhotos', { max: MAX_PHOTOS }))
     try {
-      const dataUrl = await downscaleImage(file)
-      setPreview(dataUrl)
+      const added = await Promise.all(files.slice(0, Math.max(0, room)).map(downscaleImage))
+      setPhotos((p) => [...p, ...added].slice(0, MAX_PHOTOS))
     } catch {
       setError(t('import.readImageFailed'))
     }
   }
 
   async function handleParse() {
-    if (!preview) return
+    if (!photos.length) return
     setLoading(true)
     setError(null)
     try {
-      const base64 = preview.split(',')[1]
-      const result = await api.parsePhoto(base64, importLang)
+      const result = await api.parsePhoto(
+        photos.map((p) => p.split(',')[1]),
+        importLang,
+      )
       reset()
       onDone(result.uuid)
-    } catch (e: any) {
-      setError(e.message ?? t('import.parseFailed'))
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : t('import.parseFailed'))
       setLoading(false)
     }
   }
@@ -105,45 +123,57 @@ export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: 
               <Loader2 className="w-8 h-8 text-primary animate-spin" />
               <p className="text-sm text-muted-foreground">{t('import.analyzing')}</p>
             </div>
-          ) : !preview ? (
+          ) : photos.length === 0 ? (
             <div className="space-y-3">
               <button
-                onClick={() => {
-                  if (fileRef.current) {
-                    fileRef.current.capture = 'environment'
-                    fileRef.current.click()
-                  }
-                }}
+                onClick={() => pick(true)}
                 className="w-full flex flex-col items-center gap-2 p-6 border-2 border-dashed border-border rounded-lg hover:border-primary/50 hover:bg-primary/5 transition-colors"
               >
                 <Camera className="w-8 h-8 text-muted-foreground" />
                 <span className="text-sm font-medium text-foreground">{t('import.takePhoto')}</span>
               </button>
               <button
-                onClick={() => {
-                  if (fileRef.current) {
-                    fileRef.current.removeAttribute('capture')
-                    fileRef.current.click()
-                  }
-                }}
+                onClick={() => pick(false)}
                 className="w-full flex items-center justify-center gap-2 p-3 border border-border rounded-lg hover:bg-muted/50 transition-colors text-sm text-muted-foreground"
               >
                 <Upload className="w-4 h-4" /> {t('import.uploadFromLibrary')}
               </button>
+              <p className="text-xs text-muted-foreground text-center">{t('import.multiHint')}</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              <img
-                src={preview}
-                alt={t('import.previewAlt')}
-                className="w-full max-h-48 object-cover rounded-lg border border-border"
-              />
-              <button
-                onClick={() => setPreview(null)}
-                className="text-xs text-muted-foreground hover:text-foreground"
-              >
-                {t('import.changePhoto')}
-              </button>
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {photos.map((src, i) => (
+                  <div key={i} className="relative aspect-[3/4] rounded-lg overflow-hidden border border-border bg-muted">
+                    <img src={src} alt={t('import.previewAlt')} className="w-full h-full object-cover" />
+                    <span className="absolute left-1 top-1 min-w-5 h-5 px-1 rounded-full bg-black/60 text-white text-[11px] font-semibold flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                    <button
+                      onClick={() => setPhotos((p) => p.filter((_, j) => j !== i))}
+                      aria-label={t('import.removePhoto')}
+                      title={t('import.removePhoto')}
+                      className="absolute right-1 top-1 w-6 h-6 rounded-full bg-white/90 text-foreground flex items-center justify-center shadow hover:bg-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {photos.length < MAX_PHOTOS && (
+                  <button
+                    onClick={() => pick(false)}
+                    aria-label={t('import.addPhoto')}
+                    title={t('import.addPhoto')}
+                    className="aspect-[3/4] rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-primary/50 hover:bg-primary/5 hover:text-primary transition-colors"
+                  >
+                    <ImagePlus className="w-6 h-6" />
+                    <span className="text-[11px] font-medium px-1 text-center leading-tight">{t('import.addPhoto')}</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t('import.photoCount', { n: photos.length, max: MAX_PHOTOS })}
+              </p>
             </div>
           )}
 
@@ -151,8 +181,13 @@ export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: 
             ref={fileRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? [])
+              e.target.value = '' // allow picking the same file again
+              if (files.length) handleFiles(files)
+            }}
           />
 
           {!loading && (
@@ -174,7 +209,7 @@ export function ImportPhotoModal({ open, onOpenChange, onSwitchToUrl, onDone }: 
           <Button variant="outline" onClick={handleClose} disabled={loading}>
             {t('common.cancel')}
           </Button>
-          <Button onClick={handleParse} disabled={!preview || loading}>
+          <Button onClick={handleParse} disabled={!photos.length || loading}>
             {loading ? t('import.parsing') : t('import.parse')}
           </Button>
         </DialogFooter>

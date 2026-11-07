@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, BookHeart, Check, ChevronDown, Copy, ExternalLink, FileDown, Languages, Link2, MoreHorizontal, Pencil, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, BookHeart, Check, ChevronDown, Copy, ExternalLink, FileDown, FileText, Languages, Link2, MoreHorizontal, Pencil, Trash2, UserPlus } from 'lucide-react'
 import { api, type Recipe, type Ingredient, type InstructionStep } from '@/lib/api'
 import { useRecipeImage } from '@/hooks/useRecipeImage'
 import { AddToCookbookModal } from '@/components/AddToCookbookModal'
@@ -190,6 +190,14 @@ export function RecipeDetail({ uuid, recipe }: Props) {
                   aria-label={t('recipe.moreServings')}
                 >+</button>
               </div>
+            )}
+            {recipe.source?.kind === 'document' && recipe.source.value && (
+              <Badge variant="muted">
+                <span className="flex items-center gap-1 max-w-[16rem]" title={recipe.source.value}>
+                  <FileText className="w-3 h-3 flex-shrink-0" />
+                  <span className="truncate">{recipe.source.value}</span>
+                </span>
+              </Badge>
             )}
             {recipe.source?.kind === 'url' && recipe.source.value && (
               <Badge variant="muted">
