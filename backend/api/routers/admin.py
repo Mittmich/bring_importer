@@ -166,6 +166,9 @@ def _delete_user_data(cursor, user_id: int) -> List[str]:
         cursor.execute(f"DELETE FROM recipe_tags WHERE recipe_uuid IN ({marks})", uuids)
         cursor.execute(f"DELETE FROM cookbook_recipes WHERE recipe_uuid IN ({marks})", uuids)
         cursor.execute(f"DELETE FROM meal_plan_entries WHERE recipe_uuid IN ({marks})", uuids)
+        doomed_courses = f"SELECT id FROM menu_courses WHERE recipe_uuid IN ({marks})"
+        cursor.execute(f"DELETE FROM menu_steps WHERE course_id IN ({doomed_courses})", uuids)
+        cursor.execute(f"DELETE FROM menu_courses WHERE recipe_uuid IN ({marks})", uuids)
         cursor.execute(f"DELETE FROM recipes WHERE uuid IN ({marks})", uuids)
 
     owned_books = "SELECT id FROM cookbooks WHERE owner_id = ?"
@@ -178,6 +181,10 @@ def _delete_user_data(cursor, user_id: int) -> List[str]:
     cursor.execute(f"DELETE FROM recipe_tags WHERE tag_id IN ({tag_ids})", (user_id,))
     cursor.execute("DELETE FROM tags WHERE user_id = ?", (user_id,))
     cursor.execute("DELETE FROM meal_plan_entries WHERE user_id = ?", (user_id,))
+    owned_menus = "SELECT id FROM menus WHERE user_id = ?"
+    cursor.execute(f"DELETE FROM menu_steps WHERE menu_id IN ({owned_menus})", (user_id,))
+    cursor.execute(f"DELETE FROM menu_courses WHERE menu_id IN ({owned_menus})", (user_id,))
+    cursor.execute("DELETE FROM menus WHERE user_id = ?", (user_id,))
     cursor.execute("DELETE FROM shopping_lists WHERE user_id = ?", (user_id,))
     cursor.execute(
         "DELETE FROM friendships WHERE requester_id = ? OR addressee_id = ?", (user_id, user_id)

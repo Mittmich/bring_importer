@@ -272,7 +272,7 @@ async def shopping_list_html(token: str):
 
     items = json.loads(row["items_json"])
     ingredient_strings = [f"{i.get('amount', '')} {i.get('name', '')}".strip() for i in items]
-    name = "Weekly Shopping List"
+    name = "Shopping List"
 
     jsonld: Dict[str, Any] = {
         "@context": "https://schema.org/",
@@ -280,7 +280,7 @@ async def shopping_list_html(token: str):
         "name": name,
         "recipeIngredient": ingredient_strings,
         "recipeYield": "",
-        "description": "Consolidated shopping list for the week's meal plan.",
+        "description": "Consolidated shopping list from a meal plan or menu.",
     }
     return recipe_page(name, jsonld, "en")
 

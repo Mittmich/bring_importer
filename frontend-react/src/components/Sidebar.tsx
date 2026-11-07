@@ -1,10 +1,11 @@
-import { NavLink, useNavigate } from 'react-router-dom'
-import { Home, BookOpen, BookHeart, CalendarDays, Plus, User, LogOut, Download } from 'lucide-react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Home, BookOpen, BookHeart, CalendarDays, UtensilsCrossed, Plus, User, LogOut, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { getUserEmail, logout } from '@/hooks/useAuth'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useI18n, type MessageKey } from '@/i18n'
+import { useFeatures } from '@/hooks/useFeatures'
 import { BrandMark } from '@/components/BrandMark'
 
 function NavBadge({ count }: { count: number }) {
@@ -30,6 +31,12 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
   const { canInstall, triggerInstall } = useInstallPrompt()
   const { friendRequests, cookbookInvites } = useNotifications()
   const { t } = useI18n()
+  const { features } = useFeatures()
+  const { pathname } = useLocation()
+  const menus = features?.planner === 'menus'
+  const items = navItems.map((item) =>
+    item.to === '/plan' && menus ? { ...item, icon: UtensilsCrossed, label: 'nav.menus' as MessageKey } : item,
+  )
 
   return (
     <aside className="hidden md:flex flex-col w-[220px] min-w-[220px] border-r border-border bg-white">
@@ -41,7 +48,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
       </div>
 
       <nav className="flex-1 p-2 space-y-0.5">
-        {navItems.map(({ to, icon: Icon, label, end }) =>
+        {items.map(({ to, icon: Icon, label, end }) =>
           to === '/import' ? (
             <button
               key={to}
@@ -59,7 +66,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
               className={({ isActive }) =>
                 cn(
                   'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors',
-                  isActive
+                  isActive || (to === '/plan' && pathname.startsWith('/menus/'))
                     ? 'bg-primary/10 text-primary'
                     : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                 )

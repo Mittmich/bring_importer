@@ -13,7 +13,8 @@ import {
   ShieldOff,
   Trash2,
 } from 'lucide-react'
-import { api, type AdminUser, type Invite } from '@/lib/api'
+import { api, type AdminUser, type Invite, type PlannerMode } from '@/lib/api'
+import { useFeatures } from '@/hooks/useFeatures'
 import { formatDateTime, relativeDate } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,7 +25,7 @@ import { LinkDialog } from '@/components/LinkDialog'
 import { cn } from '@/lib/utils'
 import { useI18n, type MessageKey } from '@/i18n'
 
-type Tab = 'users' | 'invites'
+type Tab = 'users' | 'invites' | 'features'
 
 /** A one-time link to show once: built client-side from the returned token. */
 interface ShownLink {
@@ -59,7 +60,7 @@ export function AdminPage() {
         </div>
 
         <div role="tablist" className="inline-flex rounded-lg border border-border bg-white p-1">
-          {(['users', 'invites'] as const).map((key) => (
+          {(['users', 'invites', 'features'] as const).map((key) => (
             <button
               key={key}
               role="tab"
@@ -70,12 +71,18 @@ export function AdminPage() {
                 tab === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {key === 'users' ? t('admin.tabUsers') : t('admin.tabInvites')}
+              {key === 'users' ? t('admin.tabUsers') : key === 'invites' ? t('admin.tabInvites') : t('admin.tabFeatures')}
             </button>
           ))}
         </div>
 
-        {tab === 'users' ? <UsersTab onLink={setShown} /> : <InvitesTab onLink={setShown} />}
+        {tab === 'users' ? (
+          <UsersTab onLink={setShown} />
+        ) : tab === 'invites' ? (
+          <InvitesTab onLink={setShown} />
+        ) : (
+          <FeaturesTab />
+        )}
       </div>
 
       <LinkDialog
@@ -84,6 +91,65 @@ export function AdminPage() {
         description={shown?.description ?? ''}
         onClose={() => setShown(null)}
       />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Features
+// ---------------------------------------------------------------------------
+
+const PLANNER_OPTIONS: Array<{ value: PlannerMode; title: MessageKey; body: MessageKey }> = [
+  { value: 'weekly', title: 'admin.plannerWeekly', body: 'admin.plannerWeeklyBody' },
+  { value: 'menus', title: 'admin.plannerMenus', body: 'admin.plannerMenusBody' },
+]
+
+function FeaturesTab() {
+  const { t } = useI18n()
+  const queryClient = useQueryClient()
+  const { features, isLoading } = useFeatures()
+  const save = useMutation({
+    mutationFn: (planner: PlannerMode) => api.adminSetFeatures({ planner }),
+    onSuccess: (data) => queryClient.setQueryData(['features'], data),
+  })
+  if (isLoading || !features) return <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+
+  return (
+    <div className="bg-white rounded-lg border border-border p-4 space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold">{t('admin.plannerTitle')}</h2>
+        <p className="text-sm text-muted-foreground">{t('admin.plannerHelp')}</p>
+      </div>
+      <div role="radiogroup" aria-label={t('admin.plannerTitle')} className="space-y-2">
+        {PLANNER_OPTIONS.map((o) => {
+          const active = features.planner === o.value
+          return (
+            <button
+              key={o.value}
+              role="radio"
+              aria-checked={active}
+              disabled={save.isPending}
+              onClick={() => !active && save.mutate(o.value)}
+              className={cn(
+                'w-full text-left rounded-lg border px-3 py-2.5 transition-colors flex gap-3 items-start',
+                active ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50',
+              )}
+            >
+              <span
+                className={cn(
+                  'mt-0.5 w-4 h-4 rounded-full border-2 flex-shrink-0',
+                  active ? 'border-primary bg-primary shadow-[inset_0_0_0_2px_white]' : 'border-muted-foreground/40',
+                )}
+              />
+              <span>
+                <span className="block text-sm font-medium">{t(o.title)}</span>
+                <span className="block text-xs text-muted-foreground">{t(o.body)}</span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+      {save.isError && <p className="text-sm text-destructive">{t('menus.saveFailed')}</p>}
     </div>
   )
 }

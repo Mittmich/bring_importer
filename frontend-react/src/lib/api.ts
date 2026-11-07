@@ -317,6 +317,70 @@ export interface LinkInfo {
   email: string | null
 }
 
+// --- Menus with prep planning ------------------------------------------------
+// Times are minutes after midnight; durations and leads are minutes.
+
+export type PlannerMode = 'weekly' | 'menus'
+
+export interface Features {
+  planner: PlannerMode
+}
+
+export type Equipment = '' | 'oven' | 'stove' | 'fridge'
+
+export interface MenuCourse {
+  id: number
+  recipe_uuid: string
+  recipe_title: string
+  recipe_yield: string
+  /** Servings the recipe is written for (parsed from its yield). */
+  servings: number
+  name: string
+  serve: number
+  position: number
+}
+
+export interface MenuStep {
+  id: number
+  course_id: number
+  name: string
+  duration: number
+  /** 0 = cooking day, -1 = the day before. */
+  day: 0 | -1
+  /** Day 0: minutes before the course is served by which the step must be finished. */
+  lead: number
+  /** Day -1: start time. */
+  at: number | null
+  hands: boolean
+  equipment: Equipment
+  temp: number | null
+  done: boolean
+  position: number
+}
+
+export interface Menu {
+  id: number
+  title: string
+  date: string | null
+  guests: number
+  updated_at: string
+  courses: MenuCourse[]
+  steps: MenuStep[]
+}
+
+export interface MenuSummary {
+  id: number
+  title: string
+  date: string | null
+  guests: number
+  updated_at: string
+  courses: Array<{ name: string; serve: number; recipe_title: string }>
+}
+
+export type MenuStepPatch = Partial<
+  Pick<MenuStep, 'name' | 'duration' | 'day' | 'lead' | 'at' | 'hands' | 'equipment' | 'temp' | 'done'>
+>
+
 export const api = {
   login(email: string, password: string) {
     const form = new URLSearchParams({ username: email, password })
@@ -709,5 +773,76 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ start, end }),
     })
+  },
+
+  getFeatures() {
+    return request<Features>('/features')
+  },
+
+  adminSetFeatures(body: Partial<Features>) {
+    return request<Features>('/admin/features', { method: 'PUT', body: JSON.stringify(body) })
+  },
+
+  listMenus() {
+    return request<MenuSummary[]>('/menus')
+  },
+
+  createMenu(body: { title: string; date?: string | null; guests?: number }) {
+    return request<Menu>('/menus', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  getMenu(id: number) {
+    return request<Menu>(`/menus/${id}`)
+  },
+
+  /** `date: ''` clears the date. */
+  updateMenu(id: number, body: { title?: string; date?: string; guests?: number }) {
+    return request<Menu>(`/menus/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+
+  deleteMenu(id: number) {
+    return request<void>(`/menus/${id}`, { method: 'DELETE' })
+  },
+
+  /** Add a recipe as a course; the server drafts its prep steps (takes a few seconds). */
+  addMenuCourse(id: number, body: { recipe_uuid: string; name?: string; serve?: number }) {
+    return request<Menu>(`/menus/${id}/courses`, { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  updateMenuCourse(id: number, courseId: number, body: { name?: string; serve?: number; position?: number }) {
+    return request<Menu>(`/menus/${id}/courses/${courseId}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+
+  deleteMenuCourse(id: number, courseId: number) {
+    return request<Menu>(`/menus/${id}/courses/${courseId}`, { method: 'DELETE' })
+  },
+
+  redraftMenuCourse(id: number, courseId: number) {
+    return request<Menu>(`/menus/${id}/courses/${courseId}/redraft`, { method: 'POST' })
+  },
+
+  addMenuStep(id: number, body: { course_id: number; name: string } & MenuStepPatch) {
+    return request<Menu>(`/menus/${id}/steps`, { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  updateMenuStep(id: number, stepId: number, body: MenuStepPatch) {
+    return request<Menu>(`/menus/${id}/steps/${stepId}`, { method: 'PATCH', body: JSON.stringify(body) })
+  },
+
+  deleteMenuStep(id: number, stepId: number) {
+    return request<Menu>(`/menus/${id}/steps/${stepId}`, { method: 'DELETE' })
+  },
+
+  buildMenuShoppingList(id: number) {
+    return request<ShoppingListResult>(`/menus/${id}/shopping-list`, { method: 'POST' })
+  },
+
+  /** The menu and its prep plan as a PDF (in the UI language). */
+  async downloadMenuPdf(id: number) {
+    const res = await send(`/menus/${id}/plan.pdf`)
+    return {
+      blob: await res.blob(),
+      filename: dispositionFilename(res.headers.get('Content-Disposition'), 'menu.pdf'),
+    }
   },
 }

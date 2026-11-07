@@ -260,6 +260,75 @@ def init_db():
     """
     )
 
+    # app_settings — global key/value switches (e.g. the ``planner`` feature
+    # flag, see api/features.py). A missing key means "use the default".
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """
+    )
+
+    # Menus — recipes cooked together for one occasion, with an editable prep
+    # plan. See .claude/plans/menus-prep-planning.md. Times are minutes after
+    # midnight; a same-day step is anchored to its course's serving time by
+    # ``lead`` (minutes before serving it must be finished), a day-before step
+    # (day = -1) by its absolute start ``at``.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS menus (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        date TEXT,  -- ISO 'YYYY-MM-DD' or NULL
+        guests INTEGER NOT NULL DEFAULT 4,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_menus_user ON menus(user_id)")
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS menu_courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        menu_id INTEGER NOT NULL,
+        recipe_uuid TEXT NOT NULL,
+        name TEXT NOT NULL,
+        serve INTEGER NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (menu_id) REFERENCES menus (id)
+    )
+    """
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_menu_courses_menu ON menu_courses(menu_id)")
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS menu_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        menu_id INTEGER NOT NULL,
+        course_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        duration INTEGER NOT NULL,
+        day INTEGER NOT NULL DEFAULT 0,
+        lead INTEGER NOT NULL DEFAULT 0,
+        at INTEGER,
+        hands INTEGER NOT NULL DEFAULT 1,
+        equipment TEXT NOT NULL DEFAULT '',
+        temp INTEGER,
+        done INTEGER NOT NULL DEFAULT 0,
+        position INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (menu_id) REFERENCES menus (id),
+        FOREIGN KEY (course_id) REFERENCES menu_courses (id)
+    )
+    """
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_menu_steps_menu ON menu_steps(menu_id)")
+
     # ---- in-place migrations for pre-existing recipes.db (step 3) ----
     # Each migration is guarded: skip if the column already exists.
     _existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recipes)").fetchall()}

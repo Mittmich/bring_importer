@@ -40,6 +40,11 @@ TRAINING_DATA_DIR = os.getenv("TRAINING_DATA_DIR", "training_data")
 TRANSLATION_PROVIDER = os.getenv("TRANSLATION_PROVIDER", "openai").lower()
 TRANSLATION_MODEL = os.getenv("TRANSLATION_MODEL", "gpt-5.4-mini")
 
+# --- Feature flags (see api/features.py) ---
+# Default for the "planner" flag until an admin sets it in the app: 'weekly'
+# (the weekly meal plan) or 'menus' (menus with prep planning).
+PLANNER_MODE = os.getenv("PLANNER_MODE", "weekly").strip().lower()
+
 # --- Recipe hero images ---
 # Optional user-uploaded photo shown at the top of a recipe. Stored on disk
 # (one JPEG per recipe, keyed by uuid) rather than inline in the JSON so the

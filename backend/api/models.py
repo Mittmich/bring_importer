@@ -1,8 +1,9 @@
 """Pydantic request/response models shared by the routers."""
 
-from typing import List, Optional
+from datetime import date as _date
+from typing import List, Literal, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class Token(BaseModel):
@@ -152,3 +153,75 @@ class DateRange(BaseModel):
 
     start: str
     end: str
+
+
+# ---------------------------------------------------------------------------
+# Menus with prep planning (api/routers/menus.py). Times are minutes after
+# midnight; durations and leads are minutes.
+# ---------------------------------------------------------------------------
+
+Equipment = Literal["", "oven", "stove", "fridge"]
+
+
+def _iso_date_or_none(v: Optional[str]) -> Optional[str]:
+    if v in (None, ""):
+        return None
+    _date.fromisoformat(v)  # raises ValueError -> 422
+    return v
+
+
+class MenuCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    date: Optional[str] = None  # ISO 'YYYY-MM-DD'
+    guests: int = Field(default=4, ge=1, le=50)
+
+    _check_date = field_validator("date")(_iso_date_or_none)
+
+
+class MenuUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    date: Optional[str] = None  # "" clears it
+    guests: Optional[int] = Field(default=None, ge=1, le=50)
+
+    @field_validator("date")
+    @classmethod
+    def _date_ok(cls, v: Optional[str]) -> Optional[str]:
+        if v == "":
+            return v
+        return _iso_date_or_none(v)
+
+
+class MenuCourseCreate(BaseModel):
+    recipe_uuid: str
+    name: Optional[str] = Field(default=None, max_length=60)
+    serve: Optional[int] = Field(default=None, ge=0, le=1439)
+
+
+class MenuCourseUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=60)
+    serve: Optional[int] = Field(default=None, ge=0, le=1439)
+    position: Optional[int] = Field(default=None, ge=0)
+
+
+class MenuStepCreate(BaseModel):
+    course_id: int
+    name: str = Field(min_length=1, max_length=120)
+    duration: int = Field(default=15, ge=1, le=1440)
+    day: Literal[0, -1] = 0
+    lead: int = Field(default=0, ge=0, le=1440)
+    at: Optional[int] = Field(default=None, ge=0, le=1439)
+    hands: bool = True
+    equipment: Equipment = ""
+    temp: Optional[int] = Field(default=None, ge=50, le=300)
+
+
+class MenuStepUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    duration: Optional[int] = Field(default=None, ge=1, le=1440)
+    day: Optional[Literal[0, -1]] = None
+    lead: Optional[int] = Field(default=None, ge=0, le=1440)
+    at: Optional[int] = Field(default=None, ge=0, le=1439)
+    hands: Optional[bool] = None
+    equipment: Optional[Equipment] = None
+    temp: Optional[int] = Field(default=None, ge=50, le=300)
+    done: Optional[bool] = None

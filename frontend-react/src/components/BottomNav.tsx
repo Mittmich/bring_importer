@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
-import { Home, BookOpen, BookHeart, CalendarDays, User, Download, Share, X } from 'lucide-react'
+import { NavLink, useLocation } from 'react-router-dom'
+import { Home, BookOpen, BookHeart, CalendarDays, UtensilsCrossed, User, Download, Share, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useInstallPrompt } from '@/hooks/useInstallPrompt'
 import { useNotifications } from '@/hooks/useNotifications'
 import { useI18n, type MessageKey } from '@/i18n'
+import { useFeatures } from '@/hooks/useFeatures'
 
 const tabs: Array<{ to: string; icon: typeof Home; label: MessageKey; end?: boolean }> = [
   { to: '/', icon: Home, label: 'nav.home', end: true },
@@ -19,6 +20,13 @@ export function BottomNav() {
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false)
   const { friendRequests, cookbookInvites } = useNotifications()
   const { t, tx } = useI18n()
+  const { features } = useFeatures()
+  const { pathname } = useLocation()
+  const items = tabs.map((tab) =>
+    tab.to === '/plan' && features?.planner === 'menus'
+      ? { ...tab, icon: UtensilsCrossed, label: 'nav.menus' as MessageKey }
+      : tab,
+  )
   const badgeFor = (to: string) =>
     to === '/account' ? friendRequests : to === '/cookbooks' ? cookbookInvites : 0
 
@@ -39,7 +47,7 @@ export function BottomNav() {
         </div>
       )}
       <nav className="md:hidden flex border-t border-border bg-white safe-area-bottom">
-        {tabs.map(({ to, icon: Icon, label, end }) => (
+        {items.map(({ to, icon: Icon, label, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -47,7 +55,9 @@ export function BottomNav() {
             className={({ isActive }) =>
               cn(
                 'relative flex-1 flex flex-col items-center justify-center gap-1 py-3.5 transition-colors',
-                isActive ? 'text-primary' : 'text-muted-foreground',
+                isActive || (to === '/plan' && pathname.startsWith('/menus/'))
+                  ? 'text-primary'
+                  : 'text-muted-foreground',
               )
             }
           >
