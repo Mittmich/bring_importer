@@ -805,7 +805,7 @@ export const api = {
   },
 
   /** Add a recipe as a course; the server drafts its prep steps (takes a few seconds). */
-  addMenuCourse(id: number, body: { recipe_uuid: string; name?: string; serve?: number }) {
+  addMenuCourse(id: number, body: { recipe_uuid: string; name?: string; serve?: number; instructions?: string }) {
     return request<Menu>(`/menus/${id}/courses`, { method: 'POST', body: JSON.stringify(body) })
   },
 
@@ -817,8 +817,21 @@ export const api = {
     return request<Menu>(`/menus/${id}/courses/${courseId}`, { method: 'DELETE' })
   },
 
-  redraftMenuCourse(id: number, courseId: number) {
-    return request<Menu>(`/menus/${id}/courses/${courseId}/redraft`, { method: 'POST' })
+  redraftMenuCourse(id: number, courseId: number, instructions?: string) {
+    return request<Menu>(`/menus/${id}/courses/${courseId}/redraft`, {
+      method: 'POST',
+      body: JSON.stringify({ instructions: instructions || null }),
+    })
+  },
+
+  /** All the menu's course ids in their new order. */
+  reorderMenuCourses(id: number, courseIds: number[]) {
+    return request<Menu>(`/menus/${id}/courses/order`, { method: 'PUT', body: JSON.stringify({ course_ids: courseIds }) })
+  },
+
+  /** Let the AI edit the whole plan from a request in plain words. */
+  reviseMenu(id: number, requestText: string) {
+    return request<Menu>(`/menus/${id}/revise`, { method: 'POST', body: JSON.stringify({ request: requestText }) })
   },
 
   addMenuStep(id: number, body: { course_id: number; name: string } & MenuStepPatch) {

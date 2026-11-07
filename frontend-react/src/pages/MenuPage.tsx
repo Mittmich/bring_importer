@@ -1,18 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   CalendarRange,
   ChefHat,
   FileDown,
   List,
   Minus,
   MoreHorizontal,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
   ShoppingCart,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react'
@@ -25,6 +29,7 @@ import { Menu as DropMenu, MenuItem } from '@/components/ui/menu'
 import { StepEditor } from '@/components/menu/StepEditor'
 import { PlanTimeline } from '@/components/menu/PlanTimeline'
 import { RunSheet } from '@/components/menu/RunSheet'
+import { AiDialog, AiNotesField } from '@/components/menu/AiDialogs'
 import {
   courseColor,
   durationLabel,
@@ -82,6 +87,7 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
   const [selected, setSelected] = useState<number | null>(null)
   const [editing, setEditing] = useState<number | null>(null)
   const [picking, setPicking] = useState(false)
+  const [aiEdit, setAiEdit] = useState(false)
   const showTimeline = desktop && view === 'timeline'
   const selectedStep = menu.steps.find((s) => s.id === selected) ?? null
   const editingStep = menu.steps.find((s) => s.id === editing) ?? null
@@ -164,6 +170,10 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
                 </button>
               </div>
             )}
+            <Button size="sm" variant="outline" onClick={() => setAiEdit(true)} disabled={!menu.courses.length}>
+              <Sparkles className="w-4 h-4 mr-1" />
+              {t('menus.editWithAi')}
+            </Button>
             <Button size="sm" variant="outline" onClick={addStep} disabled={!menu.courses.length}>
               <Plus className="w-4 h-4 mr-1" />
               {t('menus.addStep')}
@@ -221,10 +231,29 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
         <CoursePicker
           menu={menu}
           onClose={() => setPicking(false)}
-          onPick={async (recipeUuid, name) => {
-            await m.run(() => api.addMenuCourse(menu.id, { recipe_uuid: recipeUuid, name }))
+          onPick={async (recipeUuid, name, instructions) => {
+            await m.run(() =>
+              api.addMenuCourse(menu.id, { recipe_uuid: recipeUuid, name, instructions: instructions || undefined }),
+            )
             setPicking(false)
           }}
+        />
+      )}
+
+      {aiEdit && (
+        <AiDialog
+          title={t('menus.aiEditTitle')}
+          hint={t('menus.aiEditHint')}
+          placeholder={t('menus.aiEditPlaceholder')}
+          examples={['menus.aiEditExample1', 'menus.aiEditExample2', 'menus.aiEditExample3']}
+          submitLabel={t('menus.aiEditGo')}
+          required
+          onSubmit={async (text) => {
+            await m.run(() => api.reviseMenu(menu.id, text))
+            setSelected(null)
+            setEditing(null)
+          }}
+          onClose={() => setAiEdit(false)}
         />
       )}
     </div>
@@ -286,7 +315,25 @@ function MenuCardEditor({ menu, m, onAddCourse }: { menu: Menu; m: MenuApi; onAd
       </div>
 
       {courses.map((c, i) => (
-        <CourseBlock key={c.id} menu={menu} course={c} m={m} first={i === 0} />
+        <CourseBlock
+          key={c.id}
+          menu={menu}
+          course={c}
+          m={m}
+          first={i === 0}
+          onMove={
+            courses.length > 1
+              ? (dir) => {
+                  const ids = courses.map((x) => x.id)
+                  const j = i + dir
+                  if (j < 0 || j >= ids.length) return
+                  ;[ids[i], ids[j]] = [ids[j], ids[i]]
+                  m.reorderCourses(ids)
+                }
+              : undefined
+          }
+          last={i === courses.length - 1}
+        />
       ))}
 
       <button
@@ -300,11 +347,27 @@ function MenuCardEditor({ menu, m, onAddCourse }: { menu: Menu; m: MenuApi; onAd
   )
 }
 
-function CourseBlock({ menu, course, m, first }: { menu: Menu; course: MenuCourse; m: MenuApi; first: boolean }) {
+function CourseBlock({
+  menu,
+  course,
+  m,
+  first,
+  last,
+  onMove,
+}: {
+  menu: Menu
+  course: MenuCourse
+  m: MenuApi
+  first: boolean
+  last: boolean
+  /** Move the course up (-1) or down (+1); undefined with a single course. */
+  onMove?: (dir: -1 | 1) => void
+}) {
   const { t } = useI18n()
+  const nameRef = useRef<HTMLInputElement>(null)
   const color = courseColor(menu, course.id)
   const [name, setName] = useDraft(course.name)
-  const redraft = useMutation({ mutationFn: () => m.run(() => api.redraftMenuCourse(menu.id, course.id)) })
+  const [redrafting, setRedrafting] = useState(false)
 
   return (
     <div className="relative mt-5">
@@ -312,6 +375,7 @@ function CourseBlock({ menu, course, m, first }: { menu: Menu; course: MenuCours
       <div className="flex items-start gap-1">
         <div className="flex-1 min-w-0">
           <input
+            ref={nameRef}
             value={name}
             maxLength={60}
             onChange={(e) => setName(e.target.value)}
@@ -322,7 +386,8 @@ function CourseBlock({ menu, course, m, first }: { menu: Menu; course: MenuCours
             }}
             onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
             aria-label={t('menus.courseName')}
-            className="w-full bg-transparent text-center text-[11px] font-bold uppercase tracking-[0.18em] focus:outline-none focus:ring-2 focus:ring-ring rounded"
+            title={t('menus.renameCourse')}
+            className="w-full bg-transparent text-center text-[11px] font-bold uppercase tracking-[0.18em] hover:bg-black/[0.03] cursor-text focus:outline-none focus:ring-2 focus:ring-ring rounded"
             style={{ color }}
           />
           <Link to={`/recipes/${course.recipe_uuid}`} className="block font-serif text-xl leading-snug hover:underline">
@@ -347,10 +412,29 @@ function CourseBlock({ menu, course, m, first }: { menu: Menu; course: MenuCours
         </div>
         <DropMenu trigger={<MoreHorizontal className="w-4 h-4" />} label={t('menus.courseActions')} className="flex-shrink-0">
           <MenuItem
+            icon={<Pencil />}
+            onSelect={() =>
+              setTimeout(() => {
+                nameRef.current?.focus()
+                nameRef.current?.select()
+              })
+            }
+          >
+            {t('menus.renameCourse')}
+          </MenuItem>
+          {onMove && (
+            <>
+              <MenuItem icon={<ArrowUp />} disabled={first} onSelect={() => onMove(-1)}>
+                {t('menus.moveUp')}
+              </MenuItem>
+              <MenuItem icon={<ArrowDown />} disabled={last} onSelect={() => onMove(1)}>
+                {t('menus.moveDown')}
+              </MenuItem>
+            </>
+          )}
+          <MenuItem
             icon={<RefreshCw />}
-            onSelect={() => {
-              if (window.confirm(t('menus.confirmRedraft'))) redraft.mutate()
-            }}
+            onSelect={() => setRedrafting(true)}
           >
             {t('menus.redraft')}
           </MenuItem>
@@ -366,7 +450,16 @@ function CourseBlock({ menu, course, m, first }: { menu: Menu; course: MenuCours
           </MenuItem>
         </DropMenu>
       </div>
-      {redraft.isPending && <p className="text-xs text-muted-foreground mt-1">{t('menus.drafting')}</p>}
+      {redrafting && (
+        <AiDialog
+          title={t('menus.redraftTitle')}
+          hint={`${course.recipe_title} · ${t('menus.redraftWarning')}`}
+          placeholder={t('menus.aiNotesPlaceholder')}
+          submitLabel={t('menus.redraftGo')}
+          onSubmit={(text) => m.run(() => api.redraftMenuCourse(menu.id, course.id, text))}
+          onClose={() => setRedrafting(false)}
+        />
+      )}
     </div>
   )
 }
@@ -501,7 +594,7 @@ function CoursePicker({
 }: {
   menu: Menu
   onClose: () => void
-  onPick: (recipeUuid: string, name: string) => Promise<void>
+  onPick: (recipeUuid: string, name: string, instructions: string) => Promise<void>
 }) {
   const { t } = useI18n()
   const [search, setSearch] = useState('')
@@ -510,6 +603,7 @@ function CoursePicker({
     const key = COURSE_NAME_KEYS[menu.courses.length]
     return key ? t(key) : t('menus.course.nth', { n: menu.courses.length + 1 })
   })
+  const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
@@ -538,6 +632,7 @@ function CoursePicker({
           onChange={(e) => setName(e.target.value)}
           className="w-full mb-3 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
+        <AiNotesField id="course-notes" value={notes} onChange={setNotes} />
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
@@ -565,7 +660,7 @@ function CoursePicker({
                     setBusy(r.uuid)
                     setFailed(false)
                     try {
-                      await onPick(r.uuid, name.trim() || t('menus.course.nth', { n: menu.courses.length + 1 }))
+                      await onPick(r.uuid, name.trim() || t('menus.course.nth', { n: menu.courses.length + 1 }), notes.trim())
                     } catch {
                       setFailed(true)
                       setBusy(null)
