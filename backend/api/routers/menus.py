@@ -28,15 +28,15 @@ import json
 import uuid as uuid_mod
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
-from api import db
+from api import db, recipe_images
 from api.access import accessible_recipes_sql
 from api.auth import get_current_user, get_user_id
 from api.i18n import BACKEND_STRINGS, localize_recipe, localized_title, request_language
-from api.menu_pdf import render_menu_pdf
+from api.menu_pdf import MenuRecipe, render_menu_pdf
 from api.models import (
     Ingredient,
     MenuCourseCreate,
@@ -57,7 +57,13 @@ from api.prep_steps import (
     draft_prep_steps,
     revise_plan,
 )
-from api.recipe_pdf import content_disposition, parse_servings, pdf_filename, scale_text
+from api.recipe_pdf import (
+    build_document,
+    content_disposition,
+    parse_servings,
+    pdf_filename,
+    scale_text,
+)
 from api.shopping_list import merge_ingredients
 
 router = APIRouter(prefix="/menus", tags=["menus"])
@@ -282,16 +288,46 @@ async def create_menu(
     return _respond(menu_id, user_id, lang)
 
 
+def _course_recipes(menu: Dict[str, Any], user_id: int, lang: str) -> List[MenuRecipe]:
+    """Each course's recipe for the PDF, in course order, scaled to the guests."""
+    out = []
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        for c in sorted(menu["courses"], key=lambda c: (c["position"], c["serve"], c["id"])):
+            row = cursor.execute(
+                f"SELECT r.recipe_json, r.has_image FROM recipes r WHERE r.uuid = ? AND "
+                f"{accessible_recipes_sql('r')}",
+                (c["recipe_uuid"], user_id, user_id, user_id, user_id),
+            ).fetchone()
+            if row is None:
+                continue
+            data = localize_recipe(_load_json(row["recipe_json"]), lang)
+            doc = build_document(data, servings=menu["guests"], lang=lang)
+            image = recipe_images.image_path(c["recipe_uuid"]) if row["has_image"] else None
+            out.append(MenuRecipe(c["name"], doc, image))
+    finally:
+        conn.close()
+    return out
+
+
 @router.get("/{menu_id}/plan.pdf", include_in_schema=False)
 async def get_menu_pdf(
     menu_id: int,
+    recipes: bool = Query(False),
     current_user: User = Depends(get_current_user),  # noqa: B008
     lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
-    """The menu and its prep plan as a printable PDF, in the request language."""
-    menu = _respond(menu_id, _uid(current_user), lang)
+    """The menu and its prep plan as a printable PDF, in the request language.
+
+    ``recipes`` appends each course's recipe, scaled to the guests. A recipe the
+    user can no longer open (unshared since it was added) is left out.
+    """
+    user_id = _uid(current_user)
+    menu = _respond(menu_id, user_id, lang)
     pdf_lang = lang if lang in BACKEND_STRINGS else "en"
-    pdf_bytes = await run_in_threadpool(render_menu_pdf, menu, pdf_lang)
+    extra = _course_recipes(menu, user_id, pdf_lang) if recipes else None
+    pdf_bytes = await run_in_threadpool(render_menu_pdf, menu, pdf_lang, None, extra)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

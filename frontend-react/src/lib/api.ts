@@ -864,9 +864,9 @@ export const api = {
     return request<ShoppingListResult>(`/menus/${id}/shopping-list`, { method: 'POST' })
   },
 
-  /** The menu and its prep plan as a PDF (in the UI language). */
-  async downloadMenuPdf(id: number) {
-    const res = await send(`/menus/${id}/plan.pdf`)
+  /** The menu and its prep plan as a PDF (in the UI language), optionally with the recipes. */
+  async downloadMenuPdf(id: number, withRecipes = false) {
+    const res = await send(`/menus/${id}/plan.pdf${withRecipes ? '?recipes=true' : ''}`)
     return {
       blob: await res.blob(),
       filename: dispositionFilename(res.headers.get('Content-Disposition'), 'menu.pdf'),

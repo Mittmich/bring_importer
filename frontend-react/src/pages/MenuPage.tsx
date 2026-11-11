@@ -5,8 +5,10 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  BookOpen,
   CalendarRange,
   ChefHat,
+  ChevronDown,
   FileDown,
   List,
   Minus,
@@ -104,6 +106,15 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
     else setEditing(added.id)
   }
 
+  const titleRef = useRef<HTMLInputElement>(null)
+  function renameMenu() {
+    const input = titleRef.current
+    if (!input) return
+    input.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    input.focus({ preventScroll: true })
+    input.select()
+  }
+
   async function deleteStep(stepId: number) {
     await m.run(() => api.deleteMenuStep(menu.id, stepId))
     setSelected(null)
@@ -117,9 +128,21 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
         <Link to="/plan" className="text-muted-foreground hover:text-foreground" aria-label={t('menus.backToMenus')}>
           <ArrowLeft className="w-4 h-4" />
         </Link>
-        <h1 className="text-base font-semibold text-foreground truncate flex-1">{menu.title}</h1>
+        <h1 className="flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={renameMenu}
+            title={t('menus.renameMenu')}
+            className="max-w-full truncate text-left text-base font-semibold text-foreground hover:text-primary"
+          >
+            {menu.title}
+          </button>
+        </h1>
         {m.saving && <span className="text-xs text-muted-foreground">{t('common.saving')}</span>}
         <DropMenu trigger={<MoreHorizontal className="w-4 h-4" />} label={t('menus.more')}>
+          <MenuItem icon={<Pencil />} onSelect={renameMenu}>
+            {t('menus.renameMenu')}
+          </MenuItem>
           <MenuItem
             icon={<Trash2 />}
             destructive
@@ -146,7 +169,7 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
 
       <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <MenuCardEditor menu={menu} m={m} onAddCourse={() => setPicking(true)} />
+          <MenuCardEditor menu={menu} m={m} titleRef={titleRef} onAddCourse={() => setPicking(true)} />
           <PlanSummary menu={menu} />
         </div>
 
@@ -264,7 +287,17 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
 /* Menu card                                                                  */
 /* ------------------------------------------------------------------------- */
 
-function MenuCardEditor({ menu, m, onAddCourse }: { menu: Menu; m: MenuApi; onAddCourse: () => void }) {
+function MenuCardEditor({
+  menu,
+  m,
+  titleRef,
+  onAddCourse,
+}: {
+  menu: Menu
+  m: MenuApi
+  titleRef: React.RefObject<HTMLInputElement | null>
+  onAddCourse: () => void
+}) {
   const { t, tp } = useI18n()
   const [title, setTitle] = useDraft(menu.title)
   const courses = sortedCourses(menu)
@@ -272,7 +305,9 @@ function MenuCardEditor({ menu, m, onAddCourse }: { menu: Menu; m: MenuApi; onAd
   return (
     <div className="relative bg-[#fffdf9] border border-[#f3e3cf] rounded-2xl px-5 py-6 text-center">
       <div className="pointer-events-none absolute inset-2 rounded-xl border border-[#f6dcbc]" />
+      <div className="group relative">
       <input
+        ref={titleRef}
         value={title}
         maxLength={120}
         onChange={(e) => setTitle(e.target.value)}
@@ -283,8 +318,22 @@ function MenuCardEditor({ menu, m, onAddCourse }: { menu: Menu; m: MenuApi; onAd
         }}
         onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
         aria-label={t('menus.name')}
-        className="relative w-full bg-transparent text-center font-serif text-2xl md:text-3xl focus:outline-none focus:ring-2 focus:ring-ring rounded"
+        title={t('menus.renameMenu')}
+        className="relative w-full bg-transparent text-center font-serif text-2xl md:text-3xl px-8 rounded cursor-text hover:bg-black/[0.03] focus:outline-none focus:ring-2 focus:ring-ring"
       />
+      <button
+        type="button"
+        onClick={() => {
+          titleRef.current?.focus()
+          titleRef.current?.select()
+        }}
+        aria-label={t('menus.renameMenu')}
+        title={t('menus.renameMenu')}
+        className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground/60 hover:text-primary group-focus-within:hidden"
+      >
+        <Pencil className="w-4 h-4" />
+      </button>
+      </div>
       <div className="relative mt-1 flex flex-wrap items-center justify-center gap-2 text-sm">
         <input
           type="date"
@@ -560,26 +609,38 @@ function ShoppingListButton({ menu }: { menu: Menu }) {
 function PdfButton({ menu }: { menu: Menu }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
+
+  async function exportPdf(withRecipes: boolean) {
+    setBusy(true)
+    try {
+      const { blob, filename } = await api.downloadMenuPdf(menu.id, withRecipes)
+      await saveOrShare(blob, filename)
+    } catch {
+      window.alert(t('recipe.pdfFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true)
-        try {
-          const { blob, filename } = await api.downloadMenuPdf(menu.id)
-          await saveOrShare(blob, filename)
-        } catch {
-          window.alert(t('recipe.pdfFailed'))
-        } finally {
-          setBusy(false)
-        }
-      }}
+    <DropMenu
+      align="start"
+      label={t('menus.exportPdf')}
+      trigger={
+        <span className="inline-flex items-center text-sm font-medium">
+          <FileDown className="w-4 h-4 mr-1.5" />
+          {busy ? t('menus.exporting') : t('menus.exportPdf')}
+          <ChevronDown className="w-3.5 h-3.5 ml-1 text-muted-foreground" />
+        </span>
+      }
     >
-      <FileDown className="w-4 h-4 mr-1.5" />
-      {busy ? t('menus.exporting') : t('menus.exportPdf')}
-    </Button>
+      <MenuItem icon={<CalendarRange />} disabled={busy} onSelect={() => exportPdf(false)}>
+        {t('menus.exportPlan')}
+      </MenuItem>
+      <MenuItem icon={<BookOpen />} disabled={busy} onSelect={() => exportPdf(true)}>
+        {t('menus.exportPlanWithRecipes')}
+      </MenuItem>
+    </DropMenu>
   )
 }
 
