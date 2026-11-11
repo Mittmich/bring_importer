@@ -342,9 +342,27 @@ def render_pdf(doc: PdfDocument, image_path: Optional[str] = None) -> bytes:
     """Lay out ``doc`` on A4 pages and return the PDF bytes."""
     pdf = _RecipePDF(doc)
     pdf.add_page()
+    draw_recipe(pdf, doc, image_path)
+    return bytes(pdf.output())
 
+
+def draw_recipe(
+    pdf: _RecipePDF,
+    doc: PdfDocument,
+    image_path: Optional[str] = None,
+    kicker: Optional[str] = None,
+) -> None:
+    """Draw ``doc`` from the current position (e.g. a menu PDF's recipe pages).
+
+    ``kicker`` is a small accent line above the title, such as the course name.
+    """
     if image_path:
         _hero_image(pdf, image_path)
+
+    if kicker:
+        pdf.set_font(FONT_FAMILY, "B", 8.5)
+        pdf.set_text_color(*ACCENT)
+        pdf.cell(0, 4.5, sanitize(kicker).upper(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
     # Title + meta line
     pdf.paragraph(doc.title, size=22, style="B")
@@ -412,8 +430,6 @@ def render_pdf(doc: PdfDocument, image_path: Optional[str] = None) -> bytes:
     if doc.note:
         pdf.section(doc.labels["note"])
         pdf.paragraph(doc.note, size=10.5)
-
-    return bytes(pdf.output())
 
 
 # ---------------------------------------------------------------------------

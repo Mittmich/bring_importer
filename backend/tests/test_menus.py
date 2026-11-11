@@ -408,6 +408,32 @@ def test_menu_pdf_export(client, auth_headers, mocked_openai, drafted):
     assert "Herbst-Men" in resp.headers["content-disposition"]
 
 
+def test_menu_pdf_with_recipes(client, auth_headers, mocked_openai, drafted, monkeypatch):
+    from api import menu_pdf
+
+    drawn = []
+    monkeypatch.setattr(
+        menu_pdf, "draw_recipe", lambda pdf, doc, image, kicker: drawn.append((kicker, doc))
+    )
+    uuid = _recipe(client, auth_headers, mocked_openai)
+    menu = _menu(client, auth_headers, guests=6)
+    client.post(
+        f"/menus/{menu['id']}/courses",
+        headers=auth_headers,
+        json={"recipe_uuid": uuid, "name": "Main"},
+    )
+    url = f"/menus/{menu['id']}/plan.pdf"
+    assert client.get(url, headers=auth_headers).status_code == 200
+    assert drawn == []  # plan only by default
+
+    resp = client.get(f"{url}?recipes=true", headers=auth_headers)
+    assert resp.status_code == 200 and resp.content.startswith(b"%PDF-")
+    ((kicker, doc),) = drawn
+    assert kicker == "Main"
+    assert doc.servings and doc.servings.startswith("6 ")  # scaled to the guests
+    assert doc.ingredients
+
+
 def test_empty_menu_pdf_and_isolation(client, auth_headers, tmp_db_path):
     menu = _menu(client, auth_headers)
     assert client.get(f"/menus/{menu['id']}/plan.pdf", headers=auth_headers).status_code == 200

@@ -10,6 +10,7 @@ setup (A4, DejaVu fonts, footer, colours). The report has three parts:
   and a landscape timeline of the cooking day.
 * **By course**: a timeline per course on its own time scale (the day before above
   the cooking day), so one person can take a dish.
+* **Recipes** (optional): each course's recipe, scaled to the guests, one per page.
 
 Run sheets list steps in time order with a tick box, so they work on the fridge
 door. Timelines draw one row per step, grouped by course. Like
@@ -33,6 +34,7 @@ from api.recipe_pdf import (
     PdfDocument,
     _format_date,
     _RecipePDF,
+    draw_recipe,
     sanitize,
 )
 
@@ -57,6 +59,15 @@ DAY_BEFORE = -1
 ON_THE_DAY = 0
 
 Label = Callable[..., str]
+
+
+@dataclass
+class MenuRecipe:
+    """A course's recipe to print after the plan."""
+
+    course: str
+    doc: PdfDocument
+    image_path: Optional[str] = None
 
 
 def hhmm(minutes: int) -> str:
@@ -112,7 +123,12 @@ def _date_label(iso: Optional[str], lang: str) -> str:
         return ""
 
 
-def render_menu_pdf(menu: Dict[str, Any], lang: str, today: Optional[date] = None) -> bytes:
+def render_menu_pdf(
+    menu: Dict[str, Any],
+    lang: str,
+    today: Optional[date] = None,
+    recipes: Optional[List[MenuRecipe]] = None,
+) -> bytes:
     def label(key: str, **params: Any) -> str:
         return backend_text(lang, key, **params)
 
@@ -230,6 +246,9 @@ def render_menu_pdf(menu: Dict[str, Any], lang: str, today: Optional[date] = Non
         landscape = _timeline_page(pdf, menu, label, ON_THE_DAY, heading) or landscape
 
     _by_course_pages(pdf, menu, label)
+    for recipe in recipes or []:
+        pdf.add_page()
+        draw_recipe(pdf, recipe.doc, recipe.image_path, kicker=recipe.course)
     return bytes(pdf.output())
 
 
