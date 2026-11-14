@@ -329,6 +329,29 @@ def init_db():
     )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_menu_steps_menu ON menu_steps(menu_id)")
 
+    # menu_members — friends a menu is shared with. The menu owner is implicit
+    # (menus.user_id). 'pending' is an invitation, 'accepted' is live access.
+    # See .claude/plans/menu-sharing-and-admin-sharing.md.
+    cursor.execute(
+        """
+    CREATE TABLE IF NOT EXISTS menu_members (
+        menu_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        role TEXT NOT NULL CHECK(role IN ('viewer', 'editor')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted')),
+        invited_by INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        responded_at TIMESTAMP,
+        PRIMARY KEY (menu_id, user_id),
+        FOREIGN KEY (menu_id) REFERENCES menus (id),
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+    """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_menu_members_user ON menu_members(user_id, status)"
+    )
+
     # ---- in-place migrations for pre-existing recipes.db (step 3) ----
     # Each migration is guarded: skip if the column already exists.
     _existing_cols = {row[1] for row in cursor.execute("PRAGMA table_info(recipes)").fetchall()}

@@ -22,10 +22,19 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Menu, MenuItem, MenuSeparator } from '@/components/ui/menu'
 import { LinkDialog } from '@/components/LinkDialog'
+import { FriendsTab, SharesTab } from '@/components/admin/SharingTabs'
 import { cn } from '@/lib/utils'
 import { useI18n, type MessageKey } from '@/i18n'
 
-type Tab = 'users' | 'invites' | 'features'
+type Tab = 'users' | 'invites' | 'friends' | 'shares' | 'features'
+
+const TAB_LABELS: Record<Tab, MessageKey> = {
+  users: 'admin.tabUsers',
+  invites: 'admin.tabInvites',
+  friends: 'admin.tabFriends',
+  shares: 'admin.tabShares',
+  features: 'admin.tabFeatures',
+}
 
 /** A one-time link to show once: built client-side from the returned token. */
 interface ShownLink {
@@ -59,8 +68,8 @@ export function AdminPage() {
           <p className="text-sm text-muted-foreground">{t('admin.subtitle')}</p>
         </div>
 
-        <div role="tablist" className="inline-flex rounded-lg border border-border bg-white p-1">
-          {(['users', 'invites', 'features'] as const).map((key) => (
+        <div role="tablist" className="inline-flex flex-wrap rounded-lg border border-border bg-white p-1">
+          {(Object.keys(TAB_LABELS) as Tab[]).map((key) => (
             <button
               key={key}
               role="tab"
@@ -71,7 +80,7 @@ export function AdminPage() {
                 tab === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {key === 'users' ? t('admin.tabUsers') : key === 'invites' ? t('admin.tabInvites') : t('admin.tabFeatures')}
+              {t(TAB_LABELS[key])}
             </button>
           ))}
         </div>
@@ -80,6 +89,10 @@ export function AdminPage() {
           <UsersTab onLink={setShown} />
         ) : tab === 'invites' ? (
           <InvitesTab onLink={setShown} />
+        ) : tab === 'friends' ? (
+          <FriendsTab />
+        ) : tab === 'shares' ? (
+          <SharesTab />
         ) : (
           <FeaturesTab />
         )}

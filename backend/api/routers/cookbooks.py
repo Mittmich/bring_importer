@@ -502,7 +502,7 @@ async def add_recipe(
     if _cookbook_kind(cursor, cookbook_id) == "all":
         conn.close()
         raise HTTPException(status_code=400, detail="This cookbook updates automatically")
-    if not role_at_least(effective_role(cursor, me, body.recipe_uuid), "viewer"):
+    if not role_at_least(effective_role(cursor, me, body.recipe_uuid, via_menus=False), "viewer"):
         conn.close()
         raise HTTPException(status_code=404, detail="Recipe not found")
     cursor.execute(

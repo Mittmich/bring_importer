@@ -137,12 +137,14 @@ export function CookModePage() {
                         {late ? t('menus.overdue') : t('menus.left', { time: durationLabel(Math.ceil(stepEnd(menu, s) - now)) })}
                       </div>
                     </div>
-                    <button
-                      onClick={() => done(s.id)}
-                      className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white border border-border px-3 py-1.5 text-xs font-semibold"
-                    >
-                      <Check className="w-3.5 h-3.5" /> {t('menus.markDone')}
-                    </button>
+                    {menu.role !== 'viewer' && (
+                      <button
+                        onClick={() => done(s.id)}
+                        className="flex-shrink-0 inline-flex items-center gap-1 rounded-full bg-white border border-border px-3 py-1.5 text-xs font-semibold"
+                      >
+                        <Check className="w-3.5 h-3.5" /> {t('menus.markDone')}
+                      </button>
+                    )}
                   </div>
                   <div className="h-1.5 rounded-full bg-foreground/10 mt-2 overflow-hidden">
                     <div className="h-full" style={{ width: `${progress}%`, background: color }} />

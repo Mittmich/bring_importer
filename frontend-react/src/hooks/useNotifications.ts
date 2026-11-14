@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useFeatures } from '@/hooks/useFeatures'
 
 /**
  * Counts for the nav badges: pending incoming friend requests and pending
- * cookbook invitations. Polled periodically so badges stay roughly live.
+ * cookbook and menu invitations. Polled periodically so badges stay roughly live.
  */
 export function useNotifications() {
   const { data: friendRequests = [] } = useQuery({
@@ -16,8 +17,16 @@ export function useNotifications() {
     queryFn: api.listCookbookInvitations,
     refetchInterval: 60_000,
   })
+  const { features } = useFeatures()
+  const { data: menuInvitations = [] } = useQuery({
+    queryKey: ['menuInvitations'],
+    queryFn: api.listMenuInvitations,
+    refetchInterval: 60_000,
+    enabled: features?.planner === 'menus',
+  })
   return {
     friendRequests: friendRequests.length,
     cookbookInvites: cookbookInvitations.length,
+    menuInvites: features?.planner === 'menus' ? menuInvitations.length : 0,
   }
 }

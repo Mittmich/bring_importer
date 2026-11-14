@@ -29,7 +29,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
   const email = getUserEmail()
   const navigate = useNavigate()
   const { canInstall, triggerInstall } = useInstallPrompt()
-  const { friendRequests, cookbookInvites } = useNotifications()
+  const { friendRequests, cookbookInvites, menuInvites } = useNotifications()
   const { t } = useI18n()
   const { features } = useFeatures()
   const { pathname } = useLocation()
@@ -75,6 +75,7 @@ export function Sidebar({ onImport }: { onImport: () => void }) {
               <Icon className="w-4 h-4 flex-shrink-0" />
               {t(label)}
               {to === '/cookbooks' && <NavBadge count={cookbookInvites} />}
+              {to === '/plan' && <NavBadge count={menuInvites} />}
             </NavLink>
           ),
         )}

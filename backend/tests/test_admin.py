@@ -403,3 +403,139 @@ def test_delete_user_removes_their_data(client, admin, bob, tmp_db_path, tmp_pat
         client.delete(f"/admin/users/{bob['id']}?confirm=bob@example.com", headers=ah).status_code
         == 404
     )
+
+
+# ---------------------------------------------------------------------------
+# Friendships and shares
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def carol(client, tmp_db_path):
+    uid = _add_user(tmp_db_path, "carol@example.com")
+    return {"id": uid, "email": "carol@example.com", "headers": _headers("carol@example.com")}
+
+
+def _menu_of(client, user):
+    return client.post("/menus", headers=user["headers"], json={"title": "Feast"}).json()["id"]
+
+
+def test_friendship_and_share_routes_need_admin(client, bob, carol):
+    h = bob["headers"]
+    assert client.get("/admin/friendships", headers=h).status_code == 403
+    body = {"user_a": bob["id"], "user_b": carol["id"]}
+    assert client.post("/admin/friendships", headers=h, json=body).status_code == 403
+    assert client.get("/admin/shares", headers=h).status_code == 403
+    assert client.get(f"/admin/users/{bob['id']}/resources?type=menu", headers=h).status_code == 403
+
+
+def test_admin_connects_lists_and_removes_friends(client, admin, bob, carol):
+    h = admin["headers"]
+    body = {"user_a": bob["id"], "user_b": carol["id"]}
+    assert client.post("/admin/friendships", headers=h, json=body).status_code == 201
+    assert client.post("/admin/friendships", headers=h, json=body).status_code == 409
+    same = {"user_a": bob["id"], "user_b": bob["id"]}
+    assert client.post("/admin/friendships", headers=h, json=same).status_code == 422
+    # Both sides see the friendship.
+    assert [f["email"] for f in client.get("/friends", headers=bob["headers"]).json()] == [
+        "carol@example.com"
+    ]
+    rows = client.get(f"/admin/friendships?user_id={carol['id']}", headers=h).json()
+    assert len(rows) == 1 and rows[0]["status"] == "accepted"
+    assert rows[0]["requester"]["email"] == "bob@example.com"
+    assert client.delete(f"/admin/friendships/{rows[0]['id']}", headers=h).status_code == 204
+    assert client.get("/friends", headers=bob["headers"]).json() == []
+
+
+def test_admin_connect_accepts_pending_request(client, admin, bob, carol):
+    client.post("/friends/requests", headers=bob["headers"], json={"email": carol["email"]})
+    body = {"user_a": carol["id"], "user_b": bob["id"]}
+    assert client.post("/admin/friendships", headers=admin["headers"], json=body).status_code == 201
+    rows = client.get("/admin/friendships", headers=admin["headers"]).json()
+    assert [r["status"] for r in rows] == ["accepted"]
+
+
+def test_admin_share_requires_friends_unless_ensured(client, admin, bob, carol):
+    h = admin["headers"]
+    mid = _menu_of(client, bob)
+    share = {"type": "menu", "resource_id": mid, "user_id": carol["id"], "role": "editor"}
+    assert client.post("/admin/shares", headers=h, json=share).status_code == 409
+    resp = client.post("/admin/shares", headers=h, json={**share, "ensure_friends": True})
+    assert resp.status_code == 201
+    # Accepted at once: Carol can edit without accepting anything.
+    menu = client.get(f"/menus/{mid}", headers=carol["headers"]).json()
+    assert menu["role"] == "editor"
+    assert len(client.get("/friends", headers=carol["headers"]).json()) == 1
+
+
+def test_admin_share_validates_role_and_owner(client, admin, bob, carol):
+    h = admin["headers"]
+    mid = _menu_of(client, bob)
+    base = {"type": "menu", "resource_id": mid, "ensure_friends": True}
+    bad_role = {**base, "user_id": carol["id"], "role": "manager"}
+    assert client.post("/admin/shares", headers=h, json=bad_role).status_code == 422
+    to_owner = {**base, "user_id": bob["id"], "role": "viewer"}
+    assert client.post("/admin/shares", headers=h, json=to_owner).status_code == 422
+    missing = {**base, "resource_id": 9999, "user_id": carol["id"], "role": "viewer"}
+    assert client.post("/admin/shares", headers=h, json=missing).status_code == 404
+
+
+def test_admin_lists_patches_and_revokes_shares(client, admin, bob, carol):
+    h = admin["headers"]
+    mid = _menu_of(client, bob)
+    cid = client.post("/cookbooks", headers=bob["headers"], json={"name": "Soups"}).json()["id"]
+    for share in (
+        {"type": "menu", "resource_id": mid, "role": "viewer"},
+        {"type": "cookbook", "resource_id": cid, "role": "manager"},
+    ):
+        body = {**share, "user_id": carol["id"], "ensure_friends": True}
+        assert client.post("/admin/shares", headers=h, json=body).status_code == 201
+
+    rows = client.get(f"/admin/shares?user_id={carol['id']}", headers=h).json()
+    assert sorted((r["type"], r["resource_name"], r["role"]) for r in rows) == [
+        ("cookbook", "Soups", "manager"),
+        ("menu", "Feast", "viewer"),
+    ]
+    assert all(r["owner"]["email"] == "bob@example.com" for r in rows)
+    assert len(client.get("/admin/shares?type=menu", headers=h).json()) == 1
+
+    path = f"/admin/shares/menu/{mid}/{carol['id']}"
+    assert client.patch(path, headers=h, json={"role": "manager"}).status_code == 422
+    assert client.patch(path, headers=h, json={"role": "editor"}).status_code == 204
+    assert client.get(f"/menus/{mid}", headers=carol["headers"]).json()["role"] == "editor"
+    assert client.delete(path, headers=h).status_code == 204
+    assert client.get(f"/menus/{mid}", headers=carol["headers"]).status_code == 404
+    assert client.delete(path, headers=h).status_code == 404
+
+
+def test_admin_unfriend_revokes_shares(client, admin, bob, carol):
+    h = admin["headers"]
+    mid = _menu_of(client, bob)
+    body = {"type": "menu", "resource_id": mid, "user_id": carol["id"], "role": "viewer"}
+    client.post("/admin/shares", headers=h, json={**body, "ensure_friends": True})
+    fid = client.get("/admin/friendships", headers=h).json()[0]["id"]
+    assert client.delete(f"/admin/friendships/{fid}", headers=h).status_code == 204
+    assert client.get("/admin/shares", headers=h).json() == []
+    assert client.get(f"/menus/{mid}", headers=carol["headers"]).status_code == 404
+
+
+def test_admin_lists_user_resources(client, admin, bob):
+    _menu_of(client, bob)
+    client.post("/cookbooks", headers=bob["headers"], json={"name": "Soups"})
+    h = admin["headers"]
+    menus = client.get(f"/admin/users/{bob['id']}/resources?type=menu", headers=h).json()
+    assert [m["name"] for m in menus] == ["Feast"]
+    books = client.get(f"/admin/users/{bob['id']}/resources?type=cookbook", headers=h).json()
+    assert [b["name"] for b in books] == ["Soups"]
+
+
+def test_delete_user_removes_menu_shares(client, admin, bob, carol, tmp_db_path):
+    h = admin["headers"]
+    bob_menu = _menu_of(client, bob)
+    carol_menu = _menu_of(client, carol)
+    for mid, grantee in ((bob_menu, carol["id"]), (carol_menu, bob["id"])):
+        body = {"type": "menu", "resource_id": mid, "user_id": grantee, "role": "viewer"}
+        client.post("/admin/shares", headers=h, json={**body, "ensure_friends": True})
+    resp = client.delete(f"/admin/users/{bob['id']}?confirm={bob['email']}", headers=h)
+    assert resp.status_code == 204
+    assert _q(tmp_db_path, "SELECT * FROM menu_members") == []

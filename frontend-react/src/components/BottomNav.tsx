@@ -18,7 +18,7 @@ const tabs: Array<{ to: string; icon: typeof Home; label: MessageKey; end?: bool
 export function BottomNav() {
   const { canInstall, triggerInstall, showIosInstructions } = useInstallPrompt()
   const [iosBannerDismissed, setIosBannerDismissed] = useState(false)
-  const { friendRequests, cookbookInvites } = useNotifications()
+  const { friendRequests, cookbookInvites, menuInvites } = useNotifications()
   const { t, tx } = useI18n()
   const { features } = useFeatures()
   const { pathname } = useLocation()
@@ -28,7 +28,13 @@ export function BottomNav() {
       : tab,
   )
   const badgeFor = (to: string) =>
-    to === '/account' ? friendRequests : to === '/cookbooks' ? cookbookInvites : 0
+    to === '/account'
+      ? friendRequests
+      : to === '/cookbooks'
+        ? cookbookInvites
+        : to === '/plan'
+          ? menuInvites
+          : 0
 
   return (
     <>
