@@ -312,6 +312,37 @@ export interface Invite {
   status: InviteStatus
 }
 
+export interface AdminFriendship {
+  id: number
+  status: 'pending' | 'accepted' | 'blocked'
+  created_at: string | null
+  responded_at: string | null
+  requester: Person
+  addressee: Person
+}
+
+export type ShareType = 'menu' | 'cookbook'
+
+export interface AdminShare {
+  type: ShareType
+  resource_id: number
+  resource_name: string
+  /** Cookbooks only: 'normal' | 'quickshare' (one recipe) | 'all' (every recipe). */
+  cookbook_kind: string | null
+  role: 'viewer' | 'editor' | 'manager'
+  status: 'pending' | 'accepted'
+  created_at: string | null
+  owner: Person
+  grantee: Person
+}
+
+export interface AdminResource {
+  id: number
+  name: string
+  /** Menus: the date; cookbooks: the kind. */
+  detail: string | null
+}
+
 /** What a one-time link is for (public, before signing up / resetting). */
 export interface LinkInfo {
   kind: 'signup' | 'reset'
@@ -359,12 +390,39 @@ export interface MenuStep {
   position: number
 }
 
+/** The caller's role on a menu, weakest → strongest. */
+export type MenuRole = 'viewer' | 'editor' | 'owner'
+
+export interface Person {
+  user_id: number
+  email: string
+  display_name?: string
+}
+
+export interface MenuMember extends Person {
+  role: 'viewer' | 'editor'
+  status: 'pending' | 'accepted'
+}
+
+export interface MenuInvitation {
+  menu_id: number
+  title: string
+  date: string | null
+  role: 'viewer' | 'editor'
+  created_at: string
+  owner: Person
+}
+
 export interface Menu {
   id: number
   title: string
   date: string | null
   guests: number
   updated_at: string
+  role: MenuRole
+  owner: Person
+  /** People it's shared with (pending or accepted). */
+  member_count: number
   courses: MenuCourse[]
   steps: MenuStep[]
 }
@@ -375,6 +433,9 @@ export interface MenuSummary {
   date: string | null
   guests: number
   updated_at: string
+  role: MenuRole
+  owner: Person
+  member_count: number
   courses: Array<{ name: string; serve: number; recipe_title: string }>
 }
 
@@ -481,6 +542,50 @@ export const api = {
 
   adminDeleteUser(id: number, confirmEmail: string) {
     return request<void>(`/admin/users/${id}?confirm=${encodeURIComponent(confirmEmail)}`, { method: 'DELETE' })
+  },
+
+  adminListFriendships() {
+    return request<AdminFriendship[]>('/admin/friendships')
+  },
+
+  adminCreateFriendship(userA: number, userB: number) {
+    return request<{ ok: boolean }>('/admin/friendships', {
+      method: 'POST',
+      body: JSON.stringify({ user_a: userA, user_b: userB }),
+    })
+  },
+
+  adminDeleteFriendship(id: number) {
+    return request<void>(`/admin/friendships/${id}`, { method: 'DELETE' })
+  },
+
+  adminListShares() {
+    return request<AdminShare[]>('/admin/shares')
+  },
+
+  adminCreateShare(body: {
+    type: ShareType
+    resource_id: number
+    user_id: number
+    role: string
+    ensure_friends: boolean
+  }) {
+    return request<{ ok: boolean }>('/admin/shares', { method: 'POST', body: JSON.stringify(body) })
+  },
+
+  adminUpdateShare(type: ShareType, resourceId: number, userId: number, role: string) {
+    return request<void>(`/admin/shares/${type}/${resourceId}/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    })
+  },
+
+  adminDeleteShare(type: ShareType, resourceId: number, userId: number) {
+    return request<void>(`/admin/shares/${type}/${resourceId}/${userId}`, { method: 'DELETE' })
+  },
+
+  adminUserResources(userId: number, type: ShareType) {
+    return request<AdminResource[]>(`/admin/users/${userId}/resources?type=${type}`)
   },
 
   adminListInvites() {
@@ -858,6 +963,41 @@ export const api = {
 
   deleteMenuStep(id: number, stepId: number) {
     return request<Menu>(`/menus/${id}/steps/${stepId}`, { method: 'DELETE' })
+  },
+
+  listMenuMembers(id: number) {
+    return request<{ owner: Person; members: MenuMember[] }>(`/menus/${id}/members`)
+  },
+
+  inviteMenuMember(id: number, friendId: number, role: 'viewer' | 'editor') {
+    return request<{ members: MenuMember[] }>(`/menus/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify({ friend_id: friendId, role }),
+    })
+  },
+
+  updateMenuMember(id: number, userId: number, role: 'viewer' | 'editor') {
+    return request<{ members: MenuMember[] }>(`/menus/${id}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    })
+  },
+
+  /** The owner removes someone, or (with your own id) you leave the menu. */
+  removeMenuMember(id: number, userId: number) {
+    return request<void>(`/menus/${id}/members/${userId}`, { method: 'DELETE' })
+  },
+
+  listMenuInvitations() {
+    return request<MenuInvitation[]>('/menus/invitations')
+  },
+
+  acceptMenuInvitation(id: number) {
+    return request<Menu>(`/menus/invitations/${id}/accept`, { method: 'POST' })
+  },
+
+  declineMenuInvitation(id: number) {
+    return request<void>(`/menus/invitations/${id}/decline`, { method: 'POST' })
   },
 
   buildMenuShoppingList(id: number) {

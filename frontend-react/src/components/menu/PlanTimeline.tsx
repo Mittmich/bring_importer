@@ -31,12 +31,15 @@ export function PlanTimeline({
   selectedId,
   onSelect,
   onMove,
+  readOnly = false,
 }: {
   menu: Menu
   selectedId: number | null
   onSelect: (stepId: number) => void
   /** New `lead` for a same-day step. */
   onMove: (stepId: number, lead: number) => void
+  /** No dragging (viewer of a shared menu); bars can still be selected. */
+  readOnly?: boolean
 }) {
   const { t } = useI18n()
   const [lo, hi] = dayRange(menu)
@@ -170,7 +173,7 @@ export function PlanTimeline({
                 </div>
                 {rows.map((b) => {
                   const s = b.step
-                  const draggable = !b.clipped && s.day === 0
+                  const draggable = !readOnly && !b.clipped && s.day === 0
                   const start = draggable ? startOf(s) : b.start
                   const end = draggable ? start + s.duration : b.end
                   const since = b.overnight

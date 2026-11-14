@@ -20,10 +20,13 @@ export function RunSheet({
   menu,
   onChange,
   onOpen,
+  readOnly = false,
 }: {
   menu: Menu
   onChange: (stepId: number, patch: MenuStepPatch) => void
   onOpen: (stepId: number) => void
+  /** Viewer of a shared menu: no ticking, no duration edits. */
+  readOnly?: boolean
 }) {
   const { t } = useI18n()
   const clashing = new Set(findClashes(menu).flatMap((c) => [c.a.id, c.b.id]))
@@ -59,7 +62,7 @@ export function RunSheet({
       )
     } else if (e.step) {
       rows.push(
-        <Row key={e.step.id} menu={menu} step={e.step} clash={clashing.has(e.step.id)} onChange={onChange} onOpen={onOpen} />,
+        <Row key={e.step.id} menu={menu} step={e.step} clash={clashing.has(e.step.id)} onChange={onChange} onOpen={onOpen} readOnly={readOnly} />,
       )
     }
   }
@@ -70,7 +73,7 @@ export function RunSheet({
         <>
           <Heading>{t('menus.dayBefore')}</Heading>
           {before.map((s) => (
-            <Row key={s.id} menu={menu} step={s} clash={false} onChange={onChange} onOpen={onOpen} />
+            <Row key={s.id} menu={menu} step={s} clash={false} onChange={onChange} onOpen={onOpen} readOnly={readOnly} />
           ))}
         </>
       )}
@@ -93,12 +96,14 @@ function Row({
   clash,
   onChange,
   onOpen,
+  readOnly,
 }: {
   menu: Menu
   step: MenuStep
   clash: boolean
   onChange: (stepId: number, patch: MenuStepPatch) => void
   onOpen: (stepId: number) => void
+  readOnly: boolean
 }) {
   const { t } = useI18n()
   const course = menu.courses.find((c) => c.id === step.course_id)
@@ -123,6 +128,7 @@ function Row({
         type="checkbox"
         className="w-4 h-4 accent-[hsl(var(--primary))]"
         checked={step.done}
+        disabled={readOnly}
         onChange={(e) => onChange(step.id, { done: e.target.checked })}
         aria-label={step.name}
       />
@@ -162,6 +168,7 @@ function Row({
           max={1440}
           step={5}
           value={dur}
+          disabled={readOnly}
           onChange={(e) => setDur(e.target.value)}
           onBlur={commitDur}
           onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}

@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr
 
+from api.access import revoke_shares_between
 from api.auth import get_current_user, get_user_id
 from api.db import get_db_connection
 from api.models import User
@@ -209,7 +210,7 @@ async def unfriend(
 ):
     """Remove any friendship or pending request between the current user and ``user_id``.
 
-    Also cancels an outgoing request and **revokes all cookbook shares between the
+    Also cancels an outgoing request and **revokes all cookbook and menu shares between the
     two users, in both directions** — unfriending is a clean cutoff.
     """
     me = _require_me(current_user)
@@ -220,14 +221,8 @@ async def unfriend(
         "WHERE (requester_id = ? AND addressee_id = ?) OR (requester_id = ? AND addressee_id = ?)",
         (me, user_id, user_id, me),
     )
-    # Revoke shares in both directions: the other user's membership in my
-    # cookbooks, and my membership in theirs.
-    cursor.execute(
-        "DELETE FROM cookbook_members WHERE "
-        "(user_id = ? AND cookbook_id IN (SELECT id FROM cookbooks WHERE owner_id = ?)) OR "
-        "(user_id = ? AND cookbook_id IN (SELECT id FROM cookbooks WHERE owner_id = ?))",
-        (user_id, me, me, user_id),
-    )
+    # Revoke cookbook and menu shares in both directions.
+    revoke_shares_between(cursor, me, user_id)
     conn.commit()
     conn.close()
     return None

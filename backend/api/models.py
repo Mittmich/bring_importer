@@ -191,6 +191,18 @@ class MenuUpdate(BaseModel):
         return _iso_date_or_none(v)
 
 
+MenuRole = Literal["viewer", "editor"]
+
+
+class MenuMemberInvite(BaseModel):
+    friend_id: int
+    role: MenuRole = "viewer"
+
+
+class MenuMemberRole(BaseModel):
+    role: MenuRole
+
+
 class MenuCourseCreate(BaseModel):
     recipe_uuid: str
     name: Optional[str] = Field(default=None, max_length=60)

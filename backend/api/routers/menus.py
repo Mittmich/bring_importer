@@ -1,8 +1,10 @@
 """Menus with prep planning. See .claude/plans/menus-prep-planning.md.
 
 A menu is a set of courses (each a recipe with a serving time) plus editable,
-timed prep steps. Every endpoint is scoped to the menu's owner; another user's
-menu is a 404.
+timed prep steps. A menu can be shared with friends (``menu_members``) as
+``viewer`` (read, PDF, shopping list) or ``editor`` (+ change courses and steps).
+Only the owner deletes it or manages its members. Below the needed role, a menu
+is a 404. See .claude/plans/menu-sharing-and-admin-sharing.md.
 
 - ``GET /menus`` — the user's menus, newest first, with course titles.
 - ``POST /menus`` — create a menu.
@@ -20,6 +22,8 @@ menu is a 404.
 - ``POST /menus/{id}/steps`` / ``PATCH|DELETE /menus/{id}/steps/{step_id}``.
 - ``POST /menus/{id}/shopping-list`` — merged ingredients for the guest count; the token
   works with the weekly plan's public Bring page (``/meal-plan/shopping-list/{token}.html``).
+- ``GET|POST /menus/{id}/members``, ``PATCH|DELETE /menus/{id}/members/{user_id}`` — sharing.
+- ``GET /menus/invitations``, ``POST /menus/invitations/{id}/accept|decline``.
 
 Every mutation returns the full menu, so the client can replace its copy.
 """
@@ -33,7 +37,12 @@ from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
 from api import db, recipe_images
-from api.access import accessible_recipes_sql
+from api.access import (
+    are_friends,
+    effective_role,
+    menu_role,
+    role_at_least,
+)
 from api.auth import get_current_user, get_user_id
 from api.i18n import BACKEND_STRINGS, localize_recipe, localized_title, request_language
 from api.menu_pdf import MenuRecipe, render_menu_pdf
@@ -43,6 +52,8 @@ from api.models import (
     MenuCourseOrder,
     MenuCourseUpdate,
     MenuCreate,
+    MenuMemberInvite,
+    MenuMemberRole,
     MenuRedraft,
     MenuRevise,
     MenuStepCreate,
@@ -79,15 +90,29 @@ def _uid(current_user: User) -> int:
     return user_id
 
 
-def _owned_menu(cursor, menu_id: int, user_id: int):
-    row = cursor.execute(
-        "SELECT id, title, date, guests, created_at, updated_at FROM menus "
-        "WHERE id = ? AND user_id = ?",
-        (menu_id, user_id),
-    ).fetchone()
-    if row is None:
+def _menu_for(cursor, menu_id: int, user_id: int, minimum: str = "editor"):
+    """The menu row if the user's role on it is at least ``minimum``, else 404."""
+    if not role_at_least(menu_role(cursor, user_id, menu_id), minimum):
         raise HTTPException(status_code=404, detail="Menu not found")
-    return row
+    return cursor.execute(
+        "SELECT id, user_id, title, date, guests, created_at, updated_at FROM menus WHERE id = ?",
+        (menu_id,),
+    ).fetchone()
+
+
+def _owner_json(cursor, owner_id: int) -> Dict[str, Any]:
+    u = cursor.execute(
+        "SELECT id, email, display_name FROM users WHERE id = ?", (owner_id,)
+    ).fetchone()
+    if u is None:
+        return {"user_id": owner_id, "email": "", "display_name": ""}
+    return {"user_id": u["id"], "email": u["email"], "display_name": u["display_name"] or ""}
+
+
+def _member_count(cursor, menu_id: int) -> int:
+    return cursor.execute(
+        "SELECT COUNT(*) AS n FROM menu_members WHERE menu_id = ?", (menu_id,)
+    ).fetchone()["n"]
 
 
 def _touch(cursor, menu_id: int) -> None:
@@ -102,7 +127,7 @@ def _load_json(text: Optional[str]) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def _menu_payload(cursor, menu, lang: Optional[str]) -> Dict[str, Any]:
+def _menu_payload(cursor, menu, lang: Optional[str], role: str) -> Dict[str, Any]:
     courses = cursor.execute(
         "SELECT c.id, c.recipe_uuid, c.name, c.serve, c.position, r.title AS recipe_title, "
         "r.recipe_json FROM menu_courses c JOIN recipes r ON r.uuid = c.recipe_uuid "
@@ -141,6 +166,9 @@ def _menu_payload(cursor, menu, lang: Optional[str]) -> Dict[str, Any]:
         "date": menu["date"],
         "guests": menu["guests"],
         "updated_at": menu["updated_at"],
+        "role": role,
+        "owner": _owner_json(cursor, menu["user_id"]),
+        "member_count": _member_count(cursor, menu["id"]),
         "courses": course_list,
         "steps": [
             {
@@ -166,7 +194,8 @@ def _respond(menu_id: int, user_id: int, lang: Optional[str]) -> Dict[str, Any]:
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        return _menu_payload(cursor, _owned_menu(cursor, menu_id, user_id), lang)
+        menu = _menu_for(cursor, menu_id, user_id, "viewer")
+        return _menu_payload(cursor, menu, lang, menu_role(cursor, user_id, menu_id))
     finally:
         conn.close()
 
@@ -197,10 +226,10 @@ def _insert_steps(cursor, menu_id: int, course_id: int, steps: List[PrepStepDraf
 
 
 def _accessible_recipe(cursor, recipe_uuid: str, user_id: int):
+    if not role_at_least(effective_role(cursor, user_id, recipe_uuid), "viewer"):
+        return None
     return cursor.execute(
-        f"SELECT r.uuid, r.recipe_json FROM recipes r WHERE r.uuid = ? AND "
-        f"{accessible_recipes_sql('r')}",
-        (recipe_uuid, user_id, user_id, user_id, user_id),
+        "SELECT uuid, recipe_json FROM recipes WHERE uuid = ?", (recipe_uuid,)
     ).fetchone()
 
 
@@ -225,14 +254,20 @@ async def list_menus(
     current_user: User = Depends(get_current_user),  # noqa: B008
     lang: Optional[str] = Depends(request_language),  # noqa: B008
 ):
+    """The user's own menus plus those shared with them (accepted), each with the
+    user's ``role`` and the menu's ``owner``."""
     user_id = _uid(current_user)
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
         menus = cursor.execute(
-            "SELECT id, title, date, guests, updated_at FROM menus WHERE user_id = ? "
-            "ORDER BY COALESCE(date, '9999-12-31') DESC, updated_at DESC, id DESC",
-            (user_id,),
+            "SELECT m.id, m.user_id, m.title, m.date, m.guests, m.updated_at, "
+            "CASE WHEN m.user_id = ? THEN 'owner' ELSE mm.role END AS role "
+            "FROM menus m LEFT JOIN menu_members mm ON mm.menu_id = m.id AND mm.user_id = ? "
+            "AND mm.status = 'accepted' "
+            "WHERE m.user_id = ? OR mm.user_id IS NOT NULL "
+            "ORDER BY COALESCE(m.date, '9999-12-31') DESC, m.updated_at DESC, m.id DESC",
+            (user_id, user_id, user_id),
         ).fetchall()
         out = []
         for m in menus:
@@ -249,6 +284,9 @@ async def list_menus(
                     "date": m["date"],
                     "guests": m["guests"],
                     "updated_at": m["updated_at"],
+                    "role": m["role"],
+                    "owner": _owner_json(cursor, m["user_id"]),
+                    "member_count": _member_count(cursor, m["id"]),
                     "courses": [
                         {
                             "name": c["name"],
@@ -288,6 +326,89 @@ async def create_menu(
     return _respond(menu_id, user_id, lang)
 
 
+# ---------------------------------------------------------------------------
+# Sharing — invitations (declared before /{menu_id} so the paths don't clash)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/invitations")
+async def list_invitations(current_user: User = Depends(get_current_user)):  # noqa: B008
+    """Menus shared with the user that they haven't accepted yet."""
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        rows = conn.execute(
+            "SELECT m.id, m.title, m.date, mm.role, mm.created_at, m.user_id "
+            "FROM menu_members mm JOIN menus m ON m.id = mm.menu_id "
+            "WHERE mm.user_id = ? AND mm.status = 'pending' ORDER BY mm.created_at DESC",
+            (user_id,),
+        ).fetchall()
+        cursor = conn.cursor()
+        return [
+            {
+                "menu_id": r["id"],
+                "title": r["title"],
+                "date": r["date"],
+                "role": r["role"],
+                "created_at": r["created_at"],
+                "owner": _owner_json(cursor, r["user_id"]),
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def _pending_invite(cursor, menu_id: int, user_id: int) -> None:
+    row = cursor.execute(
+        "SELECT 1 FROM menu_members WHERE menu_id = ? AND user_id = ? AND status = 'pending'",
+        (menu_id, user_id),
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+
+
+@router.post("/invitations/{menu_id}/accept")
+async def accept_invitation(
+    menu_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+    lang: Optional[str] = Depends(request_language),  # noqa: B008
+):
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _pending_invite(cursor, menu_id, user_id)
+        cursor.execute(
+            "UPDATE menu_members SET status = 'accepted', responded_at = CURRENT_TIMESTAMP "
+            "WHERE menu_id = ? AND user_id = ?",
+            (menu_id, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return _respond(menu_id, user_id, lang)
+
+
+@router.post("/invitations/{menu_id}/decline", status_code=204)
+async def decline_invitation(
+    menu_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _pending_invite(cursor, menu_id, user_id)
+        cursor.execute(
+            "DELETE FROM menu_members WHERE menu_id = ? AND user_id = ?", (menu_id, user_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return None
+
+
 def _course_recipes(menu: Dict[str, Any], user_id: int, lang: str) -> List[MenuRecipe]:
     """Each course's recipe for the PDF, in course order, scaled to the guests."""
     out = []
@@ -295,10 +416,10 @@ def _course_recipes(menu: Dict[str, Any], user_id: int, lang: str) -> List[MenuR
     try:
         cursor = conn.cursor()
         for c in sorted(menu["courses"], key=lambda c: (c["position"], c["serve"], c["id"])):
+            if not role_at_least(effective_role(cursor, user_id, c["recipe_uuid"]), "viewer"):
+                continue
             row = cursor.execute(
-                f"SELECT r.recipe_json, r.has_image FROM recipes r WHERE r.uuid = ? AND "
-                f"{accessible_recipes_sql('r')}",
-                (c["recipe_uuid"], user_id, user_id, user_id, user_id),
+                "SELECT recipe_json, has_image FROM recipes WHERE uuid = ?", (c["recipe_uuid"],)
             ).fetchone()
             if row is None:
                 continue
@@ -355,7 +476,7 @@ async def update_menu(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         changes = body.model_dump(exclude_unset=True)
         if changes.get("title") is not None:
             cursor.execute(
@@ -383,7 +504,8 @@ async def delete_menu(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id, "owner")
+        cursor.execute("DELETE FROM menu_members WHERE menu_id = ?", (menu_id,))
         cursor.execute("DELETE FROM menu_steps WHERE menu_id = ?", (menu_id,))
         cursor.execute("DELETE FROM menu_courses WHERE menu_id = ?", (menu_id,))
         cursor.execute("DELETE FROM menus WHERE id = ?", (menu_id,))
@@ -410,7 +532,7 @@ async def add_course(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         recipe = _accessible_recipe(cursor, body.recipe_uuid, user_id)
         if recipe is None:
             raise HTTPException(status_code=404, detail="Recipe not found")
@@ -433,7 +555,7 @@ async def add_course(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         cursor.execute(
             "INSERT INTO menu_courses (menu_id, recipe_uuid, name, serve, position) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -461,7 +583,7 @@ async def reorder_courses(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         ids = [
             r["id"]
             for r in cursor.execute(
@@ -493,7 +615,7 @@ async def update_course(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         _course_recipe(cursor, menu_id, course_id)
         for field in ("name", "serve", "position"):
             value = getattr(body, field)
@@ -521,7 +643,7 @@ async def delete_course(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         row = cursor.execute(
             "SELECT id FROM menu_courses WHERE id = ? AND menu_id = ?", (course_id, menu_id)
         ).fetchone()
@@ -549,7 +671,7 @@ async def redraft_course(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         localized = localize_recipe(
             _load_json(_course_recipe(cursor, menu_id, course_id)["recipe_json"]), lang
         )
@@ -562,7 +684,7 @@ async def redraft_course(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         _course_recipe(cursor, menu_id, course_id)
         cursor.execute("DELETE FROM menu_steps WHERE course_id = ?", (course_id,))
         _insert_steps(cursor, menu_id, course_id, steps)
@@ -584,6 +706,8 @@ async def revise_menu_plan(
     their new serving time and steps (done marks reset); the rest stay as they are."""
     user_id = _uid(current_user)
     menu = _respond(menu_id, user_id, lang)
+    if not role_at_least(menu["role"], "editor"):
+        raise HTTPException(status_code=404, detail="Menu not found")
     if not menu["courses"]:
         raise HTTPException(status_code=400, detail="Add a course first")
     try:
@@ -596,7 +720,7 @@ async def revise_menu_plan(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         for rev in revisions:
             row = cursor.execute(
                 "SELECT id FROM menu_courses WHERE id = ? AND menu_id = ?",
@@ -642,7 +766,7 @@ async def add_step(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         _course_recipe(cursor, menu_id, body.course_id)
         draft = PrepStepDraft(
             name=body.name.strip(),
@@ -674,7 +798,7 @@ async def update_step(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         step = _owned_step(cursor, menu_id, step_id)
         changes = body.model_dump(exclude_unset=True)
         if "name" in changes and changes["name"] is not None:
@@ -713,7 +837,7 @@ async def delete_step(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        _owned_menu(cursor, menu_id, user_id)
+        _menu_for(cursor, menu_id, user_id)
         _owned_step(cursor, menu_id, step_id)
         cursor.execute("DELETE FROM menu_steps WHERE id = ?", (step_id,))
         _touch(cursor, menu_id)
@@ -742,7 +866,7 @@ async def menu_shopping_list(
     conn = db.get_db_connection()
     try:
         cursor = conn.cursor()
-        menu = _owned_menu(cursor, menu_id, user_id)
+        menu = _menu_for(cursor, menu_id, user_id, "viewer")
         rows = cursor.execute(
             "SELECT r.recipe_json FROM menu_courses c JOIN recipes r ON r.uuid = c.recipe_uuid "
             "WHERE c.menu_id = ?",
@@ -777,3 +901,121 @@ async def menu_shopping_list(
     finally:
         conn.close()
     return {"token": token, "items": [i.model_dump() for i in merged]}
+
+
+# ---------------------------------------------------------------------------
+# Sharing — members (owner only; a member may remove themselves to leave)
+# ---------------------------------------------------------------------------
+
+
+def _members_json(cursor, menu_id: int) -> List[Dict[str, Any]]:
+    rows = cursor.execute(
+        "SELECT mm.user_id, u.email, u.display_name, mm.role, mm.status "
+        "FROM menu_members mm JOIN users u ON u.id = mm.user_id "
+        "WHERE mm.menu_id = ? ORDER BY u.email COLLATE NOCASE",
+        (menu_id,),
+    ).fetchall()
+    return [
+        {
+            "user_id": r["user_id"],
+            "email": r["email"],
+            "display_name": r["display_name"] or "",
+            "role": r["role"],
+            "status": r["status"],
+        }
+        for r in rows
+    ]
+
+
+@router.get("/{menu_id}/members")
+async def list_members(
+    menu_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """The menu's owner and members. Visible to the owner and any member."""
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        menu = _menu_for(cursor, menu_id, user_id, "viewer")
+        return {
+            "owner": _owner_json(cursor, menu["user_id"]),
+            "members": _members_json(cursor, menu_id),
+        }
+    finally:
+        conn.close()
+
+
+@router.post("/{menu_id}/members")
+async def invite_member(
+    menu_id: int,
+    body: MenuMemberInvite,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """Invite a friend at a role (pending until they accept). Re-inviting an
+    existing member only changes their role."""
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _menu_for(cursor, menu_id, user_id, "owner")
+        if body.friend_id == user_id:
+            raise HTTPException(status_code=422, detail="You already own this menu")
+        if not are_friends(cursor, user_id, body.friend_id):
+            raise HTTPException(status_code=403, detail="You can only share with friends")
+        cursor.execute(
+            "INSERT INTO menu_members (menu_id, user_id, role, status, invited_by) "
+            "VALUES (?, ?, ?, 'pending', ?) "
+            "ON CONFLICT(menu_id, user_id) DO UPDATE SET role = excluded.role",
+            (menu_id, body.friend_id, body.role, user_id),
+        )
+        conn.commit()
+        return {"members": _members_json(cursor, menu_id)}
+    finally:
+        conn.close()
+
+
+@router.patch("/{menu_id}/members/{member_id}")
+async def update_member(
+    menu_id: int,
+    member_id: int,
+    body: MenuMemberRole,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        _menu_for(cursor, menu_id, user_id, "owner")
+        cursor.execute(
+            "UPDATE menu_members SET role = ? WHERE menu_id = ? AND user_id = ?",
+            (body.role, menu_id, member_id),
+        )
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Member not found")
+        conn.commit()
+        return {"members": _members_json(cursor, menu_id)}
+    finally:
+        conn.close()
+
+
+@router.delete("/{menu_id}/members/{member_id}", status_code=204)
+async def remove_member(
+    menu_id: int,
+    member_id: int,
+    current_user: User = Depends(get_current_user),  # noqa: B008
+):
+    """The owner removes a member, or a member leaves."""
+    user_id = _uid(current_user)
+    conn = db.get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if member_id != user_id:
+            _menu_for(cursor, menu_id, user_id, "owner")
+        cursor.execute(
+            "DELETE FROM menu_members WHERE menu_id = ? AND user_id = ?", (menu_id, member_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return None

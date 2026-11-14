@@ -63,11 +63,14 @@ export function StepEditor({
   step,
   onChange,
   onDelete,
+  readOnly = false,
 }: {
   menu: Menu
   step: MenuStep
   onChange: (patch: MenuStepPatch) => void
   onDelete: () => void
+  /** Shared with the user as a viewer: show the step, change nothing. */
+  readOnly?: boolean
 }) {
   const { t } = useI18n()
   const [name, setName] = useDraft(step.name)
@@ -83,7 +86,7 @@ export function StepEditor({
   }
 
   return (
-    <div className="space-y-3 text-sm">
+    <fieldset disabled={readOnly} className="space-y-3 text-sm min-w-0">
       <div className="flex items-center gap-2 text-xs font-semibold" style={{ color }}>
         <span className="w-2 h-2 rounded-full" style={{ background: color }} />
         <span className="truncate">
@@ -206,10 +209,12 @@ export function StepEditor({
         )
       })}
 
-      <Button variant="outline" size="sm" className="text-destructive" onClick={onDelete}>
-        <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-        {t('menus.removeStep')}
-      </Button>
-    </div>
+      {!readOnly && (
+        <Button variant="outline" size="sm" className="text-destructive" onClick={onDelete}>
+          <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+          {t('menus.removeStep')}
+        </Button>
+      )}
+    </fieldset>
   )
 }

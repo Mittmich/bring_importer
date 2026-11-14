@@ -11,18 +11,21 @@ import {
   ChevronDown,
   FileDown,
   List,
+  LogOut,
   Minus,
   MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
   Search,
+  Share2,
   ShoppingCart,
   Sparkles,
   Trash2,
   X,
 } from 'lucide-react'
-import { api, type Menu, type MenuCourse } from '@/lib/api'
+import { api, personName, type Menu, type MenuCourse } from '@/lib/api'
+import { getUserEmail } from '@/hooks/useAuth'
 import { useMenu, type MenuApi } from '@/hooks/useMenu'
 import { useDraft } from '@/hooks/useDraft'
 import { Button } from '@/components/ui/button'
@@ -32,6 +35,7 @@ import { StepEditor } from '@/components/menu/StepEditor'
 import { PlanTimeline } from '@/components/menu/PlanTimeline'
 import { RunSheet } from '@/components/menu/RunSheet'
 import { AiDialog, AiNotesField } from '@/components/menu/AiDialogs'
+import { ShareMenuDialog } from '@/components/menu/ShareMenuDialog'
 import {
   courseColor,
   durationLabel,
@@ -82,7 +86,7 @@ export function MenuPage() {
 }
 
 function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
-  const { t } = useI18n()
+  const { t, tp } = useI18n()
   const navigate = useNavigate()
   const desktop = useIsDesktop()
   const [view, setView] = useState<'timeline' | 'list'>('timeline')
@@ -90,6 +94,9 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
   const [editing, setEditing] = useState<number | null>(null)
   const [picking, setPicking] = useState(false)
   const [aiEdit, setAiEdit] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const isOwner = menu.role === 'owner'
+  const readOnly = menu.role === 'viewer'
   const showTimeline = desktop && view === 'timeline'
   const selectedStep = menu.steps.find((s) => s.id === selected) ?? null
   const editingStep = menu.steps.find((s) => s.id === editing) ?? null
@@ -115,6 +122,14 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
     input.select()
   }
 
+  async function leave() {
+    if (!window.confirm(t('menus.confirmLeave', { title: menu.title }))) return
+    const { members } = await api.listMenuMembers(menu.id)
+    const me = members.find((x) => x.email === getUserEmail())
+    if (me) await api.removeMenuMember(menu.id, me.user_id)
+    navigate('/plan')
+  }
+
   async function deleteStep(stepId: number) {
     await m.run(() => api.deleteMenuStep(menu.id, stepId))
     setSelected(null)
@@ -129,31 +144,48 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
           <ArrowLeft className="w-4 h-4" />
         </Link>
         <h1 className="flex-1 min-w-0">
-          <button
-            type="button"
-            onClick={renameMenu}
-            title={t('menus.renameMenu')}
-            className="max-w-full truncate text-left text-base font-semibold text-foreground hover:text-primary"
-          >
-            {menu.title}
-          </button>
+          {readOnly ? (
+            <span className="block truncate text-base font-semibold text-foreground">{menu.title}</span>
+          ) : (
+            <button
+              type="button"
+              onClick={renameMenu}
+              title={t('menus.renameMenu')}
+              className="max-w-full truncate text-left text-base font-semibold text-foreground hover:text-primary"
+            >
+              {menu.title}
+            </button>
+          )}
         </h1>
         {m.saving && <span className="text-xs text-muted-foreground">{t('common.saving')}</span>}
         <DropMenu trigger={<MoreHorizontal className="w-4 h-4" />} label={t('menus.more')}>
-          <MenuItem icon={<Pencil />} onSelect={renameMenu}>
-            {t('menus.renameMenu')}
-          </MenuItem>
-          <MenuItem
-            icon={<Trash2 />}
-            destructive
-            onSelect={async () => {
-              if (!window.confirm(t('menus.confirmDelete', { title: menu.title }))) return
-              await api.deleteMenu(menu.id)
-              navigate('/plan')
-            }}
-          >
-            {t('menus.delete')}
-          </MenuItem>
+          {!readOnly && (
+            <MenuItem icon={<Pencil />} onSelect={renameMenu}>
+              {t('menus.renameMenu')}
+            </MenuItem>
+          )}
+          {isOwner && (
+            <MenuItem icon={<Share2 />} onSelect={() => setSharing(true)}>
+              {t('menus.share')}
+            </MenuItem>
+          )}
+          {isOwner ? (
+            <MenuItem
+              icon={<Trash2 />}
+              destructive
+              onSelect={async () => {
+                if (!window.confirm(t('menus.confirmDelete', { title: menu.title }))) return
+                await api.deleteMenu(menu.id)
+                navigate('/plan')
+              }}
+            >
+              {t('menus.delete')}
+            </MenuItem>
+          ) : (
+            <MenuItem icon={<LogOut />} destructive onSelect={leave}>
+              {t('menus.leave')}
+            </MenuItem>
+          )}
         </DropMenu>
       </div>
 
@@ -165,11 +197,24 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
           <ChefHat className="w-4 h-4 mr-1.5" />
           {t('menus.startCooking')}
         </Button>
+        {isOwner ? (
+          <Button size="sm" variant="outline" onClick={() => setSharing(true)}>
+            <Share2 className="w-4 h-4 mr-1.5" />
+            {menu.member_count > 0 ? tp('menus.sharedCount', menu.member_count) : t('menus.share')}
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground ml-auto">
+            {t('menus.sharedBy', {
+              name: personName(menu.owner.display_name, menu.owner.email),
+              role: t(`role.${menu.role}` as MessageKey),
+            })}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-          <MenuCardEditor menu={menu} m={m} titleRef={titleRef} onAddCourse={() => setPicking(true)} />
+          <MenuCardEditor menu={menu} m={m} titleRef={titleRef} onAddCourse={() => setPicking(true)} readOnly={readOnly} />
           <PlanSummary menu={menu} />
         </div>
 
@@ -193,14 +238,18 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
                 </button>
               </div>
             )}
-            <Button size="sm" variant="outline" onClick={() => setAiEdit(true)} disabled={!menu.courses.length}>
-              <Sparkles className="w-4 h-4 mr-1" />
-              {t('menus.editWithAi')}
-            </Button>
-            <Button size="sm" variant="outline" onClick={addStep} disabled={!menu.courses.length}>
-              <Plus className="w-4 h-4 mr-1" />
-              {t('menus.addStep')}
-            </Button>
+            {!readOnly && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setAiEdit(true)} disabled={!menu.courses.length}>
+                  <Sparkles className="w-4 h-4 mr-1" />
+                  {t('menus.editWithAi')}
+                </Button>
+                <Button size="sm" variant="outline" onClick={addStep} disabled={!menu.courses.length}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  {t('menus.addStep')}
+                </Button>
+              </>
+            )}
           </div>
 
           {menu.courses.length === 0 ? (
@@ -212,6 +261,7 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
                 selectedId={selected}
                 onSelect={setSelected}
                 onMove={(stepId, lead) => m.updateStep(stepId, { lead })}
+                readOnly={readOnly}
               />
               <div className="rounded-lg border border-border bg-slate-50/60 p-3">
                 {selectedStep ? (
@@ -221,6 +271,7 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
                     step={selectedStep}
                     onChange={(patch) => m.updateStep(selectedStep.id, patch)}
                     onDelete={() => deleteStep(selectedStep.id)}
+                    readOnly={readOnly}
                   />
                 ) : (
                   <p className="text-sm text-muted-foreground">{t('menus.selectStep')}</p>
@@ -228,7 +279,7 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
               </div>
             </div>
           ) : (
-            <RunSheet menu={menu} onChange={(id, patch) => m.updateStep(id, patch)} onOpen={setEditing} />
+            <RunSheet menu={menu} onChange={(id, patch) => m.updateStep(id, patch)} onOpen={setEditing} readOnly={readOnly} />
           )}
         </section>
       </div>
@@ -245,6 +296,7 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
               step={editingStep}
               onChange={(patch) => m.updateStep(editingStep.id, patch)}
               onDelete={() => deleteStep(editingStep.id)}
+              readOnly={readOnly}
             />
           </DialogContent>
         </Dialog>
@@ -262,6 +314,8 @@ function MenuView({ menu, m }: { menu: Menu; m: MenuApi }) {
           }}
         />
       )}
+
+      {sharing && <ShareMenuDialog menu={menu} onClose={() => setSharing(false)} />}
 
       {aiEdit && (
         <AiDialog
@@ -292,11 +346,13 @@ function MenuCardEditor({
   m,
   titleRef,
   onAddCourse,
+  readOnly,
 }: {
   menu: Menu
   m: MenuApi
   titleRef: React.RefObject<HTMLInputElement | null>
   onAddCourse: () => void
+  readOnly: boolean
 }) {
   const { t, tp } = useI18n()
   const [title, setTitle] = useDraft(menu.title)
@@ -309,6 +365,7 @@ function MenuCardEditor({
       <input
         ref={titleRef}
         value={title}
+        readOnly={readOnly}
         maxLength={120}
         onChange={(e) => setTitle(e.target.value)}
         onBlur={() => {
@@ -321,7 +378,7 @@ function MenuCardEditor({
         title={t('menus.renameMenu')}
         className="relative w-full bg-transparent text-center font-serif text-2xl md:text-3xl px-8 rounded cursor-text hover:bg-black/[0.03] focus:outline-none focus:ring-2 focus:ring-ring"
       />
-      <button
+      {!readOnly && <button
         type="button"
         onClick={() => {
           titleRef.current?.focus()
@@ -332,18 +389,20 @@ function MenuCardEditor({
         className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 rounded text-muted-foreground/60 hover:text-primary group-focus-within:hidden"
       >
         <Pencil className="w-4 h-4" />
-      </button>
+      </button>}
       </div>
       <div className="relative mt-1 flex flex-wrap items-center justify-center gap-2 text-sm">
         <input
           type="date"
           value={menu.date ?? ''}
+          disabled={readOnly}
           onChange={(e) => m.updateMenu({ date: e.target.value })}
           aria-label={t('menus.date')}
           className="bg-transparent italic text-muted-foreground font-serif rounded px-1 focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <span className="inline-flex items-center gap-2 bg-white border border-border rounded-full pl-3 pr-1 py-0.5">
           <span className="text-xs">{tp('menus.guests', menu.guests)}</span>
+          {!readOnly && <>
           <button
             className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center disabled:opacity-40"
             onClick={() => m.updateMenu({ guests: menu.guests - 1 })}
@@ -360,6 +419,7 @@ function MenuCardEditor({
           >
             <Plus className="w-3 h-3" />
           </button>
+          </>}
         </span>
       </div>
 
@@ -382,16 +442,17 @@ function MenuCardEditor({
               : undefined
           }
           last={i === courses.length - 1}
+          readOnly={readOnly}
         />
       ))}
 
-      <button
+      {!readOnly && <button
         onClick={onAddCourse}
         className="relative mt-5 w-full rounded-lg border border-dashed border-[#e8c9a6] py-2 text-sm font-semibold text-primary hover:bg-primary/5"
       >
         <Plus className="inline w-4 h-4 mr-1 -mt-0.5" />
         {t('menus.addCourse')}
-      </button>
+      </button>}
     </div>
   )
 }
@@ -403,12 +464,14 @@ function CourseBlock({
   first,
   last,
   onMove,
+  readOnly,
 }: {
   menu: Menu
   course: MenuCourse
   m: MenuApi
   first: boolean
   last: boolean
+  readOnly: boolean
   /** Move the course up (-1) or down (+1); undefined with a single course. */
   onMove?: (dir: -1 | 1) => void
 }) {
@@ -426,6 +489,7 @@ function CourseBlock({
           <input
             ref={nameRef}
             value={name}
+            readOnly={readOnly}
             maxLength={60}
             onChange={(e) => setName(e.target.value)}
             onBlur={() => {
@@ -449,6 +513,7 @@ function CourseBlock({
                 type="time"
                 step={300}
                 value={hhmm(course.serve)}
+                disabled={readOnly}
                 onChange={(e) => {
                   const v = parseHhmm(e.target.value)
                   if (v !== null && v !== course.serve) m.updateCourse(course.id, { serve: v })
@@ -459,7 +524,7 @@ function CourseBlock({
             <span>· {t('menus.scaled', { from: course.servings, to: menu.guests })}</span>
           </div>
         </div>
-        <DropMenu trigger={<MoreHorizontal className="w-4 h-4" />} label={t('menus.courseActions')} className="flex-shrink-0">
+        {!readOnly && <DropMenu trigger={<MoreHorizontal className="w-4 h-4" />} label={t('menus.courseActions')} className="flex-shrink-0">
           <MenuItem
             icon={<Pencil />}
             onSelect={() =>
@@ -497,7 +562,7 @@ function CourseBlock({
           >
             {t('menus.removeCourse')}
           </MenuItem>
-        </DropMenu>
+        </DropMenu>}
       </div>
       {redrafting && (
         <AiDialog
@@ -694,6 +759,7 @@ function CoursePicker({
           className="w-full mb-3 px-3 py-2 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <AiNotesField id="course-notes" value={notes} onChange={setNotes} />
+        {menu.member_count > 0 && <p className="text-xs text-muted-foreground mb-3">{t('menus.sharedRecipeHint')}</p>}
         <div className="relative mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
